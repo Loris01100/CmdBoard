@@ -14,14 +14,15 @@ pub struct DashboardLayout {
     pub status: Rect,
 }
 
-pub fn dashboard(area: Rect) -> DashboardLayout {
+/// `command_height`: 1 row for messages, more while the command box is open.
+pub fn dashboard(area: Rect, command_height: u16) -> DashboardLayout {
     let [header, body, profile, rewards, command, status] = Layout::vertical([
-        Constraint::Length(1), // header
-        Constraint::Min(10),   // body
-        Constraint::Length(3), // profile
-        Constraint::Length(3), // recent rewards
-        Constraint::Length(1), // command line / message
-        Constraint::Length(1), // status
+        Constraint::Length(1),              // header
+        Constraint::Min(10),                // body
+        Constraint::Length(3),              // profile
+        Constraint::Length(3),              // recent rewards
+        Constraint::Length(command_height), // command box / message
+        Constraint::Length(1),              // status
     ])
     .areas(area);
 
@@ -51,11 +52,11 @@ pub fn dashboard(area: Rect) -> DashboardLayout {
     }
 }
 
-/// Main area, command line row and status bar, for screens other than the dashboard.
-pub fn screen(area: Rect) -> (Rect, Rect, Rect) {
+/// Main area, command area and status bar, for screens other than the dashboard.
+pub fn screen(area: Rect, command_height: u16) -> (Rect, Rect, Rect) {
     let [body, command, status] = Layout::vertical([
         Constraint::Min(0),
-        Constraint::Length(1),
+        Constraint::Length(command_height),
         Constraint::Length(1),
     ])
     .areas(area);

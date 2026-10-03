@@ -201,6 +201,7 @@ Noms d'apps et de catégories insensibles à la casse. `:add` déduit `watch_exe
 
 ### Confort
 
+- La saisie s'affiche dans un cadre « Commande » (bordure de focus) qui s'ouvre au-dessus de la barre de statut, sur tous les écrans, avec un texte d'exemple quand la ligne est vide et un défilement horizontal qui garde le curseur visible. Hors saisie, cette zone se réduit à une ligne de message.
 - Historique avec flèches haut/bas (100 entrées, sans doublon consécutif, en mémoire seulement).
 - Édition : `←→`, `Home`/`End`, `Backspace`/`Suppr`. `Backspace` sur une ligne vide ou `Esc` referment la ligne.
 - Autocomplétion avec Tab (commandes, apps, catégories) via `fuzzy-matcher` : étape 10.

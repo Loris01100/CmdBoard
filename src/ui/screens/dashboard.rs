@@ -18,7 +18,7 @@ use crate::ui::{
 };
 
 pub fn draw(frame: &mut Frame, app: &App) {
-    let areas = layout::dashboard(frame.area());
+    let areas = layout::dashboard(frame.area(), command_line::height(app));
 
     render_header(frame, areas.header, app);
     category_list::render(frame, areas.categories, app);

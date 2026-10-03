@@ -23,7 +23,7 @@ const KEYS: &[(&str, &str)] = &[
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let theme = &app.theme;
-    let (body, command, status) = layout::screen(frame.area());
+    let (body, command, status) = layout::screen(frame.area(), command_line::height(app));
     let block = theme.panel("Aide", true);
     let inner = block.inner(body);
     frame.render_widget(block, body);
