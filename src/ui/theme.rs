@@ -13,6 +13,8 @@ pub struct Theme {
     pub selected: Style,
     pub selected_unfocused: Style,
     pub xp_fill: Color,
+    pub success: Color,
+    pub error: Color,
     pub muted: Color,
 }
 
@@ -28,6 +30,8 @@ impl Default for Theme {
                 .add_modifier(Modifier::BOLD),
             selected_unfocused: Style::new().add_modifier(Modifier::BOLD),
             xp_fill: Color::Green,
+            success: Color::Green,
+            error: Color::Red,
             muted: Color::DarkGray,
         }
     }

@@ -13,6 +13,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         Screen::Dashboard => &[
             ("j/k", "naviguer"),
             ("Tab ←→", "panneau"),
+            ("Entrée", "lancer"),
             ("1-4", "écrans"),
             ("q", "quitter"),
         ],

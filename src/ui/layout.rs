@@ -10,7 +10,6 @@ pub struct DashboardLayout {
     pub details: Option<Rect>,
     pub profile: Rect,
     pub rewards: Rect,
-    #[allow(dead_code)] // rendered once the command line exists (step 5)
     pub command: Rect,
     pub status: Rect,
 }

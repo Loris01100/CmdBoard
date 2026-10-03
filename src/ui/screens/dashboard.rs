@@ -1,16 +1,19 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::Modifier,
+    style::{Modifier, Stylize},
     text::{Line, Span},
     widgets::Paragraph,
 };
 
-use crate::app::App;
+use crate::app::{App, MsgKind};
 use crate::core::xp;
+use crate::storage::unix_now;
 use crate::ui::{
     layout,
-    widgets::{app_table, category_list, format_duration, profile_panel, status_bar, xp_bar},
+    widgets::{
+        app_table, category_list, format_ago, format_duration, profile_panel, status_bar, xp_bar,
+    },
 };
 
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -24,8 +27,18 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
     profile_panel::render(frame, areas.profile, app);
     render_recent_rewards(frame, areas.rewards, app);
-    // `areas.command` stays empty until the command line exists (step 5).
+    // Only the message for now; the command line itself comes in step 5.
+    render_message(frame, areas.command, app);
     status_bar::render(frame, areas.status, app);
+}
+
+fn render_message(frame: &mut Frame, area: Rect, app: &App) {
+    let Some((text, kind)) = &app.message else { return };
+    let color = match kind {
+        MsgKind::Success => app.theme.success,
+        MsgKind::Error => app.theme.error,
+    };
+    frame.render_widget(Paragraph::new(format!(" {text}")).fg(color), area);
 }
 
 fn render_header(frame: &mut Frame, area: Rect, app: &App) {
@@ -65,12 +78,20 @@ fn render_details(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(head_text), head);
     frame.render_widget(xp_bar::gauge(xp::level_progress(entry.level, entry.xp), theme), gauge);
 
-    let last = entry.last_played.as_deref().unwrap_or("jamais");
+    let last = entry
+        .last_played
+        .map_or_else(|| "jamais".into(), |t| format_ago(unix_now() - t));
     let rest_text = vec![
         Line::from(""),
         Line::from(format!("Temps total : {}", format_duration(entry.total_secs))),
         Line::from(format!("Dernière : {last}")),
         Line::from(format!("Récompenses : 🏆 {}", entry.rewards)),
+        Line::from(""),
+        Line::styled(format!("Cible : {}", entry.launch_target), theme.muted()),
+        Line::styled(
+            format!("Process : {}", entry.watch_exe.as_deref().unwrap_or("—")),
+            theme.muted(),
+        ),
     ];
     frame.render_widget(Paragraph::new(rest_text), rest);
 }

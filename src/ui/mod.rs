@@ -22,7 +22,7 @@ mod tests {
 
     #[test]
     fn every_screen_renders_at_any_size() {
-        let mut app = App::new();
+        let mut app = App::with_defaults();
         for screen in [Screen::Dashboard, Screen::Stats, Screen::Rewards, Screen::Help] {
             app.screen = screen;
             for (w, h) in [(120, 30), (70, 20), (10, 3)] {
@@ -34,7 +34,7 @@ mod tests {
 
     #[test]
     fn details_panel_hidden_when_narrow() {
-        let app = App::new();
+        let app = App::with_defaults();
         let render = |w| {
             let mut terminal = Terminal::new(TestBackend::new(w, 30)).unwrap();
             terminal.draw(|f| draw(f, &app)).unwrap();

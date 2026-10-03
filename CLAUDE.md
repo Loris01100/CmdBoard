@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 CmdBoard is a Windows-only terminal dashboard (Rust + ratatui) for launching app shortcuts grouped by category. It tracks play/usage sessions and awards XP, levels and rewards for them. The design document, [docs/plan_conception_tui_ratatui.md](docs/plan_conception_tui_ratatui.md) (in French), is the source of truth for architecture, data model, keybindings, theming, distribution and the build order. Read it before implementing a feature. If the code ends up diverging from the plan, update the plan in the same change.
 
-Development follows the 12 numbered steps in section 16 of the plan. Each step has a verifiable deliverable. Implement them in order. Steps 1–3 are done: the dashboard renders with fake data (`fake_data()` in `src/app.rs`) and navigation works. Next is step 4 (SQLite, CRUD, `Launch`).
+Development follows the 12 numbered steps in section 16 of the plan. Each step has a verifiable deliverable. Implement them in order. Steps 1–4 are done: the dashboard reads from SQLite (`%APPDATA%\CmdBoard\cmdboard.db`, seeded with starter apps on first run), navigation works and Enter launches the selected app via `Command::Launch`. Next is step 5 (command mode, parser, history, `:add`/`:move`/`:launch`).
 
 ## Commands
 

@@ -4,7 +4,12 @@ use ratatui::{
     widgets::{ListState, TableState},
 };
 
-use crate::storage::models::{AppEntry, Category, Profile};
+use crate::command::Command;
+use crate::launcher::launch;
+use crate::storage::{
+    Database,
+    models::{AppEntry, Category, Profile},
+};
 use crate::ui::{self, theme::Theme};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,6 +37,12 @@ pub enum Focus {
     Apps,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MsgKind {
+    Success,
+    Error,
+}
+
 pub struct App {
     // navigation
     pub screen: Screen,
@@ -39,34 +50,51 @@ pub struct App {
     pub cat_state: ListState,
     pub app_state: TableState,
 
-    // cached data (fake until SQLite lands in step 4)
+    // cached data, reloaded from the database after each write
     pub categories: Vec<Category>,
     pub apps: Vec<AppEntry>,
     pub profile: Profile,
     pub recent_rewards: Vec<String>,
 
+    /// Feedback from the last command, shown on the command line row.
+    pub message: Option<(String, MsgKind)>,
+
     pub theme: Theme,
+    pub db: Database,
     pub should_quit: bool,
 }
 
 impl App {
-    pub fn new() -> Self {
-        let (categories, apps, profile, recent_rewards) = fake_data();
-        let cat_selected = (!categories.is_empty()).then_some(0);
+    pub fn new(db: Database) -> anyhow::Result<Self> {
         let mut app = Self {
             screen: Screen::Dashboard,
             focus: Focus::Categories,
-            cat_state: ListState::default().with_selected(cat_selected),
+            cat_state: ListState::default(),
             app_state: TableState::default(),
-            categories,
-            apps,
-            profile,
-            recent_rewards,
+            categories: Vec::new(),
+            apps: Vec::new(),
+            profile: Profile::default(),
+            recent_rewards: Vec::new(),
+            message: None,
             theme: Theme::default(),
+            db,
             should_quit: false,
         };
-        app.reset_app_selection();
-        app
+        app.reload()?;
+        Ok(app)
+    }
+
+    /// Refreshes the cached data and keeps both selections in range.
+    pub fn reload(&mut self) -> anyhow::Result<()> {
+        self.categories = self.db.categories()?;
+        self.apps = self.db.apps()?;
+        self.profile = self.db.profile()?;
+        self.recent_rewards = self.db.recent_rewards(3)?;
+        self.cat_state
+            .select(clamp(self.cat_state.selected(), self.categories.len()));
+        let visible = self.visible_apps().len();
+        self.app_state.select(clamp(self.app_state.selected(), visible));
+        Ok(())
     }
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> anyhow::Result<()> {
@@ -82,12 +110,13 @@ impl App {
         Ok(())
     }
 
-    // Keys map directly to actions for now; they will go through `Command` in step 5.
+    // Navigation keys still act directly; they move to `Command` with the parser in step 5.
     pub fn on_key(&mut self, key: KeyEvent) {
+        self.message = None;
         match key.code {
-            KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Char('q') => self.execute(Command::Quit),
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.should_quit = true
+                self.execute(Command::Quit)
             }
             KeyCode::Char('1') => self.screen = Screen::Dashboard,
             KeyCode::Char('2') => self.screen = Screen::Stats,
@@ -98,8 +127,39 @@ impl App {
             KeyCode::Tab | KeyCode::BackTab => self.toggle_focus(),
             KeyCode::Left | KeyCode::Char('h') => self.focus = Focus::Categories,
             KeyCode::Right | KeyCode::Char('l') => self.focus = Focus::Apps,
+            KeyCode::Enter if self.screen == Screen::Dashboard => match self.focus {
+                Focus::Categories => self.focus = Focus::Apps,
+                Focus::Apps => {
+                    if let Some(app) = self.selected_app() {
+                        let app = app.name.clone();
+                        self.execute(Command::Launch { app });
+                    }
+                }
+            },
             _ => {}
         }
+    }
+
+    /// Single execution path for every `Command`.
+    pub fn execute(&mut self, command: Command) {
+        match command {
+            Command::Quit => self.should_quit = true,
+            Command::Launch { app } => {
+                let Some(entry) = self.find_app(&app) else {
+                    self.message = Some((format!("App inconnue : {app}"), MsgKind::Error));
+                    return;
+                };
+                self.message = Some(match launch::launch(&entry.launch_target) {
+                    Ok(()) => (format!("Lancé : {}", entry.name), MsgKind::Success),
+                    Err(e) => (format!("{e:#}"), MsgKind::Error),
+                });
+            }
+        }
+    }
+
+    /// Case-insensitive lookup by name.
+    pub fn find_app(&self, name: &str) -> Option<&AppEntry> {
+        self.apps.iter().find(|a| a.name.eq_ignore_ascii_case(name))
     }
 
     pub fn selected_category(&self) -> Option<&Category> {
@@ -164,45 +224,19 @@ fn step(current: Option<usize>, len: usize, forward: bool) -> Option<usize> {
     })
 }
 
-// Placeholder data until step 4 (SQLite).
-fn fake_data() -> (Vec<Category>, Vec<AppEntry>, Profile, Vec<String>) {
-    let categories = [(1, "Jeux"), (2, "Dev"), (3, "Créa")]
-        .map(|(id, name)| Category { id, name: name.into() })
-        .to_vec();
+/// Keeps a selection inside a list of `len` items, selecting the first one by default.
+fn clamp(selected: Option<usize>, len: usize) -> Option<usize> {
+    (len > 0).then(|| selected.unwrap_or(0).min(len - 1))
+}
 
-    let app = |name: &str, category_id, level, xp, hours: u64, last: Option<&str>, rewards| {
-        AppEntry {
-            name: name.into(),
-            category_id,
-            level,
-            xp,
-            total_secs: hours * 3600,
-            last_played: last.map(Into::into),
-            rewards,
-        }
-    };
-    let apps = vec![
-        app("Elden Ring", 1, 12, 3300, 96, Some("hier"), 3),
-        app("Hades", 1, 7, 1100, 42, Some("il y a 3 jours"), 2),
-        app("Celeste", 1, 4, 720, 18, Some("la semaine dernière"), 1),
-        app("Hollow Knight", 1, 9, 400, 55, None, 0),
-        app("VS Code", 2, 15, 2900, 210, Some("aujourd'hui"), 4),
-        app("Windows Terminal", 2, 6, 650, 30, Some("aujourd'hui"), 1),
-        app("Krita", 3, 3, 90, 8, Some("le mois dernier"), 0),
-        app("Blender", 3, 5, 800, 25, Some("hier"), 1),
-    ];
-
-    let profile = Profile {
-        level: 23,
-        xp: 8800,
-        streak_days: 5,
-        xp_today: 120,
-    };
-    let recent_rewards = ["Marathon (Elden Ring)", "Lève-tôt", "Streak 5 jours"]
-        .map(String::from)
-        .to_vec();
-
-    (categories, apps, profile, recent_rewards)
+#[cfg(test)]
+impl App {
+    /// App on an in-memory database holding the starter content.
+    pub fn with_defaults() -> Self {
+        let db = Database::open_in_memory().unwrap();
+        db.seed_defaults().unwrap();
+        App::new(db).unwrap()
+    }
 }
 
 #[cfg(test)]
@@ -222,21 +256,51 @@ mod tests {
     }
 
     #[test]
+    fn clamp_keeps_selection_in_range() {
+        assert_eq!(clamp(None, 3), Some(0));
+        assert_eq!(clamp(Some(5), 3), Some(2));
+        assert_eq!(clamp(Some(1), 0), None);
+    }
+
+    #[test]
+    fn loads_from_database() {
+        let app = App::with_defaults();
+        assert_eq!(app.selected_category().unwrap().name, "Jeux");
+        assert_eq!(app.selected_app().unwrap().name, "Steam");
+    }
+
+    #[test]
     fn changing_category_resets_app_selection() {
-        let mut app = App::new();
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char('k')); // wraps to "Outils"
         press(&mut app, KeyCode::Tab);
         press(&mut app, KeyCode::Char('j'));
-        assert_eq!(app.app_state.selected(), Some(1));
+        assert_eq!(app.selected_app().unwrap().name, "Calculatrice");
 
         press(&mut app, KeyCode::Left);
-        press(&mut app, KeyCode::Char('j'));
+        press(&mut app, KeyCode::Char('k'));
         assert_eq!(app.selected_category().unwrap().name, "Dev");
-        assert_eq!(app.selected_app().unwrap().name, "VS Code");
+        assert_eq!(app.selected_app().unwrap().name, "Windows Terminal");
+    }
+
+    #[test]
+    fn enter_on_categories_focuses_apps() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.focus, Focus::Apps);
+    }
+
+    #[test]
+    fn launching_unknown_app_reports_error() {
+        let mut app = App::with_defaults();
+        app.execute(Command::Launch { app: "Inexistant".into() });
+        assert!(matches!(app.message, Some((_, MsgKind::Error))));
+        assert!(app.find_app("bloc-NOTES").is_some());
     }
 
     #[test]
     fn q_quits() {
-        let mut app = App::new();
+        let mut app = App::with_defaults();
         press(&mut app, KeyCode::Char('q'));
         assert!(app.should_quit);
     }

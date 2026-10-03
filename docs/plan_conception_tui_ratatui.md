@@ -28,7 +28,8 @@ src/
 │   ├── xp.rs            // formules XP / niveaux
 │   └── rewards.rs       // moteur de règles
 ├── storage/
-│   ├── db.rs            // connexion SQLite, migrations
+│   ├── db.rs            // connexion SQLite, migrations, contenu de départ
+│   ├── queries.rs       // CRUD et agrégats (temps joué, profil, récompenses)
 │   └── models.rs        // App, Category, Session, Reward
 ├── launcher/
 │   ├── launch.rs        // lancement (exe, URI)
@@ -68,7 +69,7 @@ wix/main.wxs                    // installeur MSI, généré par `dist init`
 
 ```
 categories(id, name, color, icon)
-apps(id, name, launch_target, watch_exe, icon, category_id, total_xp, level)
+apps(id, name, launch_target, watch_exe, icon, category_id, total_xp)
 sessions(id, app_id, started_at, ended_at, duration_s, xp_gained)
 rewards(id, app_id NULL, code, name, description, rule)
 unlocked_rewards(reward_id, unlocked_at, session_id)
@@ -77,6 +78,11 @@ unlocked_rewards(reward_id, unlocked_at, session_id)
 - `launch_target` : chemin ou URI de lancement (`steam://rungameid/...`).
 - `watch_exe` : nom de l'exécutable réel à surveiller (utile pour les launchers).
 - `app_id NULL` dans `rewards` : récompense globale. Sinon : récompense individuelle.
+- Le niveau n'est pas stocké : il se déduit de `total_xp` (`core::xp::level_from_total`), ce qui évite toute incohérence. Le niveau global se déduit de la somme des `total_xp`.
+- Temps total, dernière session et nombre de récompenses d'une app sont agrégés depuis `sessions` et `unlocked_rewards` à la lecture.
+- Horodatages en secondes Unix (`INTEGER`). Les jours (XP du jour, streak) suivent le fuseau local via `date(..., 'unixepoch', 'localtime')`.
+- Noms de catégories et d'apps uniques sans tenir compte de la casse. Une catégorie qui contient des apps ne peut pas être supprimée. Supprimer une app supprime ses sessions et récompenses.
+- Une base neuve reçoit un contenu de départ (catégories Jeux, Dev, Outils et quelques apps Windows) pour avoir de quoi lancer dès le premier démarrage.
 - **Migrations** : le schéma est versionné via `PRAGMA user_version`. Au démarrage, `storage/db.rs` applique dans l'ordre les migrations manquantes. Une mise à jour de l'app ne doit jamais perdre les données de `%APPDATA%` : on ne modifie jamais une migration déjà publiée, on en ajoute une nouvelle.
 
 ---
@@ -461,15 +467,15 @@ L'étape 1 doit inclure un **hook de panic** qui restaure le terminal. `ratatui:
 ```toml
 ratatui = "0.30"
 crossterm = "0.29"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 sysinfo = "0.32"
-opener = "0.7"
+opener = "0.9"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 chrono = "0.4"
 anyhow = "1"
 shell-words = "1"
-directories = "5"
+directories = "6"
 fuzzy-matcher = "0.3"
 self_update = { version = "0.42", default-features = false, features = ["archive-zip", "compression-zip-deflate", "rustls"] }
 ```
@@ -547,4 +553,4 @@ CmdBoard est Windows uniquement (`.lnk`, `%APPDATA%`, URI des launchers). winget
 
 ## Prochaine étape
 
-Les étapes 1 à 3 sont faites. Suivante : **étape 4**. Schéma SQLite de la section 3 dans `%APPDATA%` avec migrations versionnées, CRUD testé en mémoire dans `storage/`, remplacement de `fake_data()` par le chargement depuis la base, et `Enter` qui lance l'app sélectionnée.
+Les étapes 1 à 4 sont faites. Suivante : **étape 5**. Mode Command (`:`), parser `shell-words` vers `Command`, historique, et les commandes `:add`, `:move`, `:launch` branchées sur le CRUD de `storage/`. Les touches de navigation passent alors aussi par `Command`.
