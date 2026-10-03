@@ -4,39 +4,54 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-CmdBoard is a Windows-only terminal dashboard (Rust + ratatui) for launching app shortcuts grouped by category. It tracks play/usage sessions and awards XP, levels and rewards for them. The repo currently contains only the design document, [docs/plan_conception_tui_ratatui.md](docs/plan_conception_tui_ratatui.md) (in French), which is the source of truth for architecture, data model, keybindings and the build order. Read it before implementing a feature. If the code ends up diverging from the plan, update the plan in the same change.
+CmdBoard is a Windows-only terminal dashboard (Rust + ratatui) for launching app shortcuts grouped by category. It tracks play/usage sessions and awards XP, levels and rewards for them. The design document, [docs/plan_conception_tui_ratatui.md](docs/plan_conception_tui_ratatui.md) (in French), is the source of truth for architecture, data model, keybindings, theming, distribution and the build order. Read it before implementing a feature. If the code ends up diverging from the plan, update the plan in the same change.
 
-Development follows the 11 numbered steps in section 16 of the plan. Each step has a verifiable deliverable. Implement them in order.
+Development follows the 12 numbered steps in section 16 of the plan. Each step has a verifiable deliverable. Implement them in order. Steps 1–3 are done: the dashboard renders with fake data (`fake_data()` in `src/app.rs`) and navigation works. Next is step 4 (SQLite, CRUD, `Launch`).
 
 ## Commands
-
-Standard Cargo (once the crate exists):
 
 - `cargo run`: launch the TUI
 - `cargo build`, `cargo clippy --all-targets`, `cargo fmt`
 - `cargo test`: all tests. `cargo test <name_substring>` runs a single test, `cargo test --lib core::xp` runs a single module.
 - Add dependencies with `cargo add <crate>` to get current versions. The versions listed in the plan (section 17) are only indicative.
+- Releases (plan section 18): `dist plan` previews the release. Bump `version` in `Cargo.toml`, then push a `vX.Y.Z` tag; GitHub Actions builds the zip, MSI and PowerShell installer and publishes the GitHub Release. Don't tag or push without being asked.
 
 ## Architecture rules (from the plan)
 
 - **Single state, Elm-style**: all state lives in `App` (`src/app.rs`) and only `update`/`on_*` handlers mutate it. `ui::draw(frame, &app)` is pure: it reads state and must not mutate it. Widgets keep no state of their own. Everything, including `ListState` and `TableState`, lives in `App`.
-- **Everything goes through `Command`**: keypresses, the `:` command line and `commands.toml` aliases are all translated into the `Command` enum and run through one execution path. Don't add a code path that bypasses it.
-- **No business logic in `ui/`**: XP formulas (`core/xp.rs`), the rewards rule engine (`core/rewards.rs`), SQLite (`storage/`) and launching/scanning (`launcher/`) must stay testable without a terminal.
-- **Threads**: there are three. The main UI thread, the event thread (keyboard plus a ~250 ms `Tick`) and the session tracker (polls `sysinfo` every 2–5 s). They communicate via `mpsc` using `AppEvent`.
+- **Everything goes through `Command`**: keypresses, the `:` command line and `commands.toml` aliases are all translated into the `Command` enum and run through one execution path. Don't add a code path that bypasses it. This includes `:update` and `:theme`.
+- **No business logic in `ui/`**: XP formulas (`core/xp.rs`), the rewards rule engine (`core/rewards.rs`), SQLite (`storage/`), launching/scanning (`launcher/`) and updating (`update.rs`) must stay testable without a terminal.
+- **Threads**: three permanent ones. The main UI thread, the event thread (keyboard plus a ~250 ms `Tick`) and the session tracker (polls `sysinfo` every 2–5 s). They communicate via `mpsc` using `AppEvent`. One-off network work (the update check/download) runs in a short-lived thread that reports back through the same channel (`AppEvent::UpdateFinished`). Never block the UI thread on I/O.
 - **Rewards are data**: rewards are rule definitions stored in the DB/JSON (`rewards.rule`), not hardcoded. They are evaluated after each session ends.
-- **Theme**: every color comes from `Theme` (`ui/theme.rs`, loaded from `themes/*.toml`). Never hardcode colors in widgets.
 - `apps.launch_target` (exe path or URI such as `steam://...`) and `apps.watch_exe` (the process to track) are deliberately separate fields, because launchers like Steam, Epic and Battle.net spawn a different process.
+
+## Theme (plan section 10)
+
+- Every color comes from `Theme` (`ui/theme.rs`). Never hardcode colors in widgets.
+- Theme files have two layers: `[palette]` (raw colors, copied from the official Catppuccin palette) and `[slots]` (semantic roles such as `border_focused = "sapphire"`, mapping one-to-one to `Theme` fields). Slots may reference a palette name, a `#rrggbb` hex or an ANSI color name. Code only reads slots; the palette is resolved at load time and not kept.
+- Built-in themes (`themes/catppuccin-{latte,frappe,macchiato,mocha}.toml` and `themes/terminal.toml`) are embedded with `include_str!` and parsed by the same loader as user themes in `%APPDATA%\CmdBoard\themes\`. Don't add the `catppuccin` crate.
+- Default is `catppuccin-mocha` when truecolor is detected (`WT_SESSION` set, or `COLORTERM` is `truecolor`/`24bit`), otherwise `terminal` (16 ANSI colors only).
+- A broken theme file must produce an error message and keep the current theme, never panic.
+
+## Distribution and updates (plan section 18)
+
+- Built with `dist`, Windows target only (`x86_64-pc-windows-msvc`), installers `powershell` and `msi`, `install-updater = false`.
+- Never change the WiX `upgrade-guid` / `path-guid` in `Cargo.toml`: doing so breaks MSI upgrades.
+- `:update` uses `self_update` against GitHub Releases. If the exe lives under `Program Files` (MSI or winget install), it must not self-replace; it tells the user to run `winget upgrade CmdBoard` instead.
+- **DB migrations**: the schema is versioned with `PRAGMA user_version` and migrated at startup. Never edit a migration that has shipped; add a new one. User data in `%APPDATA%` must survive every update.
 
 ## Windows-specific pitfalls
 
 - crossterm on Windows emits both `Press` and `Release`. Always filter on `KeyEventKind::Press`, or every key fires twice.
 - Install a panic hook that restores the terminal (`ratatui::init()` provides one).
 - On startup, close orphaned sessions left over from a previous crash.
-- Store the DB in `%APPDATA%` via the `directories` crate. Scan `.lnk` shortcuts from the user and ProgramData Start Menu folders and the Desktop.
+- Store the DB, `config.toml` and user themes in `%APPDATA%\CmdBoard` via the `directories` crate. Scan `.lnk` shortcuts from the user and ProgramData Start Menu folders and the Desktop.
 - Terminals can't show real icons. Use Nerd Font glyphs or emoji.
+- Linux is out of scope. Don't add cross-platform abstractions for it.
 
 ## Testing conventions
 
 - `core/` and `command/parser`: plain unit tests. The parser uses table-driven tests (input string → `Command`).
-- `storage/`: `rusqlite::Connection::open_in_memory()`.
+- `storage/`: `rusqlite::Connection::open_in_memory()`. Test that migrations bring an empty DB and every older `user_version` up to the latest schema.
+- `ui/theme`: test that every built-in theme parses and resolves all slots.
 - `ui/`: ratatui `TestBackend`, or `insta` snapshots.

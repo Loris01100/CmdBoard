@@ -34,9 +34,10 @@ src/
 │   ├── launch.rs        // lancement (exe, URI)
 │   └── scan.rs          // import des .lnk
 ├── tracker.rs           // thread de suivi des sessions (sysinfo)
+├── update.rs            // vérification et installation des mises à jour (self_update)
 └── ui/
     ├── mod.rs           // draw() : routage selon l'écran
-    ├── theme.rs         // palette de couleurs et styles
+    ├── theme.rs         // chargement TOML, palette -> slots -> Theme
     ├── layout.rs        // découpage de l'écran
     ├── screens/
     │   ├── dashboard.rs
@@ -51,6 +52,14 @@ src/
         ├── command_line.rs
         ├── status_bar.rs
         └── popup.rs     // level-up, récompense, confirmation
+themes/                  // thèmes intégrés au binaire (include_str!)
+├── catppuccin-latte.toml
+├── catppuccin-frappe.toml
+├── catppuccin-macchiato.toml
+├── catppuccin-mocha.toml
+└── terminal.toml        // 16 couleurs ANSI, repli sans truecolor
+.github/workflows/release.yml   // généré par `dist init`
+wix/main.wxs                    // installeur MSI, généré par `dist init`
 ```
 
 ---
@@ -68,6 +77,7 @@ unlocked_rewards(reward_id, unlocked_at, session_id)
 - `launch_target` : chemin ou URI de lancement (`steam://rungameid/...`).
 - `watch_exe` : nom de l'exécutable réel à surveiller (utile pour les launchers).
 - `app_id NULL` dans `rewards` : récompense globale. Sinon : récompense individuelle.
+- **Migrations** : le schéma est versionné via `PRAGMA user_version`. Au démarrage, `storage/db.rs` applique dans l'ordre les migrations manquantes. Une mise à jour de l'app ne doit jamais perdre les données de `%APPDATA%` : on ne modifie jamais une migration déjà publiée, on en ajoute une nouvelle.
 
 ---
 
@@ -120,6 +130,7 @@ pub enum AppEvent {
     Tick,                                  // ~ toutes les 250 ms (animations, chrono)
     SessionStarted { app_id: i64 },
     SessionEnded { app_id: i64, secs: u64 },
+    UpdateFinished(Result<String, String>),   // voir section 18
 }
 
 fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
@@ -136,7 +147,7 @@ fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
 }
 ```
 
-Trois threads au total : l'UI (principal), les événements clavier et ticks, et le tracker. Ils communiquent par `mpsc`.
+Trois threads permanents : l'UI (principal), les événements clavier et ticks, et le tracker. Ils communiquent par `mpsc`. Les tâches réseau ponctuelles (`:update`, section 18) tournent dans un thread temporaire qui renvoie son résultat par le même canal.
 
 > **Windows** : crossterm envoie `Press` et `Release`. Le filtre `KeyEventKind::Press` est indispensable, sinon chaque touche compte double.
 
@@ -153,7 +164,8 @@ pub enum Command {
     Move { app: String, category: String },
     Stats { app: Option<String> },
     Xp { app: String, amount: i32 },
-    Theme { name: String },
+    Theme { name: Option<String> },   // sans argument : liste les thèmes
+    Update,
     Help,
     Quit,
 }
@@ -278,14 +290,53 @@ Chaque widget est une fonction `render(frame, area, &app)` ou une struct implém
 
 ## 10. Thème
 
-Un `Theme` unique, jamais de couleur codée en dur dans les widgets.
+Un `Theme` unique, jamais de couleur codée en dur dans les widgets. Thèmes de référence : **[Catppuccin](https://catppuccin.com/palette)** (Latte, Frappé, Macchiato, Mocha).
+
+### Deux couches dans chaque fichier TOML
+
+1. **Palette** : les couleurs brutes, copiées telles quelles depuis la palette officielle (Catppuccin, base16…).
+2. **Slots sémantiques** : le rôle de chaque couleur dans l'UI. Un slot référence un nom de la palette, une couleur `#rrggbb` ou une couleur ANSI (`"cyan"`). Ces slots correspondent un à un aux champs de `Theme`.
+
+```toml
+# themes/catppuccin-mocha.toml
+name = "Catppuccin Mocha"
+
+[palette]
+base     = "#1e1e2e"
+text     = "#cdd6f4"
+overlay0 = "#6c7086"
+overlay1 = "#7f849c"
+mauve    = "#cba6f7"
+sapphire = "#74c7ec"
+green    = "#a6e3a1"
+yellow   = "#f9e2af"
+red      = "#f38ba8"
+# … le reste de la palette officielle
+
+[slots]
+border             = "overlay0"
+border_focused     = "sapphire"
+title              = { fg = "mauve", bold = true }
+selected           = { fg = "base", bg = "mauve", bold = true }
+selected_unfocused = { bold = true }
+xp_fill            = "green"
+success            = "green"
+warning            = "yellow"
+error              = "red"
+muted              = "overlay1"
+```
+
+Ajouter un thème revient à coller une palette et à remplir les slots. Les noms de palette sont libres : le code ne lit que les slots.
 
 ```rust
+// Résolu au chargement : la palette n'est pas conservée.
 pub struct Theme {
+    pub name: String,
     pub border: Style,
     pub border_focused: Style,
     pub title: Style,
     pub selected: Style,
+    pub selected_unfocused: Style,
     pub xp_fill: Color,
     pub success: Color,
     pub warning: Color,
@@ -294,8 +345,20 @@ pub struct Theme {
 }
 ```
 
-- Chargement depuis `themes/*.toml`, changement via `:theme dracula`.
-- Look de référence : bordures cyan, titres intégrés au cadre (`Block::title`), fond sombre ou transparent.
+### Chargement
+
+- **Intégrés** : les 4 saveurs Catppuccin et `terminal`, embarqués via `include_str!`. Pas de dépendance au crate `catppuccin` : thèmes intégrés et thèmes utilisateur passent par le même parseur.
+- **Utilisateur** : `%APPDATA%\CmdBoard\themes\*.toml`. À nom égal, le fichier utilisateur remplace le thème intégré.
+- **Erreurs** : un slot manquant ou une référence inconnue affiche une erreur claire dans la ligne de message, et le thème courant est conservé.
+- `:theme` liste les thèmes, `:theme catppuccin-latte` en change. Le choix est mémorisé dans `%APPDATA%\CmdBoard\config.toml`.
+
+### Truecolor et repli
+
+Les couleurs `#rrggbb` exigent un terminal truecolor. Windows Terminal le gère (variable `WT_SESSION` présente), l'ancienne console `conhost` non. Sans truecolor détecté (`WT_SESSION` absent et `COLORTERM` différent de `truecolor`/`24bit`), le thème par défaut est `terminal` : il n'utilise que les 16 couleurs ANSI et suit donc le schéma du terminal. Sinon, le défaut est `catppuccin-mocha`.
+
+### Rendu
+
+- Titres intégrés au cadre (`Block::title`), bordures arrondies. Le fond n'est pas peint : le terminal garde le sien.
 - Utiliser **Windows Terminal** avec une **Nerd Font** (ex. JetBrainsMono Nerd Font).
 
 ---
@@ -384,7 +447,10 @@ Pilotées par `Tick` et un compteur `frame_count` dans `App` :
 | 8 | XP, niveaux, barres animées | Level-up fonctionnel |
 | 9 | Récompenses + écran Rewards | Déblocage avec popup |
 | 10 | Stats, recherche `/`, alias, autocomplétion | Version complète |
-| 11 | Thèmes, responsive, finitions | Version personnalisable |
+| 11 | Thèmes Catppuccin + TOML, responsive, finitions | Version personnalisable |
+| 12 | Distribution : `dist`, release GitHub, `:update`, winget | `v0.1.0` installable (MSI, PowerShell) et mise à jour depuis l'app |
+
+Les migrations (section 3) sont mises en place dès l'étape 4, car les mises à jour de l'étape 12 en dépendent. Le squelette de release (`dist init`) peut être posé plus tôt pour publier des préversions.
 
 L'étape 1 doit inclure un **hook de panic** qui restaure le terminal. `ratatui::init()` le fait dans les versions récentes.
 
@@ -393,8 +459,8 @@ L'étape 1 doit inclure un **hook de panic** qui restaure le terminal. `ratatui:
 ## 17. Dépendances
 
 ```toml
-ratatui = "0.29"
-crossterm = "0.28"
+ratatui = "0.30"
+crossterm = "0.29"
 rusqlite = { version = "0.32", features = ["bundled"] }
 sysinfo = "0.32"
 opener = "0.7"
@@ -405,12 +471,80 @@ anyhow = "1"
 shell-words = "1"
 directories = "5"
 fuzzy-matcher = "0.3"
+self_update = { version = "0.42", default-features = false, features = ["archive-zip", "compression-zip-deflate", "rustls"] }
 ```
 
 À vérifier avec `cargo add` au moment de créer le projet, pour obtenir les dernières versions. Pour lire les `.lnk`, ajouter `lnk` ou `parselnk`.
 
 ---
 
+## 18. Distribution et mises à jour
+
+### Build et release : `dist`
+
+[`dist`](https://github.com/axodotdev/cargo-dist) (ex-cargo-dist) génère le workflow GitHub Actions et les installeurs.
+
+```sh
+cargo install cargo-dist
+dist init        # cible x86_64-pc-windows-msvc, installeurs "powershell" et "msi"
+dist plan        # affiche ce qui sera publié
+```
+
+Configuration attendue (dans `dist-workspace.toml`) :
+
+```toml
+[dist]
+targets = ["x86_64-pc-windows-msvc"]
+installers = ["powershell", "msi"]
+install-updater = false   # on utilise self_update, pas axoupdater
+```
+
+Publier une version :
+
+1. Monter `version` dans `Cargo.toml`.
+2. `git tag v0.2.0` puis `git push --tags`.
+3. La CI construit le `.zip`, le `.msi` et `cmdboard-installer.ps1`, puis crée la GitHub Release.
+
+Installation par l'utilisateur :
+
+```powershell
+irm https://github.com/Loris01100/CmdBoard/releases/latest/download/cmdboard-installer.ps1 | iex
+```
+
+ou en téléchargeant le `.msi` depuis la page Releases.
+
+**À ne jamais changer** : les GUID `upgrade-guid` et `path-guid` que `dist init` écrit dans `Cargo.toml` (`[package.metadata.wix]`). S'ils changent, le MSI n'est plus reconnu comme une mise à jour et installe une seconde copie.
+
+### Mises à jour
+
+Deux canaux, selon le mode d'installation :
+
+| Installé via | Mise à jour |
+|---|---|
+| Installeur PowerShell ou `.zip` | `:update` dans l'app (crate `self_update`) |
+| MSI ou winget | `winget upgrade CmdBoard`, ou nouveau MSI |
+
+**`:update`** (`Command::Update`, logique dans `src/update.rs`) :
+
+1. Interroge la dernière GitHub Release et la compare à `env!("CARGO_PKG_VERSION")`.
+2. Si l'exécutable est sous `Program Files` (MSI ou winget), ne remplace rien et affiche `winget upgrade CmdBoard`. Remplacer l'exe exigerait les droits admin et désynchroniserait winget.
+3. Sinon, télécharge l'archive Windows et remplace l'exe en cours. Windows verrouille un exe en cours d'exécution : `self_update` contourne ce verrou via `self_replace`. Un message demande ensuite de relancer l'app.
+
+Le téléchargement tourne dans un thread temporaire qui renvoie `AppEvent::UpdateFinished` : l'UI ne bloque jamais. Une vérification passive au démarrage (au plus une fois par jour, désactivable dans `config.toml`) affiche « vX.Y disponible » dans la barre de statut, sans rien installer.
+
+**winget** : publier le MSI dans [winget-pkgs](https://github.com/microsoft/winget-pkgs) avec `wingetcreate`, puis automatiser chaque release avec l'action GitHub `winget-releaser`. winget voit alors passer les nouvelles versions sans intervention.
+
+### Points d'attention
+
+- **SmartScreen** : sans signature de code, Windows affiche « Windows a protégé votre ordinateur » au premier lancement. Acceptable pour un projet perso. Sinon : Azure Trusted Signing.
+- **Données** : la base vit dans `%APPDATA%`, hors du dossier d'installation. Elle survit aux mises à jour et aux désinstallations, et les migrations (section 3) font évoluer son schéma.
+
+### Linux (hors périmètre)
+
+CmdBoard est Windows uniquement (`.lnk`, `%APPDATA%`, URI des launchers). winget n'existe pas sous Linux. En cas de portage : `dist` produit aussi un installeur shell et une formule Homebrew, `self_update` fonctionne à l'identique, et des paquets natifs (AUR, `.deb` via `cargo-deb`) confieraient les mises à jour au gestionnaire de paquets de la distribution. Les `.lnk` seraient remplacés par les fichiers `.desktop` de `/usr/share/applications` et `~/.local/share/applications`.
+
+---
+
 ## Prochaine étape
 
-Écrire le code des **étapes 1 à 3** : projet qui compile, boucle d'événements, thème et dashboard à 3 colonnes avec données factices, prêt à être branché sur SQLite.
+Les étapes 1 à 3 sont faites. Suivante : **étape 4**. Schéma SQLite de la section 3 dans `%APPDATA%` avec migrations versionnées, CRUD testé en mémoire dans `storage/`, remplacement de `fake_data()` par le chargement depuis la base, et `Enter` qui lance l'app sélectionnée.
