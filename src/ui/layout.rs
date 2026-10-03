@@ -51,8 +51,13 @@ pub fn dashboard(area: Rect) -> DashboardLayout {
     }
 }
 
-/// Main area plus the status bar, for screens other than the dashboard.
-pub fn with_status(area: Rect) -> (Rect, Rect) {
-    let [body, status] = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
-    (body, status)
+/// Main area, command line row and status bar, for screens other than the dashboard.
+pub fn screen(area: Rect) -> (Rect, Rect, Rect) {
+    let [body, command, status] = Layout::vertical([
+        Constraint::Min(0),
+        Constraint::Length(1),
+        Constraint::Length(1),
+    ])
+    .areas(area);
+    (body, command, status)
 }

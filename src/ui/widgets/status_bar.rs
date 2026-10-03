@@ -5,19 +5,25 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::app::{App, Screen};
+use crate::app::{App, Mode, Screen};
 
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let hints: &[(&str, &str)] = match app.screen {
-        Screen::Dashboard => &[
+    let hints: &[(&str, &str)] = match (app.mode, app.screen) {
+        (Mode::Command, _) => &[
+            ("Entrée", "valider"),
+            ("Esc", "annuler"),
+            ("↑↓", "historique"),
+        ],
+        (Mode::Normal, Screen::Dashboard) => &[
             ("j/k", "naviguer"),
             ("Tab ←→", "panneau"),
             ("Entrée", "lancer"),
+            (":", "commande"),
             ("1-4", "écrans"),
             ("q", "quitter"),
         ],
-        _ => &[("1-4", "écrans"), ("q", "quitter")],
+        (Mode::Normal, _) => &[(":", "commande"), ("1-4", "écrans"), ("q", "quitter")],
     };
 
     let mut spans = vec![Span::raw(" ")];

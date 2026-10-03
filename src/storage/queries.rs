@@ -29,7 +29,7 @@ impl Database {
     }
 
     /// Fails while the category still holds apps.
-    #[allow(dead_code)] // used by the commands (step 5)
+    #[allow(dead_code)] // deletions wait for the confirmation popup (step 6)
     pub fn delete_category(&self, id: i64) -> anyhow::Result<()> {
         self.conn
             .execute("DELETE FROM categories WHERE id = ?1", [id])
@@ -78,7 +78,6 @@ impl Database {
         Ok(self.conn.last_insert_rowid())
     }
 
-    #[allow(dead_code)] // used by `:move` (step 5)
     pub fn move_app(&self, app_id: i64, category_id: i64) -> anyhow::Result<()> {
         self.conn
             .execute(
@@ -90,7 +89,7 @@ impl Database {
     }
 
     /// Also deletes the app's sessions and rewards (`ON DELETE CASCADE`).
-    #[allow(dead_code)] // used by the commands (step 5)
+    #[allow(dead_code)] // deletions wait for the confirmation popup (step 6)
     pub fn delete_app(&self, app_id: i64) -> anyhow::Result<()> {
         self.conn.execute("DELETE FROM apps WHERE id = ?1", [app_id])?;
         Ok(())

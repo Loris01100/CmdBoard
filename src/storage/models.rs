@@ -7,7 +7,6 @@ pub struct Category {
 /// An app as shown in the dashboard: the `apps` row plus stats aggregated from sessions.
 #[derive(Debug, Clone)]
 pub struct AppEntry {
-    #[allow(dead_code)] // read by the tracker and `:move` (steps 5 and 7)
     pub id: i64,
     pub name: String,
     /// Exe path or URI (`steam://...`) passed to the shell.

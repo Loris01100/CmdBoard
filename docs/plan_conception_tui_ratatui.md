@@ -114,9 +114,7 @@ pub struct App {
     pub active_sessions: HashMap<i64, Instant>,
 
     // ligne de commande
-    pub input: String,
-    pub history: Vec<String>,
-    pub history_idx: Option<usize>,
+    pub command_line: CommandLine,      // saisie, curseur, historique (command/line.rs)
     pub message: Option<(String, MsgKind)>,   // Info / Succès / Erreur
 
     // technique
@@ -165,39 +163,49 @@ Trois threads permanents : l'UI (principal), les événements clavier et ticks, 
 
 ```rust
 pub enum Command {
+    // navigation (touches)
+    Show(Screen),
+    SelectNext,
+    SelectPrev,
+    FocusPanel(Focus),
+    ToggleFocus,
+    // actions (touches et ligne de commande)
     Launch { app: String },
-    Add { name: String, path: String, category: Option<String> },
-    Move { app: String, category: String },
+    Add { name: String, target: String, category: Option<String> },  // catégorie créée si absente
+    Move { app: String, category: String },                          // idem
+    Help { command: Option<String> },
+    Quit,
+    // à venir
     Stats { app: Option<String> },
     Xp { app: String, amount: i32 },
     Theme { name: Option<String> },   // sans argument : liste les thèmes
     Update,
-    Help,
-    Quit,
 }
 ```
 
 ### Parser
 
-```rust
-pub fn parse(input: &str) -> Result<Command, String> {
-    let parts = shell_words::split(input).map_err(|e| e.to_string())?;
-    match parts.as_slice() {
-        [c, app] if c == "launch" => Ok(Command::Launch { app: app.clone() }),
-        [c, app, cat] if c == "move" => Ok(Command::Move { app: app.clone(), category: cat.clone() }),
-        [c] if c == "help" => Ok(Command::Help),
-        [c] if c == "quit" || c == "q" => Ok(Command::Quit),
-        _ => Err(format!("Commande inconnue : {input}")),
-    }
-}
-```
+`command/parser.rs`. Découpage maison plutôt que `shell-words` : les espaces séparent les arguments, les guillemets doubles les regroupent, et les antislashs restent tels quels (sinon `C:\Program Files\...` serait mangé comme une séquence d'échappement POSIX). Les apostrophes ne sont pas des délimiteurs (`Assassin's Creed`).
+
+La table `COMMANDS` (`command/mod.rs`) décrit chaque commande (nom, alias, usage, résumé). Elle sert à la fois au parser (résolution des alias, message `Usage : ...` si les arguments ne collent pas), à `:help <commande>` et à l'écran d'aide.
+
+| Commande | Alias | Usage |
+|---|---|---|
+| `launch` | `l` | `launch <app>` (le reste de la ligne, guillemets inutiles) |
+| `add` | | `add <nom> <cible> [catégorie]` (sans catégorie : la catégorie sélectionnée) |
+| `move` | `mv` | `move <app> <catégorie>` |
+| `help` | `h`, `?` | `help [commande]` |
+| `quit` | `q` | `quit` |
+
+Noms d'apps et de catégories insensibles à la casse. `:add` déduit `watch_exe` du nom de fichier quand la cible est un `.exe`, et refuse un chemin absolu inexistant. Après `:add` ou `:move`, la sélection suit l'app.
 
 ### Confort
 
-- Historique avec flèches haut/bas.
-- Autocomplétion avec Tab (commandes, apps, catégories) via `fuzzy-matcher`.
-- Ligne de message : vert (succès), rouge (erreur).
-- `:help` et `:help <commande>` générés à partir du parser.
+- Historique avec flèches haut/bas (100 entrées, sans doublon consécutif, en mémoire seulement).
+- Édition : `←→`, `Home`/`End`, `Backspace`/`Suppr`. `Backspace` sur une ligne vide ou `Esc` referment la ligne.
+- Autocomplétion avec Tab (commandes, apps, catégories) via `fuzzy-matcher` : étape 10.
+- Ligne de message : cyan (info), vert (succès), rouge (erreur). Effacée à la touche suivante.
+- `:help` ouvre l'écran d'aide, `:help <commande>` affiche l'usage dans la ligne de message.
 
 ### Alias personnalisés (`commands.toml`)
 
@@ -219,10 +227,11 @@ Découpage sur `;` puis exécution séquentielle. Variables `$1`, `$2` possibles
 |---|---|---|
 | Normal | `↑↓` / `j k` | Navigation dans la liste |
 | Normal | `←→` / `Tab` | Changer de panneau (catégories ↔ apps) |
-| Normal | `Enter` | `Command::Launch` |
+| Normal | `Enter` | `Command::Launch` (sur les catégories : passe au panneau apps) |
 | Normal | `:` | Ouvre la ligne de commande |
 | Normal | `/` | Recherche rapide |
 | Normal | `1 2 3 4` | Changer d'écran |
+| Normal | `?` | Aide |
 | Normal | `a` / `d` / `m` | Ajouter / supprimer / déplacer |
 | Command | `Enter` / `Esc` | Valider / annuler |
 | Command | `↑↓` / `Tab` | Historique / autocomplétion |
@@ -474,7 +483,6 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 chrono = "0.4"
 anyhow = "1"
-shell-words = "1"
 directories = "6"
 fuzzy-matcher = "0.3"
 self_update = { version = "0.42", default-features = false, features = ["archive-zip", "compression-zip-deflate", "rustls"] }
@@ -553,4 +561,4 @@ CmdBoard est Windows uniquement (`.lnk`, `%APPDATA%`, URI des launchers). winget
 
 ## Prochaine étape
 
-Les étapes 1 à 4 sont faites. Suivante : **étape 5**. Mode Command (`:`), parser `shell-words` vers `Command`, historique, et les commandes `:add`, `:move`, `:launch` branchées sur le CRUD de `storage/`. Les touches de navigation passent alors aussi par `Command`.
+Les étapes 1 à 5 sont faites. Suivante : **étape 6**. Popups et formulaires : `Mode::Popup`, formulaire d'ajout d'app (touche `a`), déplacement (`m`), et suppression (`d`) derrière une popup de confirmation, qui branche enfin `delete_app` / `delete_category` de `storage/`.

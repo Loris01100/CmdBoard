@@ -11,7 +11,8 @@ use crate::app::{App, Screen};
 pub fn draw(frame: &mut Frame, app: &App) {
     match app.screen {
         Screen::Dashboard => screens::dashboard::draw(frame, app),
-        Screen::Stats | Screen::Rewards | Screen::Help => screens::coming_soon(frame, app),
+        Screen::Help => screens::help::draw(frame, app),
+        Screen::Stats | Screen::Rewards => screens::coming_soon(frame, app),
     }
 }
 
@@ -30,6 +31,26 @@ mod tests {
                 terminal.draw(|f| draw(f, &app)).unwrap();
             }
         }
+    }
+
+    #[test]
+    fn command_line_shows_prompt_then_message() {
+        use crate::app::Mode;
+        let mut app = App::with_defaults();
+        let render = |app: &App| {
+            let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+            terminal.draw(|f| draw(f, app)).unwrap();
+            let buffer = terminal.backend().buffer();
+            buffer.content().iter().map(|c| c.symbol()).collect::<String>()
+        };
+        app.mode = Mode::Command;
+        "help add".chars().for_each(|c| app.command_line.insert(c));
+        assert!(render(&app).contains(":help add"));
+
+        let text = app.command_line.submit();
+        app.mode = Mode::Normal;
+        app.execute(crate::command::parser::parse(&text).unwrap());
+        assert!(render(&app).contains("add <nom> <cible>"));
     }
 
     #[test]

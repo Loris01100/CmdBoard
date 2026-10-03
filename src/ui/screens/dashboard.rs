@@ -1,18 +1,19 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Modifier, Stylize},
+    style::Modifier,
     text::{Line, Span},
     widgets::Paragraph,
 };
 
-use crate::app::{App, MsgKind};
+use crate::app::App;
 use crate::core::xp;
 use crate::storage::unix_now;
 use crate::ui::{
     layout,
     widgets::{
-        app_table, category_list, format_ago, format_duration, profile_panel, status_bar, xp_bar,
+        app_table, category_list, command_line, format_ago, format_duration, profile_panel,
+        status_bar, xp_bar,
     },
 };
 
@@ -27,18 +28,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
     profile_panel::render(frame, areas.profile, app);
     render_recent_rewards(frame, areas.rewards, app);
-    // Only the message for now; the command line itself comes in step 5.
-    render_message(frame, areas.command, app);
+    command_line::render(frame, areas.command, app);
     status_bar::render(frame, areas.status, app);
-}
-
-fn render_message(frame: &mut Frame, area: Rect, app: &App) {
-    let Some((text, kind)) = &app.message else { return };
-    let color = match kind {
-        MsgKind::Success => app.theme.success,
-        MsgKind::Error => app.theme.error,
-    };
-    frame.render_widget(Paragraph::new(format!(" {text}")).fg(color), area);
 }
 
 fn render_header(frame: &mut Frame, area: Rect, app: &App) {
