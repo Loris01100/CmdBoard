@@ -1,5 +1,6 @@
-//! The `:` command line: its input plus the history.
+//! The `:` command line: its input, the history and Tab completion.
 
+use super::complete::Completion;
 use crate::text_input::TextInput;
 
 const HISTORY_LIMIT: usize = 100;
@@ -10,9 +11,30 @@ pub struct CommandLine {
     history: Vec<String>,
     /// Entry currently recalled with Up/Down; `None` while typing a new line.
     history_idx: Option<usize>,
+    /// Candidates of the last Tab, and the one shown. Cleared by any other key.
+    pub completion: Option<(Completion, usize)>,
 }
 
 impl CommandLine {
+    /// Tab: completes the line with the first candidate. Pressed again right after,
+    /// moves to the next candidate (`forward`) or the previous one.
+    pub fn complete(&mut self, compute: impl FnOnce(&str) -> Option<Completion>, forward: bool) {
+        if let Some((completion, index)) = &mut self.completion
+            && self.input.text() == completion.line(*index)
+        {
+            let len = completion.candidates.len();
+            *index = if forward { (*index + 1) % len } else { (*index + len - 1) % len };
+            let line = completion.line(*index);
+            self.input.set(&line);
+            return;
+        }
+        self.completion = compute(self.input.text()).map(|completion| (completion, 0));
+        if let Some((completion, _)) = &self.completion {
+            let line = completion.line(0);
+            self.input.set(&line);
+        }
+    }
+
     /// Recalls the previous (older) history entry.
     pub fn history_prev(&mut self) {
         if self.history.is_empty() {
@@ -52,6 +74,7 @@ impl CommandLine {
     pub fn clear(&mut self) {
         self.input.take();
         self.history_idx = None;
+        self.completion = None;
     }
 
     fn recall(&mut self, idx: Option<usize>) {
@@ -85,6 +108,29 @@ mod tests {
         assert_eq!(line.input.text(), "launch b");
         line.history_next();
         assert_eq!(line.input.text(), "");
+    }
+
+    #[test]
+    fn tab_cycles_through_candidates() {
+        let mut line = CommandLine::default();
+        "launch s".chars().for_each(|c| line.input.insert(c));
+        let candidates = || Completion {
+            base: "launch ".into(),
+            candidates: vec!["Steam".into(), "Stellaris".into()],
+        };
+        line.complete(|_| Some(candidates()), true);
+        assert_eq!(line.input.text(), "launch Steam");
+        line.complete(|_| panic!("cycles without recomputing"), true);
+        assert_eq!(line.input.text(), "launch Stellaris");
+        line.complete(|_| None, true); // wraps
+        assert_eq!(line.input.text(), "launch Steam");
+        line.complete(|_| None, false);
+        assert_eq!(line.input.text(), "launch Stellaris");
+
+        line.input.insert(' '); // edited: the next Tab starts over
+        line.complete(|_| None, true);
+        assert_eq!(line.completion, None);
+        assert_eq!(line.input.text(), "launch Stellaris ");
     }
 
     #[test]

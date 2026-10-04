@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use super::{format_duration, xp_bar};
-use crate::app::{App, Focus};
+use crate::app::{App, Focus, Mode};
 use crate::core::xp;
 
 const XP_BAR_WIDTH: usize = 8;
@@ -16,6 +16,10 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
     let focused = app.focus == Focus::Apps;
 
+    let title = match app.mode {
+        Mode::Search => format!("Recherche ({})", app.visible_apps().len()),
+        _ => "Applications".into(),
+    };
     let header = Row::new(["Nom", "Niv", "XP", "Temps"]).style(theme.title);
     let rows = app.visible_apps().into_iter().map(|entry| {
         let (level, xp) = app.shown_app_xp(entry);
@@ -39,7 +43,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
 
     let table = Table::new(rows, widths)
         .header(header)
-        .block(theme.panel("Applications", focused))
+        .block(theme.panel(&title, focused))
         .row_highlight_style(theme.highlight(focused))
         .highlight_symbol("> ");
 

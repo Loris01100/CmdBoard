@@ -179,9 +179,10 @@ pub enum Command {
     Move { app: String, category: String },                          // idem
     Help { command: Option<String> },
     Xp { app: String, amount: i64 },   // ajuste l'XP à la main (négatif : en retire)
+    Stats { app: Option<String> },     // écran Stats, filtré sur une app ou non
+    Select { app: String },            // touche seulement : Entrée dans la recherche `/`
     Quit,
     // à venir
-    Stats { app: Option<String> },
     Theme { name: Option<String> },   // sans argument : liste les thèmes
     Update,
 }
@@ -201,6 +202,7 @@ La table `COMMANDS` (`command/mod.rs`) décrit chaque commande (nom, alias, usag
 | `rm` | `delete` | `rm <app>` (confirmation, supprime aussi sessions et récompenses) |
 | `rmcat` | | `rmcat <catégorie>` (catégorie vide uniquement, confirmation) |
 | `xp` | | `xp <app> <montant>` (montant en dernier, signé ; l'XP ne descend pas sous 0) |
+| `stats` | | `stats [app]` (sans argument : toutes les apps ; avec : filtre jusqu'au prochain `:stats`) |
 | `help` | `h`, `?` | `help [commande]` |
 | `quit` | `q` | `quit` |
 
@@ -211,7 +213,7 @@ Noms d'apps et de catégories insensibles à la casse. `:add` déduit `watch_exe
 - La saisie s'affiche dans un cadre « Commande » (bordure de focus) qui s'ouvre au-dessus de la barre de statut, sur tous les écrans, avec un texte d'exemple quand la ligne est vide et un défilement horizontal qui garde le curseur visible. Hors saisie, cette zone se réduit à une ligne de message.
 - Historique avec flèches haut/bas (100 entrées, sans doublon consécutif, en mémoire seulement).
 - Édition : `←→`, `Home`/`End`, `Backspace`/`Suppr`. `Backspace` sur une ligne vide ou `Esc` referment la ligne.
-- Autocomplétion avec Tab (commandes, apps, catégories) via `fuzzy-matcher` : étape 10.
+- Autocomplétion avec Tab (`command/complete.rs`, fonction pure) : nom de commande ou d'alias en premier mot (suivi d'un espace), puis selon la commande : app (`launch`, `rm`, `stats`, `xp`, reste de la ligne), catégorie (`rmcat`, 2e argument de `move`, 3e de `add`), commande (`help`). Candidats classés par `fuzzy-matcher` (`src/fuzzy.rs`, partagé avec la recherche), mis entre guillemets s'ils contiennent un espace. `Tab` répété passe au suivant, `Shift-Tab` au précédent, toute autre touche repart de zéro. Les candidats s'affichent sur la bordure basse du cadre, le courant en surbrillance.
 - Ligne de message : cyan (info), vert (succès), rouge (erreur). Effacée à la touche suivante.
 - `:help` ouvre l'écran d'aide, `:help <commande>` affiche l'usage dans la ligne de message.
 
@@ -223,7 +225,9 @@ gaming = "launch steam; launch discord"
 focus  = "theme dark; launch vscode"
 ```
 
-Découpage sur `;` puis exécution séquentielle. Variables `$1`, `$2` possibles pour des alias paramétrés. Scripting avancé (Rhai, mlua) : étape ultérieure.
+Fichier `%APPDATA%\CmdBoard\commands.toml`, lu au démarrage (`command/alias.rs`). Absent : aucun alias. Cassé : message d'erreur, CmdBoard démarre quand même. Un alias qui porte le nom (ou l'alias) d'une commande intégrée est ignoré et signalé.
+
+Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le parser puis `run_command`. `$1`…`$9` sont remplacés par les arguments (remis entre guillemets s'ils contiennent un espace), `$*` par tous ; un argument manquant est une erreur. L'exécution s'arrête à la première erreur (message `<ligne> : <erreur>`) ou dès qu'une popup s'ouvre (confirmation, formulaire). Un seul niveau : un alias ne peut pas en appeler un autre. `:help <alias>` affiche sa définition, et l'écran d'aide liste les alias après les commandes. Scripting avancé (Rhai, mlua) : étape ultérieure.
 
 ---
 
@@ -237,13 +241,16 @@ Découpage sur `;` puis exécution séquentielle. Variables `$1`, `$2` possibles
 | Normal | `←→` / `Tab` | Changer de panneau (catégories ↔ apps) |
 | Normal | `Enter` | `Command::Launch` (sur les catégories : passe au panneau apps) |
 | Normal | `:` | Ouvre la ligne de commande |
-| Normal | `/` | Recherche rapide |
+| Normal | `/` | Recherche floue parmi toutes les apps (`Mode::Search`) |
 | Normal | `1 2 3 4` | Changer d'écran |
 | Normal | `?` | Aide |
 | Normal | `a` / `m` | Formulaire d'ajout / de déplacement de l'app sélectionnée |
 | Normal | `d` | Supprimer l'app sélectionnée, ou la catégorie si le focus y est (vide uniquement) |
 | Command | `Enter` / `Esc` | Valider / annuler |
-| Command | `↑↓` / `Tab` | Historique / autocomplétion |
+| Command | `↑↓` / `Tab` `Shift-Tab` | Historique / autocomplétion |
+| Search | saisie | Filtre le panneau Applications (toutes catégories, meilleur résultat en tête et sélectionné) |
+| Search | `↑↓` / `Tab` | Choisir parmi les résultats |
+| Search | `Enter` / `Esc` | `Command::Select` (catégorie et app sélectionnées, focus sur les apps) / annuler et restaurer la sélection |
 | Popup (confirmation) | `Enter` `o` `y` / `Esc` `n` | Confirmer / annuler |
 | Popup (formulaire) | `Tab` `↓` / `Shift-Tab` `↑` | Champ suivant / précédent |
 | Popup (formulaire) | `Enter` / `Esc` | Champ suivant, valider sur le dernier / annuler |
@@ -297,7 +304,7 @@ let cols = Layout::horizontal([
 
 ### Autres écrans
 
-- **Stats** : historique des sessions (`Table`), temps par catégorie (`BarChart`), activité des 30 derniers jours (`Sparkline`).
+- **Stats** : ligne de résumé (portée, nombre de sessions, temps total, plus longue session), temps par catégorie (`BarChart` horizontal), activité des 30 derniers jours (`Sparkline`, aujourd'hui à droite), historique des 200 dernières sessions (`Table`, sélection `stats_state`, `j`/`k`). `:stats <app>` filtre tout l'écran sur une app. Les données (`Database::stats`) sont rechargées avec le reste à chaque `reload()`.
 - **Rewards** : tableau des récompenses (🏆 débloquées en couleur, 🔒 verrouillées en gris), titre « Récompenses (n/total) », sélection propre (`reward_state`, `j`/`k`). Un panneau Détail montre la portée, la condition (`rule`) et qui l'a débloquée, et quand.
 - **Help** : commandes et raccourcis, générés à partir du parser.
 
@@ -599,4 +606,4 @@ CmdBoard est Windows uniquement (`.lnk`, `%APPDATA%`, URI des launchers). winget
 
 ## Prochaine étape
 
-Les étapes 1 à 9 sont faites. Suivante : **étape 10**. Écran Stats (historique, temps par catégorie, activité sur 30 jours), recherche `/`, alias `commands.toml` et autocomplétion Tab.
+Les étapes 1 à 10 sont faites. Suivante : **étape 11**. Thèmes Catppuccin en TOML (`themes/*.toml`, palette + slots, `:theme`, choix mémorisé dans `config.toml`), mise en page responsive (panneaux empilés sous ~60 colonnes) et finitions.

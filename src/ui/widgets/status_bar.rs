@@ -15,6 +15,12 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             ("Entrée", "valider"),
             ("Esc", "annuler"),
             ("↑↓", "historique"),
+            ("Tab", "compléter"),
+        ],
+        (Mode::Search, _) => &[
+            ("↑↓", "choisir"),
+            ("Entrée", "aller à l'app"),
+            ("Esc", "annuler"),
         ],
         (Mode::Popup(Popup::Confirm { .. }), _) => &[("Entrée/o", "confirmer"), ("Esc/n", "annuler")],
         (Mode::Popup(Popup::LevelUp(_) | Popup::RewardUnlocked(_)), _) => &[("Entrée/Esc", "continuer")],
@@ -28,10 +34,11 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             ("Tab", "panneau"),
             ("Entrée", "lancer"),
             ("a/m/d", "ajouter/déplacer/suppr."),
+            ("/", "chercher"),
             (":", "commande"),
             ("q", "quitter"),
         ],
-        (Mode::Normal, Screen::Rewards) => &[
+        (Mode::Normal, Screen::Rewards | Screen::Stats) => &[
             ("j/k", "naviguer"),
             (":", "commande"),
             ("1-4", "écrans"),

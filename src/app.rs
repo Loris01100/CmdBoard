@@ -9,16 +9,25 @@ use ratatui::{
     widgets::{ListState, TableState},
 };
 
-use crate::command::{Command, find_help, line::CommandLine, parser};
+use crate::command::{
+    Command,
+    alias::Aliases,
+    complete::{self, Sources},
+    find_help,
+    line::CommandLine,
+    parser,
+};
 use crate::core::{rewards, xp};
 use crate::event::AppEvent;
+use crate::fuzzy;
 use crate::launcher::launch;
 use crate::popup::{Form, FormKind, LevelUp, Popup, RewardUnlocked};
 use crate::storage::{
     Database,
-    models::{AppEntry, Category, NewApp, Profile, RewardView},
+    models::{AppEntry, Category, NewApp, Profile, RewardView, Stats},
     unix_now,
 };
+use crate::text_input::TextInput;
 use crate::tracker::Watched;
 use crate::ui::{self, theme::Theme};
 
@@ -47,12 +56,14 @@ impl Screen {
     }
 }
 
-/// How keys are interpreted. Search comes in step 10.
+/// How keys are interpreted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
     Normal,
     /// Typing after `:`.
     Command,
+    /// Typing after `/`: the apps panel lists the fuzzy matches among all apps.
+    Search,
     /// A confirmation or form captures every key.
     Popup(Popup),
 }
@@ -125,6 +136,15 @@ pub struct App {
     /// Every reward, for the Rewards screen.
     pub rewards: Vec<RewardView>,
     pub reward_state: TableState,
+    /// Stats screen data, for `stats_app` or every app.
+    pub stats: Stats,
+    pub stats_app: Option<i64>,
+    pub stats_state: TableState,
+
+    // `/` search
+    pub search: TextInput,
+    /// Focus and app selection to restore when the search is cancelled.
+    search_restore: Option<(Focus, Option<usize>)>,
     pub active_sessions: HashMap<i64, ActiveSession>,
 
     // animations, driven by `Tick`
@@ -138,6 +158,8 @@ pub struct App {
 
     // command line
     pub command_line: CommandLine,
+    /// From `commands.toml`.
+    pub aliases: Aliases,
     /// Feedback from the last command, shown on the command line row.
     pub message: Option<Message>,
 
@@ -162,6 +184,12 @@ impl App {
             recent_rewards: Vec::new(),
             rewards: Vec::new(),
             reward_state: TableState::default(),
+            stats: Stats::default(),
+            stats_app: None,
+            stats_state: TableState::default(),
+            search: TextInput::default(),
+            search_restore: None,
+            aliases: Aliases::default(),
             active_sessions: HashMap::new(),
             frame_count: 0,
             xp_anims: HashMap::new(),
@@ -184,6 +212,12 @@ impl App {
         self.apps = self.db.apps()?;
         self.profile = self.db.profile()?;
         self.recent_rewards = self.db.recent_rewards(3)?;
+        if self.stats_app.is_some_and(|id| self.find_app_by_id(id).is_none()) {
+            self.stats_app = None; // the app was removed
+        }
+        self.stats = self.db.stats(self.stats_app)?;
+        self.stats_state
+            .select(clamp(self.stats_state.selected(), self.stats.sessions.len()));
         self.rewards = self.db.reward_views()?;
         self.reward_state
             .select(clamp(self.reward_state.selected(), self.rewards.len()));
@@ -455,19 +489,65 @@ impl App {
         match &self.mode {
             Mode::Normal => self.on_normal_key(key),
             Mode::Command => self.on_command_key(key),
+            Mode::Search => self.on_search_key(key),
             Mode::Popup(_) => self.on_popup_key(key),
         }
     }
 
     fn on_normal_key(&mut self, key: KeyEvent) {
         self.message = None;
-        if key.code == KeyCode::Char(':') {
-            self.mode = Mode::Command;
-            return;
+        match key.code {
+            KeyCode::Char(':') => self.mode = Mode::Command,
+            KeyCode::Char('/') => self.start_search(),
+            _ => {
+                if let Some(command) = self.key_to_command(key) {
+                    self.execute(command);
+                }
+            }
         }
-        if let Some(command) = self.key_to_command(key) {
-            self.execute(command);
+    }
+
+    /// `/`: searches every app from the dashboard. Esc puts the selection back.
+    fn start_search(&mut self) {
+        self.screen = Screen::Dashboard;
+        self.search_restore = Some((self.focus, self.app_state.selected()));
+        self.search = TextInput::default();
+        self.mode = Mode::Search;
+        self.focus = Focus::Apps;
+        self.app_state.select(clamp(Some(0), self.visible_apps().len()));
+    }
+
+    fn on_search_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc => self.cancel_search(),
+            KeyCode::Backspace if self.search.is_empty() => self.cancel_search(),
+            KeyCode::Enter => match self.selected_app().map(|a| a.name.clone()) {
+                Some(app) => {
+                    self.mode = Mode::Normal;
+                    self.search_restore = None;
+                    self.execute(Command::Select { app });
+                }
+                None => self.cancel_search(), // no match
+            },
+            KeyCode::Down | KeyCode::Tab => self.move_selection(true),
+            KeyCode::Up | KeyCode::BackTab => self.move_selection(false),
+            _ => {
+                if self.search.handle_key(key) {
+                    // The best match comes first: select it again after each edit.
+                    self.app_state.select(clamp(Some(0), self.visible_apps().len()));
+                }
+            }
         }
+    }
+
+    fn cancel_search(&mut self) {
+        self.mode = Mode::Normal;
+        if let Some((focus, selected)) = self.search_restore.take() {
+            self.focus = focus;
+            self.app_state.select(selected);
+        }
+        let visible = self.visible_apps().len();
+        self.app_state.select(clamp(self.app_state.selected(), visible));
     }
 
     /// Normal-mode key bindings (plan section 7).
@@ -509,7 +589,12 @@ impl App {
     }
 
     fn on_command_key(&mut self, key: KeyEvent) {
+        if let KeyCode::Tab | KeyCode::BackTab = key.code {
+            self.complete_command(key.code == KeyCode::Tab);
+            return;
+        }
         let line = &mut self.command_line;
+        line.completion = None;
         match key.code {
             KeyCode::Esc => {
                 line.clear();
@@ -518,10 +603,7 @@ impl App {
             KeyCode::Enter => {
                 let text = line.submit();
                 self.mode = Mode::Normal;
-                match parser::parse(&text) {
-                    Ok(command) => self.execute(command),
-                    Err(e) => self.message = Some((e, MsgKind::Error)),
-                }
+                self.run_line(&text);
             }
             // Backspace on an empty line leaves command mode, like Vim.
             KeyCode::Backspace if line.input.is_empty() => self.mode = Mode::Normal,
@@ -592,6 +674,52 @@ impl App {
     fn cancel_popup(&mut self) {
         self.mode = Mode::Normal;
         self.message = Some(("Annulé".into(), MsgKind::Info));
+    }
+
+    /// Tab in the command line: completes commands, apps and categories.
+    fn complete_command(&mut self, forward: bool) {
+        let sources = Sources {
+            aliases: self.aliases.names().collect(),
+            apps: self.apps.iter().map(|a| a.name.as_str()).collect(),
+            categories: self.categories.iter().map(|c| c.name.as_str()).collect(),
+        };
+        self.command_line
+            .complete(|text| complete::complete(text, &sources), forward);
+    }
+
+    /// Runs a typed line: an alias (its commands one after the other) or one command.
+    pub fn run_line(&mut self, line: &str) {
+        let lines = match self.aliases.expand(line) {
+            None => {
+                match parser::parse(line) {
+                    Ok(command) => self.execute(command),
+                    Err(e) => self.message = Some((e, MsgKind::Error)),
+                }
+                return;
+            }
+            Some(Err(e)) => {
+                self.message = Some((format!("alias : {e}"), MsgKind::Error));
+                return;
+            }
+            Some(Ok(lines)) => lines,
+        };
+        for sub in lines {
+            let result = parser::parse(&sub)
+                .map_err(anyhow::Error::msg)
+                .and_then(|command| self.run_command(command));
+            match result {
+                Ok(Some(message)) => self.message = Some(message),
+                Ok(None) => {}
+                Err(e) => {
+                    self.message = Some((format!("{sub} : {e:#}"), MsgKind::Error));
+                    return;
+                }
+            }
+            // A confirmation or a form waits for the user: stop there.
+            if self.mode != Mode::Normal {
+                return;
+            }
+        }
     }
 
     /// Single execution path for every `Command`. Shows the outcome as a message.
@@ -729,8 +857,26 @@ impl App {
                 let change = after as i64 - before as i64;
                 return success(format!("{name} : {change:+} XP (total {after})"));
             }
+            Command::Select { app } => {
+                let id = self.app_named(&app)?.id;
+                self.screen = Screen::Dashboard;
+                self.select_app(id);
+            }
+            Command::Stats { app } => {
+                self.stats_app = match app {
+                    Some(app) => Some(self.app_named(&app)?.id),
+                    None => None,
+                };
+                self.stats = self.db.stats(self.stats_app)?;
+                self.stats_state = TableState::default()
+                    .with_selected((!self.stats.sessions.is_empty()).then_some(0));
+                self.screen = Screen::Stats;
+            }
             Command::Help { command: None } => self.screen = Screen::Help,
             Command::Help { command: Some(name) } => {
+                if let Some(body) = self.aliases.get(&name) {
+                    return Ok(Some((format!("alias {name} : {body}"), MsgKind::Info)));
+                }
                 let help = find_help(&name).with_context(|| format!("commande inconnue : {name}"))?;
                 return Ok(Some((format!("{} : {}", help.usage, help.summary), MsgKind::Info)));
             }
@@ -777,8 +923,16 @@ impl App {
         self.cat_state.selected().and_then(|i| self.categories.get(i))
     }
 
-    /// Apps of the selected category, in display order.
+    /// Apps of the selected category, in display order. While searching: the matches
+    /// among all apps, best first.
     pub fn visible_apps(&self) -> Vec<&AppEntry> {
+        if self.mode == Mode::Search {
+            let names = self.apps.iter().map(|a| a.name.as_str());
+            return fuzzy::rank(self.search.text(), names)
+                .into_iter()
+                .map(|i| &self.apps[i])
+                .collect();
+        }
         match self.selected_category() {
             Some(cat) => self.apps.iter().filter(|a| a.category_id == cat.id).collect(),
             None => Vec::new(),
@@ -808,10 +962,18 @@ impl App {
     }
 
     fn move_selection(&mut self, forward: bool) {
-        if self.screen == Screen::Rewards {
-            let next = step(self.reward_state.selected(), self.rewards.len(), forward);
-            self.reward_state.select(next);
-            return;
+        match self.screen {
+            Screen::Rewards => {
+                let next = step(self.reward_state.selected(), self.rewards.len(), forward);
+                self.reward_state.select(next);
+                return;
+            }
+            Screen::Stats => {
+                let next = step(self.stats_state.selected(), self.stats.sessions.len(), forward);
+                self.stats_state.select(next);
+                return;
+            }
+            Screen::Dashboard | Screen::Help => {}
         }
         match self.focus {
             Focus::Categories => {
@@ -1289,6 +1451,109 @@ mod tests {
         press(&mut app, KeyCode::Char('k')); // wraps
         assert_eq!(app.reward_state.selected(), Some(app.rewards.len() - 1));
         assert_eq!(app.selected_app().unwrap().name, "Steam"); // dashboard untouched
+    }
+
+    #[test]
+    fn search_selects_an_app_from_any_category() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char('/'));
+        assert_eq!(app.mode, Mode::Search);
+        assert_eq!(app.visible_apps().len(), app.apps.len()); // empty query: everything
+        type_text(&mut app, "wterm");
+        assert_eq!(app.selected_app().unwrap().name, "Windows Terminal");
+        press(&mut app, KeyCode::Enter);
+
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(app.selected_category().unwrap().name, "Dev");
+        assert_eq!(app.selected_app().unwrap().name, "Windows Terminal");
+        assert_eq!(app.focus, Focus::Apps);
+    }
+
+    #[test]
+    fn cancelled_search_restores_selection() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "bloc");
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(app.focus, Focus::Categories);
+        assert_eq!(app.selected_app().unwrap().name, "Steam");
+
+        press(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "zzz");
+        assert!(app.selected_app().is_none());
+        press(&mut app, KeyCode::Enter); // no match: like Esc
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(app.selected_app().unwrap().name, "Steam");
+    }
+
+    fn with_aliases(toml: &str) -> App {
+        let mut app = App::with_defaults();
+        app.aliases = Aliases::parse(toml).unwrap().0;
+        app
+    }
+
+    #[test]
+    fn alias_runs_its_commands_in_order() {
+        let mut app = with_aliases("[alias]\nboost = \"xp $1 50; stats $1\"");
+        run(&mut app, "boost bloc-notes");
+        assert_eq!(app.find_app("Bloc-notes").unwrap().total_xp, 50);
+        assert_eq!(app.screen, Screen::Stats);
+        assert_eq!(app.stats_app, Some(app.find_app("Bloc-notes").unwrap().id));
+
+        run(&mut app, "boost");
+        assert_eq!(app.message.as_ref().unwrap().0, "alias : argument $1 manquant");
+        run(&mut app, "help boost");
+        assert_eq!(app.message.as_ref().unwrap().0, "alias boost : xp $1 50; stats $1");
+    }
+
+    #[test]
+    fn alias_stops_at_first_error_or_confirmation() {
+        let mut app = with_aliases("[alias]\nbad = \"xp nope 5; xp steam 5\"\nclean = \"rm steam; xp steam 5\"");
+        run(&mut app, "bad");
+        assert_eq!(message_kind(&app), Some(MsgKind::Error));
+        assert!(app.message.as_ref().unwrap().0.starts_with("xp nope 5 : app inconnue"));
+        assert_eq!(app.find_app("Steam").unwrap().total_xp, 0);
+
+        run(&mut app, "clean");
+        assert!(matches!(app.mode, Mode::Popup(Popup::Confirm { .. })));
+        assert_eq!(app.find_app("Steam").unwrap().total_xp, 0);
+    }
+
+    #[test]
+    fn tab_completes_in_the_command_line() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char(':'));
+        type_text(&mut app, "la");
+        press(&mut app, KeyCode::Tab);
+        assert_eq!(app.command_line.input.text(), "launch ");
+        type_text(&mut app, "calc");
+        press(&mut app, KeyCode::Tab);
+        assert_eq!(app.command_line.input.text(), "launch Calculatrice");
+    }
+
+    #[test]
+    fn stats_command_filters_and_resets() {
+        let mut app = App::with_defaults();
+        let steam = steam_id(&app);
+        play(&mut app, steam, 600);
+        let notepad = app.find_app("Bloc-notes").unwrap().id;
+        play(&mut app, notepad, 1200);
+
+        run(&mut app, "stats steam");
+        assert_eq!(app.screen, Screen::Stats);
+        assert_eq!(app.stats.session_count, 1);
+        assert_eq!(app.stats_state.selected(), Some(0));
+
+        run(&mut app, "stats");
+        assert_eq!(app.stats_app, None);
+        assert_eq!(app.stats.session_count, 2);
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.stats_state.selected(), Some(1));
+
+        run(&mut app, "stats inconnue");
+        assert_eq!(message_kind(&app), Some(MsgKind::Error));
     }
 
     #[test]

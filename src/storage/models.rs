@@ -67,6 +67,32 @@ pub struct Unlock {
     pub date: String,
 }
 
+/// Days shown by the activity chart of the Stats screen.
+pub const ACTIVITY_DAYS: usize = 30;
+
+/// Everything the Stats screen shows, for all apps or one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Stats {
+    /// Most recent first, capped.
+    pub sessions: Vec<SessionRow>,
+    pub session_count: u32,
+    pub total_secs: u64,
+    pub longest_secs: u64,
+    /// `(category, seconds)`, most played first.
+    pub by_category: Vec<(String, u64)>,
+    /// Seconds played per day over the last `ACTIVITY_DAYS` days, oldest first, today last.
+    pub daily: Vec<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionRow {
+    pub app: String,
+    /// Local start time, "dd/mm/yyyy hh:mm".
+    pub started: String,
+    pub duration_secs: u64,
+    pub xp: u32,
+}
+
 /// A session closed by `close_orphan_sessions`, still to be awarded its XP.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClosedSession {

@@ -17,7 +17,8 @@ const KEYS: &[(&str, &str)] = &[
     ("Tab ←→ h/l", "changer de panneau"),
     ("Entrée", "lancer l'app sélectionnée"),
     ("a / m / d", "ajouter / déplacer / supprimer (app ou catégorie vide)"),
-    (":", "ligne de commande (↑↓ historique, Esc annuler)"),
+    ("/", "chercher une app dans toutes les catégories (Entrée : y aller)"),
+    (":", "ligne de commande (↑↓ historique, Tab compléter, Esc annuler)"),
     ("1 2 3 4", "Dashboard, Stats, Récompenses, Aide"),
     ("q  Ctrl-C", "quitter"),
 ];
@@ -44,7 +45,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }));
     frame.render_widget(Paragraph::new(keys), keys_area);
 
-    let rows = COMMANDS.iter().map(|c| {
+    let commands = COMMANDS.iter().map(|c| {
         let aliases = if c.aliases.is_empty() {
             String::new()
         } else {
@@ -56,6 +57,15 @@ pub fn draw(frame: &mut Frame, app: &App) {
             Cell::from(c.summary),
         ])
     });
+    // User aliases from commands.toml, after the built-in commands.
+    let user_aliases = app.aliases.iter().map(|(name, body)| {
+        Row::new([
+            Cell::from(Span::styled(format!("  :{name}"), theme.title)),
+            Cell::from(Span::styled(" alias", theme.muted())),
+            Cell::from(body.to_string()),
+        ])
+    });
+    let rows = commands.chain(user_aliases);
     let table = Table::new(
         rows,
         [Constraint::Length(34), Constraint::Length(9), Constraint::Min(10)],

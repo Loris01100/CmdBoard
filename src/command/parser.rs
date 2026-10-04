@@ -45,6 +45,8 @@ pub fn parse(input: &str) -> Result<Command, String> {
             Ok(amount) => Ok(Command::Xp { app: app.join(" "), amount }),
             Err(_) => Err(format!("Montant invalide : {amount} (usage : {})", help.usage)),
         },
+        ("stats", []) => Ok(Command::Stats { app: None }),
+        ("stats", [_, ..]) => Ok(Command::Stats { app: Some(rest.join(" ")) }),
         ("help", []) => Ok(Command::Help { command: None }),
         ("help", [command]) => Ok(Command::Help { command: Some(command.clone()) }),
         ("quit", []) => Ok(Command::Quit),
@@ -54,7 +56,7 @@ pub fn parse(input: &str) -> Result<Command, String> {
 
 /// Splits on whitespace; double quotes group words. Backslashes are kept as-is,
 /// unlike a POSIX shell, so Windows paths need no escaping.
-fn split_args(input: &str) -> Result<Vec<String>, String> {
+pub(super) fn split_args(input: &str) -> Result<Vec<String>, String> {
     let mut args = Vec::new();
     let mut current = String::new();
     let mut in_arg = false;
@@ -135,6 +137,8 @@ mod tests {
             ("xp Windows Terminal 250", Command::Xp { app: s("Windows Terminal"), amount: 250 }),
             ("xp Steam -40", Command::Xp { app: s("Steam"), amount: -40 }),
             ("xp Steam +40", Command::Xp { app: s("Steam"), amount: 40 }),
+            ("stats", Command::Stats { app: None }),
+            ("stats Windows Terminal", Command::Stats { app: Some(s("Windows Terminal")) }),
             ("help", Command::Help { command: None }),
             ("? add", Command::Help { command: Some(s("add")) }),
             ("q", Command::Quit),

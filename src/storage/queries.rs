@@ -7,12 +7,16 @@ use rusqlite::params;
 
 use super::db::Database;
 use super::models::{
-    AppEntry, Category, ClosedSession, NewApp, Profile, Reward, RewardView, Unlock,
+    ACTIVITY_DAYS, AppEntry, Category, ClosedSession, NewApp, Profile, Reward, RewardView,
+    SessionRow, Stats, Unlock,
 };
 use crate::core::{rewards::Facts, xp};
 
 /// Shorter sessions (a quick launch and close) are not recorded.
 pub const MIN_SESSION_SECS: u64 = 60;
+
+/// Sessions listed on the Stats screen.
+const STATS_SESSIONS: u32 = 200;
 
 impl Database {
     pub fn categories(&self) -> anyhow::Result<Vec<Category>> {
@@ -326,6 +330,77 @@ impl Database {
         Ok(())
     }
 
+    /// Stats of closed sessions, for one app or (`None`) all of them.
+    pub fn stats(&self, app_id: Option<i64>) -> anyhow::Result<Stats> {
+        self.stats_at(app_id, unix_now())
+    }
+
+    fn stats_at(&self, app_id: Option<i64>, now: i64) -> anyhow::Result<Stats> {
+        let mut stmt = self.conn.prepare(
+            "SELECT a.name, strftime('%d/%m/%Y %H:%M', s.started_at, 'unixepoch', 'localtime'),
+                s.duration_s, s.xp_gained
+             FROM sessions s JOIN apps a ON a.id = s.app_id
+             WHERE s.ended_at IS NOT NULL AND (?1 IS NULL OR s.app_id = ?1)
+             ORDER BY s.started_at DESC, s.id DESC LIMIT ?2",
+        )?;
+        let sessions = stmt
+            .query_map(params![app_id, STATS_SESSIONS], |r| {
+                Ok(SessionRow {
+                    app: r.get(0)?,
+                    started: r.get(1)?,
+                    duration_secs: r.get::<_, i64>(2)?.max(0) as u64,
+                    xp: r.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let (session_count, total_secs, longest_secs): (u32, i64, i64) = self.conn.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(duration_s), 0), COALESCE(MAX(duration_s), 0)
+             FROM sessions WHERE ended_at IS NOT NULL AND (?1 IS NULL OR app_id = ?1)",
+            [app_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT c.name, SUM(s.duration_s) AS secs
+             FROM sessions s JOIN apps a ON a.id = s.app_id JOIN categories c ON c.id = a.category_id
+             WHERE s.ended_at IS NOT NULL AND (?1 IS NULL OR s.app_id = ?1)
+             GROUP BY c.id ORDER BY secs DESC, c.name",
+        )?;
+        let by_category = stmt
+            .query_map([app_id], |r| Ok((r.get(0)?, r.get::<_, i64>(1)?.max(0) as u64)))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Local day numbers (Julian days), compared with today's.
+        let day = |column: &str| {
+            format!("CAST(julianday(date({column}, 'unixepoch', 'localtime')) AS INTEGER)")
+        };
+        let today: i64 = self.conn.query_row(&format!("SELECT {}", day("?1")), [now], |r| r.get(0))?;
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {} AS d, SUM(duration_s) FROM sessions
+             WHERE ended_at IS NOT NULL AND (?1 IS NULL OR app_id = ?1)
+             GROUP BY d HAVING d > ?2 - {ACTIVITY_DAYS} AND d <= ?2",
+            day("ended_at")
+        ))?;
+        let mut daily = vec![0; ACTIVITY_DAYS];
+        let rows = stmt.query_map(params![app_id, today], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+        })?;
+        for row in rows {
+            let (d, secs) = row?;
+            daily[ACTIVITY_DAYS - 1 - (today - d) as usize] = secs.max(0) as u64;
+        }
+
+        Ok(Stats {
+            sessions,
+            session_count,
+            total_secs: total_secs.max(0) as u64,
+            longest_secs: longest_secs.max(0) as u64,
+            by_category,
+            daily,
+        })
+    }
+
     /// Every reward with its unlocks, in definition order.
     pub fn reward_views(&self) -> anyhow::Result<Vec<RewardView>> {
         let mut stmt = self.conn.prepare(
@@ -542,6 +617,41 @@ mod tests {
             .unwrap();
         assert!(pending_codes(&db, hades).contains(&"fan".to_string()));
         assert!(!pending_codes(&db, other).contains(&"fan".to_string()));
+    }
+
+    #[test]
+    fn stats_aggregate_sessions_by_day_and_category() {
+        let (db, _, hades) = db_with_app();
+        let dev = db.add_category("Dev").unwrap();
+        let code = db
+            .add_app(&NewApp {
+                name: "Code".into(),
+                launch_target: "code.exe".into(),
+                watch_exe: None,
+                category_id: dev,
+            })
+            .unwrap();
+        // Noon UTC, like `profile_counts_today_and_streak`.
+        let now = 20_000 * DAY + DAY / 2;
+        session(&db, hades, now - 60, 3_600, 60);
+        session(&db, hades, now - 2 * DAY, 1_800, 30);
+        session(&db, code, now - 60, 600, 10);
+        session(&db, code, now - 40 * DAY, 600, 10); // outside the activity chart
+
+        let all = db.stats_at(None, now).unwrap();
+        assert_eq!(all.session_count, 4);
+        assert_eq!((all.total_secs, all.longest_secs), (6_600, 3_600));
+        assert_eq!(all.by_category, [("Jeux".to_string(), 5_400), ("Dev".to_string(), 1_200)]);
+        assert_eq!(all.daily.len(), ACTIVITY_DAYS);
+        assert_eq!(all.daily[ACTIVITY_DAYS - 1], 4_200); // today
+        assert_eq!(all.daily[ACTIVITY_DAYS - 3], 1_800); // two days ago
+        assert_eq!(all.daily.iter().sum::<u64>(), 6_000);
+        assert_eq!(all.sessions[0].app, "Code"); // most recently started first
+
+        let only = db.stats_at(Some(code), now).unwrap();
+        assert_eq!(only.session_count, 2);
+        assert!(only.sessions.iter().all(|s| s.app == "Code"));
+        assert_eq!(only.by_category, [("Dev".to_string(), 1_200)]);
     }
 
     #[test]

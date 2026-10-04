@@ -1,10 +1,12 @@
+pub mod alias;
+pub mod complete;
 pub mod line;
 pub mod parser;
 
 use crate::app::{Focus, Screen};
 use crate::popup::FormKind;
 
-/// Every user action. Keys and the `:` command line (and later aliases) are translated
+/// Every user action. Keys, the `:` command line and aliases are translated
 /// into a `Command`, then run by `App::execute`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
@@ -41,6 +43,14 @@ pub enum Command {
         confirmed: bool,
     },
     OpenForm(FormKind),
+    /// Selects an app in its category (Enter in the `/` search).
+    Select {
+        app: String,
+    },
+    /// Opens the Stats screen, for one app or (`None`) all of them.
+    Stats {
+        app: Option<String>,
+    },
     /// Adds (or removes, if negative) XP to an app by hand, outside of any session.
     Xp {
         app: String,
@@ -90,6 +100,12 @@ pub const COMMANDS: &[CommandHelp] = &[
         aliases: &[],
         usage: "rmcat <catégorie>",
         summary: "Supprime une catégorie vide, après confirmation",
+    },
+    CommandHelp {
+        name: "stats",
+        aliases: &[],
+        usage: "stats [app]",
+        summary: "Statistiques de toutes les apps, ou d'une seule",
     },
     CommandHelp {
         name: "xp",
