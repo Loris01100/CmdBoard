@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::Modifier,
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
 };
@@ -12,7 +12,8 @@ use crate::storage::unix_now;
 use crate::ui::{
     layout,
     widgets::{
-        app_table, category_list, command_line, format_ago, format_duration, profile_panel,
+        app_table, category_list, command_line, format_ago, format_clock, format_duration,
+        profile_panel,
         status_bar, xp_bar,
     },
 };
@@ -38,10 +39,32 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         Span::styled(" CmdBoard", theme.title),
         Span::styled(format!(" · {}", app.screen.title()), theme.muted()),
     ]);
-    // Live session timer comes with the tracker (step 7).
-    let session = Line::styled("aucune session en cours ", theme.muted()).right_aligned();
     frame.render_widget(Paragraph::new(title), area);
-    frame.render_widget(Paragraph::new(session), area);
+    frame.render_widget(Paragraph::new(session_line(app).right_aligned()), area);
+}
+
+/// Live timer of each running session, oldest first. Reads the clock, not `app`'s state.
+fn session_line(app: &App) -> Line<'static> {
+    let theme = &app.theme;
+    let mut sessions: Vec<_> = app
+        .active_sessions
+        .iter()
+        .filter_map(|(id, s)| Some((app.apps.iter().find(|a| a.id == *id)?, s.started)))
+        .collect();
+    if sessions.is_empty() {
+        return Line::styled("aucune session en cours ", theme.muted());
+    }
+    sessions.sort_by_key(|(_, started)| *started);
+    let mut spans = Vec::new();
+    for (entry, started) in sessions {
+        spans.push(Span::styled("▶ ", Style::new().fg(theme.success)));
+        spans.push(Span::raw(format!("{} ", entry.name)));
+        spans.push(Span::styled(
+            format!("{}  ", format_clock(started.elapsed().as_secs())),
+            theme.title,
+        ));
+    }
+    Line::from(spans)
 }
 
 fn render_details(frame: &mut Frame, area: Rect, app: &App) {

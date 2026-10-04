@@ -113,7 +113,7 @@ pub struct App {
     pub categories: Vec<Category>,
     pub apps: Vec<AppEntry>,
     pub profile: Profile,              // niveau global, XP, streak
-    pub active_sessions: HashMap<i64, Instant>,
+    pub active_sessions: HashMap<i64, ActiveSession>, // par app_id : id de la ligne sessions, Instant de début
 
     // ligne de commande
     pub command_line: CommandLine,      // saisie, curseur, historique (command/line.rs)
@@ -139,21 +139,21 @@ pub enum AppEvent {
     UpdateFinished(Result<String, String>),   // voir section 18
 }
 
-fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
+fn run(&mut self, terminal: &mut DefaultTerminal, events: &Receiver<AppEvent>) -> Result<()> {
     while !self.should_quit {
         terminal.draw(|f| ui::draw(f, self))?;
-        match self.events.recv()? {
-            AppEvent::Key(k) if k.kind == KeyEventKind::Press => self.on_key(k),
+        match events.recv()? {
+            AppEvent::Key(k) => self.on_key(k),          // déjà filtré sur Press par event.rs
             AppEvent::Tick => self.on_tick(),
+            AppEvent::SessionStarted { app_id } => self.on_session_start(app_id),
             AppEvent::SessionEnded { app_id, secs } => self.on_session_end(app_id, secs),
-            _ => {}
         }
     }
-    Ok(())
+    self.end_all_sessions()                        // ferme les sessions en cours à la sortie
 }
 ```
 
-Trois threads permanents : l'UI (principal), les événements clavier et ticks, et le tracker. Ils communiquent par `mpsc`. Les tâches réseau ponctuelles (`:update`, section 18) tournent dans un thread temporaire qui renvoie son résultat par le même canal.
+Trois threads permanents : l'UI (principal), les événements clavier et ticks (`event.rs`), et le tracker (`tracker.rs`). Ils envoient leurs `AppEvent` à l'UI par un `mpsc` créé dans `main.rs`, qui passe le `Receiver` à `run`. En sens inverse, l'UI envoie au tracker la liste des `watch_exe` à surveiller par un second canal, à chaque `reload()`. Les tâches réseau ponctuelles (`:update`, section 18) tournent dans un thread temporaire qui renvoie son résultat par le canal des événements (`UpdateFinished`, ajouté à l'étape 12).
 
 > **Windows** : crossterm envoie `Press` et `Release`. Le filtre `KeyEventKind::Press` est indispensable, sinon chaque touche compte double.
 
@@ -422,10 +422,14 @@ Idées : seuils d'heures cumulées par app, longue session, première session du
 
 ## 12. Détection des sessions
 
-1. À l'ajout d'une app, enregistrer `watch_exe`.
-2. Un thread de fond interroge `sysinfo` toutes les 2 à 5 secondes.
-3. Process détecté : début de session. Process disparu : fin, enregistrement.
-4. Au démarrage, fermer les sessions orphelines (crash précédent).
+1. À l'ajout d'une app, enregistrer `watch_exe`. Après chaque `reload()`, l'UI envoie la liste `(app_id, watch_exe)` au tracker.
+2. Le tracker interroge `sysinfo` toutes les 3 secondes, et tout de suite quand la liste change. Correspondance sur le nom de fichier de l'exe, sans tenir compte de la casse (`watch_exe` peut contenir un chemin complet). Une app tourne si au moins un de ses process tourne. Plusieurs apps peuvent surveiller le même exe.
+3. Process détecté : `SessionStarted`. L'UI insère une ligne `sessions` avec `ended_at = NULL`. Process disparu : `SessionEnded { secs }`, mesuré par le tracker. L'UI ferme la ligne (`ended_at`, `duration_s`). `xp_gained` reste à 0 jusqu'à l'étape 8.
+4. Les sessions de moins de 60 s (`MIN_SESSION_SECS`) sont supprimées au lieu d'être enregistrées.
+5. Toutes les 60 s, `on_tick` enregistre `duration_s` des sessions en cours (point de sauvegarde).
+6. Au démarrage, fermer les sessions orphelines (crash précédent) à leur dernier point de sauvegarde : `ended_at = started_at + duration_s`, ou suppression sous 60 s. Un crash perd donc au plus une minute.
+7. À la sortie de CmdBoard, les sessions en cours sont fermées normalement. Une app qui continue de tourner n'est plus suivie.
+8. Seules les sessions fermées (`ended_at` non NULL) comptent dans le temps total, la streak et l'XP du jour.
 
 Cas Steam / Epic / Battle.net : la commande de lancement (URI) et le process surveillé sont différents, d'où les deux champs séparés.
 
@@ -492,7 +496,7 @@ L'étape 1 doit inclure un **hook de panic** qui restaure le terminal. `ratatui:
 ratatui = "0.30"
 crossterm = "0.29"
 rusqlite = { version = "0.40", features = ["bundled"] }
-sysinfo = "0.32"
+sysinfo = "0.39"
 opener = "0.9"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
@@ -576,4 +580,4 @@ CmdBoard est Windows uniquement (`.lnk`, `%APPDATA%`, URI des launchers). winget
 
 ## Prochaine étape
 
-Les étapes 1 à 6 sont faites. Suivante : **étape 7**. Tracker de sessions : thread d'événements (clavier + `Tick` ~250 ms) qui remplace l'`event::read` bloquant, thread tracker `sysinfo` qui surveille les `watch_exe`, enregistrement des sessions, fermeture des sessions orphelines au démarrage, et chrono en direct dans le header.
+Les étapes 1 à 7 sont faites. Suivante : **étape 8**. XP et niveaux : calcul de `xp_gained` à la fin de chaque session (`core/xp.rs`), mise à jour de `apps.total_xp`, barres d'XP animées par `Tick` et popup de level-up.

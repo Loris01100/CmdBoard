@@ -1,18 +1,28 @@
+use std::collections::HashMap;
+use std::sync::mpsc::{Receiver, Sender};
+use std::time::{Duration, Instant};
+
 use anyhow::{Context, bail};
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     DefaultTerminal,
     widgets::{ListState, TableState},
 };
 
 use crate::command::{Command, find_help, line::CommandLine, parser};
+use crate::event::AppEvent;
 use crate::launcher::launch;
 use crate::popup::{Form, FormKind, Popup};
 use crate::storage::{
     Database,
     models::{AppEntry, Category, NewApp, Profile},
+    unix_now,
 };
+use crate::tracker::Watched;
 use crate::ui::{self, theme::Theme};
+
+/// How often running sessions save their time played, in case of a crash.
+const CHECKPOINT_EVERY: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -58,6 +68,15 @@ pub enum MsgKind {
 
 type Message = (String, MsgKind);
 
+/// A session in progress, keyed by app id in `App::active_sessions`.
+#[derive(Debug, Clone, Copy)]
+pub struct ActiveSession {
+    /// Row in `sessions`, open until the session ends.
+    pub session_id: i64,
+    pub started: Instant,
+    last_checkpoint: Instant,
+}
+
 pub struct App {
     // navigation
     pub screen: Screen,
@@ -71,6 +90,7 @@ pub struct App {
     pub apps: Vec<AppEntry>,
     pub profile: Profile,
     pub recent_rewards: Vec<String>,
+    pub active_sessions: HashMap<i64, ActiveSession>,
 
     // command line
     pub command_line: CommandLine,
@@ -79,6 +99,8 @@ pub struct App {
 
     pub theme: Theme,
     pub db: Database,
+    /// Receives the watch list after each reload. `None` in tests.
+    tracker: Option<Sender<Vec<Watched>>>,
     pub should_quit: bool,
 }
 
@@ -94,10 +116,12 @@ impl App {
             apps: Vec::new(),
             profile: Profile::default(),
             recent_rewards: Vec::new(),
+            active_sessions: HashMap::new(),
             command_line: CommandLine::default(),
             message: None,
             theme: Theme::default(),
             db,
+            tracker: None,
             should_quit: false,
         };
         app.reload()?;
@@ -114,18 +138,109 @@ impl App {
             .select(clamp(self.cat_state.selected(), self.categories.len()));
         let visible = self.visible_apps().len();
         self.app_state.select(clamp(self.app_state.selected(), visible));
+        self.send_watch_list();
         Ok(())
     }
 
-    pub fn run(&mut self, terminal: &mut DefaultTerminal) -> anyhow::Result<()> {
+    /// Connects the session tracker and sends it the current watch list.
+    pub fn attach_tracker(&mut self, tracker: Sender<Vec<Watched>>) {
+        self.tracker = Some(tracker);
+        self.send_watch_list();
+    }
+
+    fn send_watch_list(&self) {
+        let Some(tracker) = &self.tracker else { return };
+        let list = self
+            .apps
+            .iter()
+            .filter_map(|a| {
+                let exe = a.watch_exe.as_deref()?.trim();
+                (!exe.is_empty()).then(|| Watched { app_id: a.id, exe: exe.into() })
+            })
+            .collect();
+        // A closed channel means the tracker died: sessions just stop being tracked.
+        let _ = tracker.send(list);
+    }
+
+    /// Main loop: redraw, then handle the next event from the event or tracker thread.
+    /// Key events are already filtered on `Press` by the event thread.
+    pub fn run(
+        &mut self,
+        terminal: &mut DefaultTerminal,
+        events: &Receiver<AppEvent>,
+    ) -> anyhow::Result<()> {
         while !self.should_quit {
             terminal.draw(|f| ui::draw(f, self))?;
-            // Windows sends both Press and Release: only handle Press.
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    self.on_key(key);
-                }
+            match events.recv()? {
+                AppEvent::Key(key) => self.on_key(key),
+                AppEvent::Tick => self.on_tick(),
+                AppEvent::SessionStarted { app_id } => self.on_session_start(app_id),
+                AppEvent::SessionEnded { app_id, secs } => self.on_session_end(app_id, secs),
             }
+        }
+        self.end_all_sessions()
+    }
+
+    /// Each tick redraws (the live timer); running sessions also checkpoint here.
+    pub fn on_tick(&mut self) {
+        for session in self.active_sessions.values_mut() {
+            if session.last_checkpoint.elapsed() < CHECKPOINT_EVERY {
+                continue;
+            }
+            session.last_checkpoint = Instant::now();
+            let secs = session.started.elapsed().as_secs();
+            if let Err(e) = self.db.checkpoint_session(session.session_id, secs) {
+                self.message = Some((format!("{e:#}"), MsgKind::Error));
+            }
+        }
+    }
+
+    pub fn on_session_start(&mut self, app_id: i64) {
+        if self.active_sessions.contains_key(&app_id) {
+            return;
+        }
+        // The app may have been removed since the tracker's last poll.
+        let Some(name) = self.app_name(app_id) else { return };
+        match self.db.start_session(app_id, unix_now()) {
+            Ok(session_id) => {
+                let now = Instant::now();
+                self.active_sessions.insert(
+                    app_id,
+                    ActiveSession { session_id, started: now, last_checkpoint: now },
+                );
+                self.message = Some((format!("Session démarrée : {name}"), MsgKind::Info));
+            }
+            Err(e) => self.message = Some((format!("{e:#}"), MsgKind::Error)),
+        }
+    }
+
+    /// `secs` is measured by the tracker, from detection to disappearance.
+    pub fn on_session_end(&mut self, app_id: i64, secs: u64) {
+        let Some(session) = self.active_sessions.remove(&app_id) else { return };
+        let result = self
+            .db
+            .end_session(session.session_id, unix_now(), secs)
+            .and_then(|kept| self.reload().map(|()| kept));
+        let Some(name) = self.app_name(app_id) else { return }; // removed meanwhile
+        self.message = Some(match result {
+            Ok(true) => (
+                format!("Session terminée : {name} ({} min)", secs / 60),
+                MsgKind::Success,
+            ),
+            Ok(false) => (
+                format!("Session trop courte, non enregistrée : {name}"),
+                MsgKind::Info,
+            ),
+            Err(e) => (format!("{e:#}"), MsgKind::Error),
+        });
+    }
+
+    /// On quit, closes running sessions as if their apps had stopped.
+    fn end_all_sessions(&mut self) -> anyhow::Result<()> {
+        let now = unix_now();
+        for (_, session) in self.active_sessions.drain() {
+            let secs = session.started.elapsed().as_secs();
+            self.db.end_session(session.session_id, now, secs)?;
         }
         Ok(())
     }
@@ -400,6 +515,10 @@ impl App {
             }
         }
         Ok(None)
+    }
+
+    fn app_name(&self, id: i64) -> Option<String> {
+        self.apps.iter().find(|a| a.id == id).map(|a| a.name.clone())
     }
 
     /// Case-insensitive lookup by name.
@@ -754,6 +873,81 @@ mod tests {
         press(&mut app, KeyCode::Enter);
         assert_eq!(message_kind(&app), Some(MsgKind::Success));
         assert!(app.categories.iter().all(|c| c.name != "Jeux"));
+    }
+
+    fn steam_id(app: &App) -> i64 {
+        app.find_app("Steam").unwrap().id
+    }
+
+    #[test]
+    fn session_is_recorded_from_start_to_end() {
+        let mut app = App::with_defaults();
+        let steam = steam_id(&app);
+        app.on_session_start(steam);
+        app.on_session_start(steam); // duplicate start: ignored
+        assert_eq!(app.active_sessions.len(), 1);
+        assert_eq!(message_kind(&app), Some(MsgKind::Info));
+
+        app.on_session_end(steam, 42 * 60);
+        assert!(app.active_sessions.is_empty());
+        assert_eq!(app.message.as_ref().unwrap().0, "Session terminée : Steam (42 min)");
+        let entry = app.find_app("Steam").unwrap();
+        assert_eq!(entry.total_secs, 42 * 60);
+        assert!(entry.last_played.is_some());
+    }
+
+    #[test]
+    fn short_session_is_not_recorded() {
+        let mut app = App::with_defaults();
+        let steam = steam_id(&app);
+        app.on_session_start(steam);
+        app.on_session_end(steam, 5);
+        assert_eq!(message_kind(&app), Some(MsgKind::Info));
+        assert_eq!(app.find_app("Steam").unwrap().total_secs, 0);
+    }
+
+    #[test]
+    fn unknown_or_inactive_sessions_are_ignored() {
+        let mut app = App::with_defaults();
+        app.on_session_start(9_999);
+        app.on_session_end(steam_id(&app), 600);
+        assert!(app.active_sessions.is_empty());
+        assert_eq!(app.message, None);
+    }
+
+    #[test]
+    fn removing_an_app_mid_session_is_harmless() {
+        let mut app = App::with_defaults();
+        let steam = steam_id(&app);
+        app.on_session_start(steam);
+        run(&mut app, "rm steam");
+        press(&mut app, KeyCode::Enter);
+        app.on_session_end(steam, 600); // the tracker notices afterwards
+        assert!(app.active_sessions.is_empty());
+        assert!(app.find_app("Steam").is_none());
+    }
+
+    #[test]
+    fn quitting_closes_running_sessions() {
+        let mut app = App::with_defaults();
+        app.on_session_start(steam_id(&app));
+        app.end_all_sessions().unwrap();
+        assert!(app.active_sessions.is_empty());
+        assert_eq!(app.db.close_orphan_sessions().unwrap(), 0); // nothing left open
+    }
+
+    #[test]
+    fn tracker_receives_watch_list_on_reload() {
+        let mut app = App::with_defaults();
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.attach_tracker(tx);
+        let list = rx.try_recv().unwrap();
+        assert_eq!(list.len(), 4); // Explorateur has no watch_exe
+        assert!(list.contains(&Watched { app_id: steam_id(&app), exe: "steam.exe".into() }));
+
+        run(&mut app, "add Paint mspaint.exe");
+        let list = rx.try_iter().last().unwrap();
+        assert!(list.iter().any(|w| w.exe == "mspaint.exe"));
     }
 
     #[test]

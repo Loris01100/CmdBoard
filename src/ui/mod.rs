@@ -57,6 +57,20 @@ mod tests {
     }
 
     #[test]
+    fn header_shows_live_session() {
+        let mut app = App::with_defaults();
+        let render = |app: &App| {
+            let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+            terminal.draw(|f| draw(f, app)).unwrap();
+            let buffer = terminal.backend().buffer();
+            buffer.content().iter().map(|c| c.symbol()).collect::<String>()
+        };
+        assert!(render(&app).contains("aucune session en cours"));
+        app.on_session_start(app.find_app("Steam").unwrap().id);
+        assert!(render(&app).contains("▶ Steam 0:00"));
+    }
+
+    #[test]
     fn details_panel_hidden_when_narrow() {
         let app = App::with_defaults();
         let render = |w| {

@@ -9,6 +9,9 @@ use super::db::Database;
 use super::models::{AppEntry, Category, NewApp, Profile};
 use crate::core::xp;
 
+/// Shorter sessions (a quick launch and close) are not recorded.
+pub const MIN_SESSION_SECS: u64 = 60;
+
 impl Database {
     pub fn categories(&self) -> anyhow::Result<Vec<Category>> {
         let mut stmt = self.conn.prepare("SELECT id, name FROM categories ORDER BY id")?;
@@ -91,6 +94,52 @@ impl Database {
     pub fn delete_app(&self, app_id: i64) -> anyhow::Result<()> {
         self.conn.execute("DELETE FROM apps WHERE id = ?1", [app_id])?;
         Ok(())
+    }
+
+    /// Opens a session (`ended_at` stays NULL until it ends). Returns its id.
+    pub fn start_session(&self, app_id: i64, started_at: i64) -> anyhow::Result<i64> {
+        self.conn.execute(
+            "INSERT INTO sessions (app_id, started_at) VALUES (?1, ?2)",
+            [app_id, started_at],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Saves the time played so far, so a crash loses at most one checkpoint interval.
+    pub fn checkpoint_session(&self, id: i64, secs: u64) -> anyhow::Result<()> {
+        self.conn.execute(
+            "UPDATE sessions SET duration_s = ?2 WHERE id = ?1 AND ended_at IS NULL",
+            params![id, secs as i64],
+        )?;
+        Ok(())
+    }
+
+    /// Closes a session. Sessions shorter than `MIN_SESSION_SECS` are dropped instead.
+    /// Returns whether the session was kept.
+    pub fn end_session(&self, id: i64, ended_at: i64, secs: u64) -> anyhow::Result<bool> {
+        if secs < MIN_SESSION_SECS {
+            self.conn.execute("DELETE FROM sessions WHERE id = ?1", [id])?;
+            return Ok(false);
+        }
+        self.conn.execute(
+            "UPDATE sessions SET ended_at = ?2, duration_s = ?3 WHERE id = ?1",
+            params![id, ended_at, secs as i64],
+        )?;
+        Ok(true)
+    }
+
+    /// Closes the sessions a crash left open, at their last checkpoint.
+    /// Returns how many were kept.
+    pub fn close_orphan_sessions(&self) -> anyhow::Result<usize> {
+        self.conn.execute(
+            "DELETE FROM sessions WHERE ended_at IS NULL AND duration_s < ?1",
+            [MIN_SESSION_SECS as i64],
+        )?;
+        let kept = self.conn.execute(
+            "UPDATE sessions SET ended_at = started_at + duration_s WHERE ended_at IS NULL",
+            [],
+        )?;
+        Ok(kept)
     }
 
     pub fn profile(&self) -> anyhow::Result<Profile> {
@@ -259,6 +308,54 @@ mod tests {
         assert_eq!((hades.level, hades.xp), (2, 50));
         assert_eq!(hades.rewards, 1);
         assert_eq!(db.recent_rewards(3).unwrap(), ["Marathon (Hades)"]);
+    }
+
+    fn session_rows(db: &Database) -> Vec<(Option<i64>, i64)> {
+        let mut stmt = db
+            .conn
+            .prepare("SELECT ended_at, duration_s FROM sessions ORDER BY id")
+            .unwrap();
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn session_lifecycle() {
+        let (db, _, app) = db_with_app();
+        let id = db.start_session(app, 1_000).unwrap();
+        assert_eq!(session_rows(&db), [(None, 0)]);
+        assert_eq!(db.apps().unwrap()[0].total_secs, 0); // open sessions don't count yet
+
+        db.checkpoint_session(id, 120).unwrap();
+        assert_eq!(session_rows(&db), [(None, 120)]);
+
+        assert!(db.end_session(id, 1_300, 300).unwrap());
+        assert_eq!(session_rows(&db), [(Some(1_300), 300)]);
+        db.checkpoint_session(id, 999).unwrap(); // closed: ignored
+        let hades = &db.apps().unwrap()[0];
+        assert_eq!((hades.total_secs, hades.last_played), (300, Some(1_300)));
+    }
+
+    #[test]
+    fn short_sessions_are_dropped() {
+        let (db, _, app) = db_with_app();
+        let id = db.start_session(app, 1_000).unwrap();
+        assert!(!db.end_session(id, 1_010, 10).unwrap());
+        assert!(session_rows(&db).is_empty());
+    }
+
+    #[test]
+    fn orphans_close_at_last_checkpoint() {
+        let (db, _, app) = db_with_app();
+        let checkpointed = db.start_session(app, 1_000).unwrap();
+        db.checkpoint_session(checkpointed, 600).unwrap();
+        db.start_session(app, 5_000).unwrap(); // crashed before its first checkpoint
+        session(&db, app, 9_000, 120, 0); // already closed: untouched
+
+        assert_eq!(db.close_orphan_sessions().unwrap(), 1);
+        assert_eq!(session_rows(&db), [(Some(1_600), 600), (Some(9_000), 120)]);
     }
 
     #[test]

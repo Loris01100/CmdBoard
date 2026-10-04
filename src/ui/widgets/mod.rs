@@ -14,6 +14,12 @@ pub fn format_duration(secs: u64) -> String {
     }
 }
 
+/// Running timer: "4:05" below one hour, "1:02:03" above.
+pub fn format_clock(secs: u64) -> String {
+    let (h, m, s) = (secs / 3600, secs / 60 % 60, secs % 60);
+    if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m}:{s:02}") }
+}
+
 /// How long ago something happened, given the elapsed seconds.
 pub fn format_ago(secs: i64) -> String {
     match secs.max(0) {
@@ -36,6 +42,13 @@ mod tests {
         assert_eq!(format_ago(3 * 3600 + 10), "il y a 3 h");
         assert_eq!(format_ago(30 * 3600), "hier");
         assert_eq!(format_ago(5 * 86_400), "il y a 5 j");
+    }
+
+    #[test]
+    fn clock() {
+        assert_eq!(format_clock(0), "0:00");
+        assert_eq!(format_clock(245), "4:05");
+        assert_eq!(format_clock(3723), "1:02:03");
     }
 
     #[test]
