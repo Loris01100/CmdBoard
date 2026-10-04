@@ -1,13 +1,13 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Flex, Layout, Position, Rect},
-    style::Style,
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Clear, Paragraph, Wrap},
 };
 
 use crate::app::App;
-use crate::popup::{Form, Popup};
+use crate::popup::{Form, LevelUp, Popup};
 
 const MAX_WIDTH: u16 = 64;
 
@@ -16,7 +16,34 @@ pub fn render(frame: &mut Frame, popup: &Popup, app: &App) {
     match popup {
         Popup::Confirm { message, .. } => render_confirm(frame, message, app),
         Popup::Form(form) => render_form(frame, form, app),
+        Popup::LevelUp(level_up) => render_level_up(frame, level_up, app),
     }
+}
+
+/// Level-up announcement. Its border and title alternate colors on each tick.
+fn render_level_up(frame: &mut Frame, level_up: &LevelUp, app: &App) {
+    let theme = &app.theme;
+    let accent = if app.frame_count % 2 == 0 { theme.success } else { theme.info };
+    let accent_style = Style::new().fg(accent).add_modifier(Modifier::BOLD);
+
+    let mut text = vec![Line::styled("★  Niveau supérieur !  ★", accent_style).centered(), Line::from("")];
+    if let Some(level) = level_up.app_level {
+        text.push(Line::from(vec![
+            Span::styled(level_up.app.clone(), theme.title),
+            Span::raw(format!(" passe au niveau {level}")),
+        ]).centered());
+    }
+    if let Some(level) = level_up.global_level {
+        text.push(Line::from(format!("Profil : niveau {level}")).centered());
+    }
+    text.push(Line::styled(format!("+{} XP", level_up.gained), Style::new().fg(theme.xp_fill)).centered());
+    text.push(Line::from(""));
+    text.push(Line::styled("Entrée pour continuer", theme.muted()).centered());
+
+    let area = centered(frame.area(), popup_width(frame.area()).min(44), text.len() as u16 + 2);
+    let block = theme.panel("Level-up", true).border_style(Style::new().fg(accent));
+    frame.render_widget(Clear, area);
+    frame.render_widget(Paragraph::new(text).block(block), area);
 }
 
 fn render_confirm(frame: &mut Frame, message: &str, app: &App) {
@@ -160,11 +187,34 @@ mod tests {
     }
 
     #[test]
+    fn level_up_renders_both_levels() {
+        let mut app = App::with_defaults();
+        app.mode = Mode::Popup(Popup::LevelUp(LevelUp {
+            app: "Steam".into(),
+            app_level: Some(3),
+            global_level: Some(2),
+            gained: 120,
+        }));
+        let text = screen(&app, 100, 30);
+        for expected in ["Niveau supérieur", "Steam passe au niveau 3", "Profil : niveau 2", "+120 XP"] {
+            assert!(text.contains(expected), "missing {expected:?} in\n{text}");
+        }
+    }
+
+    #[test]
     fn popups_fit_tiny_terminals() {
         let mut app = App::with_defaults();
-        app.mode = Mode::Popup(Popup::Form(Form::add_app("Jeux")));
-        for (w, h) in [(30, 8), (10, 3), (1, 1)] {
-            screen(&app, w, h);
+        let level_up = Popup::LevelUp(LevelUp {
+            app: "Steam".into(),
+            app_level: Some(2),
+            global_level: None,
+            gained: 100,
+        });
+        for popup in [Popup::Form(Form::add_app("Jeux")), level_up] {
+            app.mode = Mode::Popup(popup);
+            for (w, h) in [(30, 8), (10, 3), (1, 1)] {
+                screen(&app, w, h);
+            }
         }
     }
 }

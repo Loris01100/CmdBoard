@@ -40,6 +40,11 @@ pub fn parse(input: &str) -> Result<Command, String> {
             app: app.clone(),
             category: category.clone(),
         }),
+        // The amount comes last, so the app name needs no quotes either.
+        ("xp", [app @ .., amount]) if !app.is_empty() => match amount.parse() {
+            Ok(amount) => Ok(Command::Xp { app: app.join(" "), amount }),
+            Err(_) => Err(format!("Montant invalide : {amount} (usage : {})", help.usage)),
+        },
         ("help", []) => Ok(Command::Help { command: None }),
         ("help", [command]) => Ok(Command::Help { command: Some(command.clone()) }),
         ("quit", []) => Ok(Command::Quit),
@@ -127,6 +132,9 @@ mod tests {
                 "rmcat Jeux",
                 Command::RemoveCategory { category: s("Jeux"), confirmed: false },
             ),
+            ("xp Windows Terminal 250", Command::Xp { app: s("Windows Terminal"), amount: 250 }),
+            ("xp Steam -40", Command::Xp { app: s("Steam"), amount: -40 }),
+            ("xp Steam +40", Command::Xp { app: s("Steam"), amount: 40 }),
             ("help", Command::Help { command: None }),
             ("? add", Command::Help { command: Some(s("add")) }),
             ("q", Command::Quit),
@@ -146,6 +154,8 @@ mod tests {
             ("add Code", "Usage : add [<nom> <cible> [catégorie]]"),
             ("move", "Usage : move <app> [catégorie]"),
             ("rm", "Usage : rm <app>"),
+            ("xp 50", "Usage : xp <app> <montant>"),
+            ("xp Steam lots", "Montant invalide : lots (usage : xp <app> <montant>)"),
             ("quit now", "Usage : quit"),
             (r#"launch "Hades"#, "Guillemet non fermé"),
         ];

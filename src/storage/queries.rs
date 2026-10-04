@@ -6,7 +6,7 @@ use anyhow::Context;
 use rusqlite::params;
 
 use super::db::Database;
-use super::models::{AppEntry, Category, NewApp, Profile};
+use super::models::{AppEntry, Category, ClosedSession, NewApp, Profile};
 use crate::core::xp;
 
 /// Shorter sessions (a quick launch and close) are not recorded.
@@ -52,13 +52,15 @@ impl Database {
              ORDER BY a.name COLLATE NOCASE",
         )?;
         let rows = stmt.query_map([], |r| {
-            let (level, xp) = xp::level_from_total(r.get(5)?);
+            let total_xp = r.get(5)?;
+            let (level, xp) = xp::level_from_total(total_xp);
             Ok(AppEntry {
                 id: r.get(0)?,
                 name: r.get(1)?,
                 launch_target: r.get(2)?,
                 watch_exe: r.get(3)?,
                 category_id: r.get(4)?,
+                total_xp,
                 level,
                 xp,
                 total_secs: r.get::<_, i64>(6)?.max(0) as u64,
@@ -129,17 +131,53 @@ impl Database {
     }
 
     /// Closes the sessions a crash left open, at their last checkpoint.
-    /// Returns how many were kept.
-    pub fn close_orphan_sessions(&self) -> anyhow::Result<usize> {
-        self.conn.execute(
+    /// Returns the kept ones, so they can still earn their XP.
+    pub fn close_orphan_sessions(&self) -> anyhow::Result<Vec<ClosedSession>> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
             "DELETE FROM sessions WHERE ended_at IS NULL AND duration_s < ?1",
             [MIN_SESSION_SECS as i64],
         )?;
-        let kept = self.conn.execute(
-            "UPDATE sessions SET ended_at = started_at + duration_s WHERE ended_at IS NULL",
-            [],
-        )?;
+        let kept = tx
+            .prepare(
+                "UPDATE sessions SET ended_at = started_at + duration_s WHERE ended_at IS NULL
+                 RETURNING id, app_id, duration_s",
+            )?
+            .query_map([], |r| {
+                Ok(ClosedSession {
+                    session_id: r.get(0)?,
+                    app_id: r.get(1)?,
+                    secs: r.get::<_, i64>(2)?.max(0) as u64,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        tx.commit()?;
         Ok(kept)
+    }
+
+    /// Records the XP a closed session earned and adds it to its app.
+    pub fn add_session_xp(&self, session_id: i64, xp: u32) -> anyhow::Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "UPDATE sessions SET xp_gained = ?2 WHERE id = ?1",
+            [session_id, xp as i64],
+        )?;
+        tx.execute(
+            "UPDATE apps SET total_xp = total_xp + ?2
+             WHERE id = (SELECT app_id FROM sessions WHERE id = ?1)",
+            [session_id, xp as i64],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Overwrites an app's XP (`:xp`), outside of any session.
+    pub fn set_app_xp(&self, app_id: i64, total_xp: u32) -> anyhow::Result<()> {
+        self.conn.execute(
+            "UPDATE apps SET total_xp = ?2 WHERE id = ?1",
+            [app_id, total_xp as i64],
+        )?;
+        Ok(())
     }
 
     pub fn profile(&self) -> anyhow::Result<Profile> {
@@ -172,6 +210,7 @@ impl Database {
             .collect::<Result<Vec<i64>, _>>()?;
 
         Ok(Profile {
+            total_xp,
             level,
             xp,
             streak_days: xp::streak_days(&days, today),
@@ -354,8 +393,31 @@ mod tests {
         db.start_session(app, 5_000).unwrap(); // crashed before its first checkpoint
         session(&db, app, 9_000, 120, 0); // already closed: untouched
 
-        assert_eq!(db.close_orphan_sessions().unwrap(), 1);
+        assert_eq!(
+            db.close_orphan_sessions().unwrap(),
+            [ClosedSession { session_id: checkpointed, app_id: app, secs: 600 }]
+        );
         assert_eq!(session_rows(&db), [(Some(1_600), 600), (Some(9_000), 120)]);
+    }
+
+    #[test]
+    fn session_xp_goes_to_its_app() {
+        let (db, _, app) = db_with_app();
+        let id = db.start_session(app, 1_000).unwrap();
+        db.end_session(id, 2_000, 1_000).unwrap();
+        db.add_session_xp(id, 120).unwrap();
+
+        let hades = &db.apps().unwrap()[0];
+        assert_eq!((hades.total_xp, hades.level, hades.xp), (120, 2, 20));
+        let gained: u32 = db
+            .conn
+            .query_row("SELECT xp_gained FROM sessions WHERE id = ?1", [id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(gained, 120);
+
+        db.set_app_xp(app, 5).unwrap();
+        assert_eq!(db.apps().unwrap()[0].total_xp, 5);
+        assert_eq!(db.profile().unwrap().total_xp, 5);
     }
 
     #[test]

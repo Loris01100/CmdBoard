@@ -17,8 +17,8 @@ use storage::Database;
 fn main() -> anyhow::Result<()> {
     // Open the database before taking over the terminal, so errors print normally.
     let db = Database::open_default()?;
-    db.close_orphan_sessions()?; // left open by a previous crash
     let mut app = App::new(db)?;
+    app.close_orphan_sessions()?; // left open by a previous crash
 
     let (tx, rx) = mpsc::channel();
     app.attach_tracker(tracker::spawn(tx.clone()));

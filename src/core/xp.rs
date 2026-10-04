@@ -1,3 +1,15 @@
+/// Sessions shorter than this earn no XP (anti-abuse).
+pub const MIN_XP_MINUTES: u32 = 5;
+
+/// XP earned by a session: 1 XP per minute, plus 5 per streak day (capped at 7 days).
+/// `streak_days` counts consecutive active days, today included.
+pub fn xp_for_session(duration_min: u32, streak_days: u32) -> u32 {
+    if duration_min < MIN_XP_MINUTES {
+        return 0;
+    }
+    duration_min + streak_days.min(7) * 5
+}
+
 /// XP needed to go from `level` to `level + 1`.
 pub fn xp_to_next_level(level: u32) -> u32 {
     (100.0 * (level.max(1) as f32).powf(1.5)) as u32
@@ -35,9 +47,48 @@ pub fn streak_days(days: &[i64], today: i64) -> u32 {
     streak
 }
 
+/// Adds a signed amount to a total, without going below zero.
+pub fn apply_delta(total_xp: u32, delta: i64) -> u32 {
+    (total_xp as i64 + delta).clamp(0, u32::MAX as i64) as u32
+}
+
+/// Value of an animated counter going from `from` to `to` over `frames` ticks,
+/// `elapsed` ticks after it started. Eases out: fast at first, slowing at the end.
+pub fn animate(from: u32, to: u32, elapsed: u64, frames: u64) -> u32 {
+    if elapsed >= frames || frames == 0 {
+        return to;
+    }
+    let t = elapsed as f64 / frames as f64;
+    let eased = 1.0 - (1.0 - t).powi(3);
+    (from as f64 + (to as f64 - from as f64) * eased).round() as u32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_xp_rewards_time_and_streak() {
+        assert_eq!(xp_for_session(4, 10), 0); // too short
+        assert_eq!(xp_for_session(5, 0), 5);
+        assert_eq!(xp_for_session(42, 1), 47);
+        assert_eq!(xp_for_session(60, 30), 95); // streak bonus capped at 7 days
+    }
+
+    #[test]
+    fn delta_never_goes_negative() {
+        assert_eq!(apply_delta(50, 25), 75);
+        assert_eq!(apply_delta(50, -80), 0);
+    }
+
+    #[test]
+    fn animation_eases_to_target() {
+        assert_eq!(animate(0, 100, 0, 8), 0);
+        assert!(animate(0, 100, 4, 8) > 50); // ease-out: past halfway at mid-time
+        assert_eq!(animate(0, 100, 8, 8), 100);
+        assert_eq!(animate(0, 100, 99, 8), 100);
+        assert_eq!(animate(100, 40, 8, 8), 40);
+    }
 
     #[test]
     fn next_level_cost_grows() {

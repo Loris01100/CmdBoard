@@ -17,6 +17,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             ("↑↓", "historique"),
         ],
         (Mode::Popup(Popup::Confirm { .. }), _) => &[("Entrée/o", "confirmer"), ("Esc/n", "annuler")],
+        (Mode::Popup(Popup::LevelUp(_)), _) => &[("Entrée/Esc", "continuer")],
         (Mode::Popup(Popup::Form(_)), _) => &[
             ("Tab ↑↓", "champ"),
             ("Entrée", "suivant / valider"),

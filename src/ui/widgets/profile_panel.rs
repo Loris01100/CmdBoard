@@ -16,7 +16,8 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let level = format!("Niv {} ", profile.level);
+    let (shown_level, shown_xp) = app.shown_profile_xp();
+    let level = format!("Niv {shown_level} ");
     let stats = format!(
         " │ Streak {}j │ XP du jour : +{}",
         profile.streak_days, profile.xp_today
@@ -30,7 +31,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
 
     frame.render_widget(Paragraph::new(level).style(theme.title), level_area);
     frame.render_widget(
-        xp_bar::gauge(xp::level_progress(profile.level, profile.xp), theme),
+        xp_bar::gauge(xp::level_progress(shown_level, shown_xp), theme),
         gauge_area,
     );
     frame.render_widget(Paragraph::new(stats), stats_area);

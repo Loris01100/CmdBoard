@@ -41,6 +41,11 @@ pub enum Command {
         confirmed: bool,
     },
     OpenForm(FormKind),
+    /// Adds (or removes, if negative) XP to an app by hand, outside of any session.
+    Xp {
+        app: String,
+        amount: i64,
+    },
     Help {
         command: Option<String>,
     },
@@ -85,6 +90,12 @@ pub const COMMANDS: &[CommandHelp] = &[
         aliases: &[],
         usage: "rmcat <catégorie>",
         summary: "Supprime une catégorie vide, après confirmation",
+    },
+    CommandHelp {
+        name: "xp",
+        aliases: &[],
+        usage: "xp <app> <montant>",
+        summary: "Ajoute (ou retire, si négatif) de l'XP à une app",
     },
     CommandHelp {
         name: "help",

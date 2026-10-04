@@ -1,4 +1,4 @@
-//! Popup state: confirmations and forms. Rendering lives in `ui/widgets/popup.rs`.
+//! Popup state: confirmations, forms and level-ups. Rendering lives in `ui/widgets/popup.rs`.
 
 use crate::command::Command;
 use crate::launcher::launch;
@@ -9,6 +9,19 @@ pub enum Popup {
     /// Asks before running a destructive `command`.
     Confirm { message: String, command: Command },
     Form(Form),
+    LevelUp(LevelUp),
+}
+
+/// An app, the global profile, or both reached a new level.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LevelUp {
+    pub app: String,
+    /// New level of the app, if it went up.
+    pub app_level: Option<u32>,
+    /// New global level, if it went up.
+    pub global_level: Option<u32>,
+    /// XP that caused it.
+    pub gained: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -85,12 +85,13 @@ fn render_details(frame: &mut Frame, area: Rect, app: &App) {
     ])
     .areas(inner);
 
+    let (level, xp) = app.shown_app_xp(entry);
     let head_text = vec![
         Line::styled(entry.name.as_str(), theme.title.add_modifier(Modifier::BOLD)),
-        Line::from(format!("Niveau {}", entry.level)),
+        Line::from(format!("Niveau {level}  ·  {xp}/{} XP", xp::xp_to_next_level(level))),
     ];
     frame.render_widget(Paragraph::new(head_text), head);
-    frame.render_widget(xp_bar::gauge(xp::level_progress(entry.level, entry.xp), theme), gauge);
+    frame.render_widget(xp_bar::gauge(xp::level_progress(level, xp), theme), gauge);
 
     let last = entry
         .last_played

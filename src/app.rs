@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
@@ -10,9 +10,10 @@ use ratatui::{
 };
 
 use crate::command::{Command, find_help, line::CommandLine, parser};
+use crate::core::xp;
 use crate::event::AppEvent;
 use crate::launcher::launch;
-use crate::popup::{Form, FormKind, Popup};
+use crate::popup::{Form, FormKind, LevelUp, Popup};
 use crate::storage::{
     Database,
     models::{AppEntry, Category, NewApp, Profile},
@@ -23,6 +24,9 @@ use crate::ui::{self, theme::Theme};
 
 /// How often running sessions save their time played, in case of a crash.
 const CHECKPOINT_EVERY: Duration = Duration::from_secs(60);
+
+/// How many ticks an XP bar takes to fill up to its new value (2 s at 250 ms).
+pub const XP_ANIM_FRAMES: u64 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -77,6 +81,25 @@ pub struct ActiveSession {
     last_checkpoint: Instant,
 }
 
+/// An XP total moving from `from` to `to`, started at tick `start`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct XpAnim {
+    pub from: u32,
+    pub to: u32,
+    pub start: u64,
+}
+
+impl XpAnim {
+    /// The total to show at tick `frame`.
+    pub fn value(&self, frame: u64) -> u32 {
+        xp::animate(self.from, self.to, frame.saturating_sub(self.start), XP_ANIM_FRAMES)
+    }
+
+    fn is_done(&self, frame: u64) -> bool {
+        frame.saturating_sub(self.start) >= XP_ANIM_FRAMES
+    }
+}
+
 pub struct App {
     // navigation
     pub screen: Screen,
@@ -91,6 +114,15 @@ pub struct App {
     pub profile: Profile,
     pub recent_rewards: Vec<String>,
     pub active_sessions: HashMap<i64, ActiveSession>,
+
+    // animations, driven by `Tick`
+    /// Incremented on each tick.
+    pub frame_count: u64,
+    /// XP bars still filling up, by app id.
+    pub xp_anims: HashMap<i64, XpAnim>,
+    pub profile_anim: Option<XpAnim>,
+    /// Popups waiting for the user to be back in normal mode (e.g. a level-up while typing).
+    pending_popups: VecDeque<Popup>,
 
     // command line
     pub command_line: CommandLine,
@@ -117,6 +149,10 @@ impl App {
             profile: Profile::default(),
             recent_rewards: Vec::new(),
             active_sessions: HashMap::new(),
+            frame_count: 0,
+            xp_anims: HashMap::new(),
+            profile_anim: None,
+            pending_popups: VecDeque::new(),
             command_line: CommandLine::default(),
             message: None,
             theme: Theme::default(),
@@ -181,8 +217,16 @@ impl App {
         self.end_all_sessions()
     }
 
-    /// Each tick redraws (the live timer); running sessions also checkpoint here.
+    /// Each tick redraws (live timer, animations); running sessions also checkpoint here.
     pub fn on_tick(&mut self) {
+        self.frame_count += 1;
+        let frame = self.frame_count;
+        self.xp_anims.retain(|_, anim| !anim.is_done(frame));
+        if self.profile_anim.is_some_and(|anim| anim.is_done(frame)) {
+            self.profile_anim = None;
+        }
+        self.show_pending_popup();
+
         for session in self.active_sessions.values_mut() {
             if session.last_checkpoint.elapsed() < CHECKPOINT_EVERY {
                 continue;
@@ -217,17 +261,23 @@ impl App {
     /// `secs` is measured by the tracker, from detection to disappearance.
     pub fn on_session_end(&mut self, app_id: i64, secs: u64) {
         let Some(session) = self.active_sessions.remove(&app_id) else { return };
+        let Some(before) = self.find_app_by_id(app_id).map(|a| a.total_xp) else {
+            return; // removed meanwhile
+        };
+        let profile_before = self.profile.total_xp;
         let result = self
-            .db
-            .end_session(session.session_id, unix_now(), secs)
-            .and_then(|kept| self.reload().map(|()| kept));
-        let Some(name) = self.app_name(app_id) else { return }; // removed meanwhile
+            .finish_session(session.session_id, secs)
+            .and_then(|gained| self.reload().map(|()| gained));
+        let Some(name) = self.app_name(app_id) else { return };
+        if let Ok(Some(gained)) = result {
+            self.on_xp_changed(app_id, before, profile_before, gained);
+        }
         self.message = Some(match result {
-            Ok(true) => (
-                format!("Session terminée : {name} ({} min)", secs / 60),
+            Ok(Some(gained)) => (
+                format!("Session terminée : {name} ({} min, +{gained} XP)", secs / 60),
                 MsgKind::Success,
             ),
-            Ok(false) => (
+            Ok(None) => (
                 format!("Session trop courte, non enregistrée : {name}"),
                 MsgKind::Info,
             ),
@@ -235,14 +285,101 @@ impl App {
         });
     }
 
-    /// On quit, closes running sessions as if their apps had stopped.
-    fn end_all_sessions(&mut self) -> anyhow::Result<()> {
-        let now = unix_now();
-        for (_, session) in self.active_sessions.drain() {
-            let secs = session.started.elapsed().as_secs();
-            self.db.end_session(session.session_id, now, secs)?;
+    /// Closes a session and awards its XP. Returns the XP, or `None` if the session was
+    /// too short to be recorded.
+    fn finish_session(&self, session_id: i64, secs: u64) -> anyhow::Result<Option<u32>> {
+        if !self.db.end_session(session_id, unix_now(), secs)? {
+            return Ok(None);
+        }
+        self.award_session_xp(session_id, secs).map(Some)
+    }
+
+    /// XP of a closed session, with the streak bonus. The streak includes today, now that
+    /// the session is closed.
+    fn award_session_xp(&self, session_id: i64, secs: u64) -> anyhow::Result<u32> {
+        let streak = self.db.profile()?.streak_days;
+        let gained = xp::xp_for_session((secs / 60) as u32, streak);
+        if gained > 0 {
+            self.db.add_session_xp(session_id, gained)?;
+        }
+        Ok(gained)
+    }
+
+    /// At startup, closes the sessions a crash left open and gives them their XP.
+    pub fn close_orphan_sessions(&mut self) -> anyhow::Result<()> {
+        let closed = self.db.close_orphan_sessions()?;
+        for session in &closed {
+            self.award_session_xp(session.session_id, session.secs)?;
+        }
+        if !closed.is_empty() {
+            self.reload()?;
+            self.message = Some((
+                format!("{} session(s) interrompue(s) récupérée(s)", closed.len()),
+                MsgKind::Info,
+            ));
         }
         Ok(())
+    }
+
+    /// On quit, closes running sessions as if their apps had stopped.
+    fn end_all_sessions(&mut self) -> anyhow::Result<()> {
+        let sessions: Vec<_> = self.active_sessions.drain().collect();
+        for (_, session) in sessions {
+            self.finish_session(session.session_id, session.started.elapsed().as_secs())?;
+        }
+        Ok(())
+    }
+
+    /// After an app's XP changed (data already reloaded): animates its bar and the
+    /// profile's, and queues a level-up popup if a level went up.
+    fn on_xp_changed(&mut self, app_id: i64, app_before: u32, profile_before: u32, gained: u32) {
+        let Some(entry) = self.find_app_by_id(app_id) else { return };
+        let (name, app_after, app_level) = (entry.name.clone(), entry.total_xp, entry.level);
+        let frame = self.frame_count;
+
+        // Start from what is on screen, in case a previous animation is still running.
+        let from = self.xp_anims.get(&app_id).map_or(app_before, |a| a.value(frame));
+        self.xp_anims.insert(app_id, XpAnim { from, to: app_after, start: frame });
+        let from = self.profile_anim.map_or(profile_before, |a| a.value(frame));
+        self.profile_anim = Some(XpAnim { from, to: self.profile.total_xp, start: frame });
+
+        let went_up =
+            |before: u32, level: u32| (level > xp::level_from_total(before).0).then_some(level);
+        let level_up = LevelUp {
+            app: name,
+            app_level: went_up(app_before, app_level),
+            global_level: went_up(profile_before, self.profile.level),
+            gained,
+        };
+        if level_up.app_level.is_some() || level_up.global_level.is_some() {
+            self.pending_popups.push_back(Popup::LevelUp(level_up));
+            self.show_pending_popup();
+        }
+    }
+
+    /// Opens the next queued popup, unless the user is busy typing or answering another.
+    fn show_pending_popup(&mut self) {
+        if self.mode == Mode::Normal
+            && let Some(popup) = self.pending_popups.pop_front()
+        {
+            self.mode = Mode::Popup(popup);
+        }
+    }
+
+    /// `(level, xp within that level)` to display for an app, following its animation.
+    pub fn shown_app_xp(&self, entry: &AppEntry) -> (u32, u32) {
+        match self.xp_anims.get(&entry.id) {
+            Some(anim) => xp::level_from_total(anim.value(self.frame_count)),
+            None => (entry.level, entry.xp),
+        }
+    }
+
+    /// `(level, xp within that level)` to display for the profile, following its animation.
+    pub fn shown_profile_xp(&self) -> (u32, u32) {
+        match self.profile_anim {
+            Some(anim) => xp::level_from_total(anim.value(self.frame_count)),
+            None => (self.profile.level, self.profile.xp),
+        }
     }
 
     pub fn on_key(&mut self, key: KeyEvent) {
@@ -355,6 +492,12 @@ impl App {
                     }
                 }
             },
+            Popup::LevelUp(_) => {
+                if matches!(key.code, KeyCode::Enter | KeyCode::Esc | KeyCode::Char(' ')) {
+                    self.mode = Mode::Normal;
+                    self.show_pending_popup();
+                }
+            }
         }
     }
 
@@ -508,6 +651,19 @@ impl App {
                 };
                 self.mode = Mode::Popup(Popup::Form(form));
             }
+            Command::Xp { app, amount } => {
+                let (id, name, before) = {
+                    let entry = self.app_named(&app)?;
+                    (entry.id, entry.name.clone(), entry.total_xp)
+                };
+                let profile_before = self.profile.total_xp;
+                let after = xp::apply_delta(before, amount);
+                self.db.set_app_xp(id, after)?;
+                self.reload()?;
+                self.on_xp_changed(id, before, profile_before, after.saturating_sub(before));
+                let change = after as i64 - before as i64;
+                return success(format!("{name} : {change:+} XP (total {after})"));
+            }
             Command::Help { command: None } => self.screen = Screen::Help,
             Command::Help { command: Some(name) } => {
                 let help = find_help(&name).with_context(|| format!("commande inconnue : {name}"))?;
@@ -517,8 +673,12 @@ impl App {
         Ok(None)
     }
 
+    fn find_app_by_id(&self, id: i64) -> Option<&AppEntry> {
+        self.apps.iter().find(|a| a.id == id)
+    }
+
     fn app_name(&self, id: i64) -> Option<String> {
-        self.apps.iter().find(|a| a.id == id).map(|a| a.name.clone())
+        self.find_app_by_id(id).map(|a| a.name.clone())
     }
 
     /// Case-insensitive lookup by name.
@@ -890,9 +1050,13 @@ mod tests {
 
         app.on_session_end(steam, 42 * 60);
         assert!(app.active_sessions.is_empty());
-        assert_eq!(app.message.as_ref().unwrap().0, "Session terminée : Steam (42 min)");
+        // 42 XP for the minutes + 5 for a one-day streak (today).
+        assert_eq!(app.message.as_ref().unwrap().0, "Session terminée : Steam (42 min, +47 XP)");
         let entry = app.find_app("Steam").unwrap();
         assert_eq!(entry.total_secs, 42 * 60);
+        assert_eq!(entry.total_xp, 47);
+        assert_eq!(app.profile.total_xp, 47);
+        assert_eq!(app.mode, Mode::Normal); // no level reached
         assert!(entry.last_played.is_some());
     }
 
@@ -933,7 +1097,76 @@ mod tests {
         app.on_session_start(steam_id(&app));
         app.end_all_sessions().unwrap();
         assert!(app.active_sessions.is_empty());
-        assert_eq!(app.db.close_orphan_sessions().unwrap(), 0); // nothing left open
+        assert!(app.db.close_orphan_sessions().unwrap().is_empty()); // nothing left open
+    }
+
+    #[test]
+    fn orphan_sessions_earn_their_xp() {
+        let mut app = App::with_defaults();
+        let steam = steam_id(&app);
+        let id = app.db.start_session(steam, unix_now() - 600).unwrap();
+        app.db.checkpoint_session(id, 600).unwrap(); // then CmdBoard "crashed"
+
+        app.close_orphan_sessions().unwrap();
+        assert_eq!(app.find_app("Steam").unwrap().total_xp, 15); // 10 min + 5 streak
+        assert_eq!(message_kind(&app), Some(MsgKind::Info));
+    }
+
+    #[test]
+    fn long_session_levels_up_with_popup_and_animation() {
+        let mut app = App::with_defaults();
+        let steam = steam_id(&app);
+        app.on_session_start(steam);
+        app.on_session_end(steam, 3 * 3600); // 180 + 5 XP: Steam and profile reach level 2
+
+        let Mode::Popup(Popup::LevelUp(level_up)) = &app.mode else {
+            panic!("expected a level-up, got {:?}", app.mode);
+        };
+        assert_eq!(level_up.app, "Steam");
+        assert_eq!(level_up.app_level, Some(2));
+        assert_eq!(level_up.global_level, Some(2));
+        assert_eq!(level_up.gained, 185);
+
+        // The bars start from the old value and fill up over a few ticks.
+        let entry = app.find_app("Steam").unwrap().clone();
+        assert_eq!(app.shown_app_xp(&entry), (1, 0));
+        for _ in 0..XP_ANIM_FRAMES {
+            app.on_tick();
+        }
+        assert_eq!(app.shown_app_xp(&entry), (2, 85));
+        assert_eq!(app.shown_profile_xp(), (2, 85));
+        assert!(app.xp_anims.is_empty() && app.profile_anim.is_none());
+
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn level_up_waits_while_typing() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char(':'));
+        app.execute(Command::Xp { app: "Steam".into(), amount: 100 });
+        assert_eq!(app.mode, Mode::Command); // not interrupted
+        press(&mut app, KeyCode::Esc);
+        app.on_tick();
+        assert!(matches!(app.mode, Mode::Popup(Popup::LevelUp(_))));
+    }
+
+    #[test]
+    fn xp_command_adds_and_removes() {
+        let mut app = App::with_defaults();
+        run(&mut app, "xp windows terminal 250");
+        assert_eq!(app.find_app("Windows Terminal").unwrap().total_xp, 250);
+        assert!(matches!(
+            &app.mode,
+            Mode::Popup(Popup::LevelUp(LevelUp { app_level: Some(2), .. }))
+        ));
+        press(&mut app, KeyCode::Esc);
+
+        run(&mut app, "xp windows terminal -1000");
+        assert_eq!(app.message.as_ref().unwrap().0, "Windows Terminal : -250 XP (total 0)");
+        assert_eq!(app.find_app("Windows Terminal").unwrap().total_xp, 0);
+        assert_eq!(app.mode, Mode::Normal); // going down is no level-up
     }
 
     #[test]

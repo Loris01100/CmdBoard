@@ -98,7 +98,7 @@ pub enum Mode {
     Normal,
     Command,            // saisie après ':'
     Search,             // saisie après '/'
-    Popup(Popup),       // Confirm, Form ; LevelUp et RewardUnlocked aux étapes 8-9
+    Popup(Popup),       // Confirm, Form, LevelUp ; RewardUnlocked à l'étape 9
 }
 
 pub struct App {
@@ -176,10 +176,10 @@ pub enum Command {
     Add { name: String, target: String, category: Option<String> },  // catégorie créée si absente
     Move { app: String, category: String },                          // idem
     Help { command: Option<String> },
+    Xp { app: String, amount: i64 },   // ajuste l'XP à la main (négatif : en retire)
     Quit,
     // à venir
     Stats { app: Option<String> },
-    Xp { app: String, amount: i32 },
     Theme { name: Option<String> },   // sans argument : liste les thèmes
     Update,
 }
@@ -198,6 +198,7 @@ La table `COMMANDS` (`command/mod.rs`) décrit chaque commande (nom, alias, usag
 | `move` | `mv` | `move <app> [catégorie]` (sans catégorie : formulaire) |
 | `rm` | `delete` | `rm <app>` (confirmation, supprime aussi sessions et récompenses) |
 | `rmcat` | | `rmcat <catégorie>` (catégorie vide uniquement, confirmation) |
+| `xp` | | `xp <app> <montant>` (montant en dernier, signé ; l'XP ne descend pas sous 0) |
 | `help` | `h`, `?` | `help [commande]` |
 | `quit` | `q` | `quit` |
 
@@ -250,6 +251,8 @@ Découpage sur `;` puis exécution séquentielle. Variables `$1`, `$2` possibles
 - **Confirmation** : toute commande destructive (`RemoveApp`, `RemoveCategory`) porte un champ `confirmed`. Non confirmée, son exécution ouvre une popup qui contient la même commande avec `confirmed: true`. Touche `d` et `:rm` passent donc par la même confirmation.
 - **Formulaires** : `Form` = liste de champs (`TextInput`, partagé avec la ligne de commande) avec un champ focalisé. La validation produit une `Command` (`Add`, `Move`) exécutée par le chemin habituel. En cas d'erreur (champ requis, nom déjà pris, fichier introuvable), le formulaire reste ouvert et affiche l'erreur ; le premier champ requis vide reçoit le focus.
 - Formulaire d'ajout : Nom*, Cible*, Catégorie* (pré-remplie avec la catégorie sélectionnée), Process (vide : déduit de la cible, affiché en grisé « auto : X.exe »).
+- **Level-up** : ouverte quand une app ou le profil gagne un niveau (fin de session ou `:xp`). Bordure qui alterne de couleur à chaque `Tick`. `Entrée`, `Esc` ou `Espace` la ferment.
+- Une popup déclenchée par un événement (level-up) n'interrompt pas une saisie : elle attend dans une file (`pending_popups`) que l'utilisateur revienne en mode Normal.
 - Les popups se dessinent par-dessus l'écran courant (`Clear` puis cadre centré).
 
 ---
@@ -408,6 +411,10 @@ pub fn xp_to_next_level(level: u32) -> u32 {
 }
 ```
 
+- `streak_days` compte les jours actifs consécutifs, aujourd'hui inclus : il est calculé une fois la session fermée.
+- À la fin d'une session gardée (≥ 60 s), `xp_gained` est enregistré dans `sessions` et ajouté à `apps.total_xp`, dans une même transaction. Les sessions fermées à la sortie et les orphelines fermées au démarrage reçoivent aussi leur XP.
+- Le niveau d'une app vient de son `total_xp`, le niveau global de la somme des `total_xp`. Un level-up est détecté en comparant les niveaux avant et après.
+
 Les récompenses sont définies **en données** (table ou JSON), pas en dur :
 
 ```json
@@ -424,7 +431,7 @@ Idées : seuils d'heures cumulées par app, longue session, première session du
 
 1. À l'ajout d'une app, enregistrer `watch_exe`. Après chaque `reload()`, l'UI envoie la liste `(app_id, watch_exe)` au tracker.
 2. Le tracker interroge `sysinfo` toutes les 3 secondes, et tout de suite quand la liste change. Correspondance sur le nom de fichier de l'exe, sans tenir compte de la casse (`watch_exe` peut contenir un chemin complet). Une app tourne si au moins un de ses process tourne. Plusieurs apps peuvent surveiller le même exe.
-3. Process détecté : `SessionStarted`. L'UI insère une ligne `sessions` avec `ended_at = NULL`. Process disparu : `SessionEnded { secs }`, mesuré par le tracker. L'UI ferme la ligne (`ended_at`, `duration_s`). `xp_gained` reste à 0 jusqu'à l'étape 8.
+3. Process détecté : `SessionStarted`. L'UI insère une ligne `sessions` avec `ended_at = NULL`. Process disparu : `SessionEnded { secs }`, mesuré par le tracker. L'UI ferme la ligne (`ended_at`, `duration_s`). Le calcul de `xp_gained` suit la section 11.
 4. Les sessions de moins de 60 s (`MIN_SESSION_SECS`) sont supprimées au lieu d'être enregistrées.
 5. Toutes les 60 s, `on_tick` enregistre `duration_s` des sessions en cours (point de sauvegarde).
 6. Au démarrage, fermer les sessions orphelines (crash précédent) à leur dernier point de sauvegarde : `ended_at = started_at + duration_s`, ou suppression sous 60 s. Un crash perd donc au plus une minute.
@@ -439,7 +446,7 @@ Cas Steam / Epic / Battle.net : la commande de lancement (URI) et le process sur
 
 Pilotées par `Tick` et un compteur `frame_count` dans `App` :
 
-- Barre d'XP qui se remplit progressivement après une session.
+- Barre d'XP qui se remplit progressivement après une session (ou `:xp`) : `App` garde une `XpAnim { from, to, start }` par app et une pour le profil. Le rendu en déduit le total affiché à partir de `frame_count` (8 ticks, soit 2 s, avec ralenti en fin de course), en repassant par `level_from_total`, donc le niveau affiché monte en même temps que la barre.
 - Popup de level-up qui clignote ou change de couleur.
 - Spinner pendant l'import des raccourcis.
 - Chrono de session en direct dans le header.
@@ -580,4 +587,4 @@ CmdBoard est Windows uniquement (`.lnk`, `%APPDATA%`, URI des launchers). winget
 
 ## Prochaine étape
 
-Les étapes 1 à 7 sont faites. Suivante : **étape 8**. XP et niveaux : calcul de `xp_gained` à la fin de chaque session (`core/xp.rs`), mise à jour de `apps.total_xp`, barres d'XP animées par `Tick` et popup de level-up.
+Les étapes 1 à 8 sont faites. Suivante : **étape 9**. Récompenses : règles stockées en données (`rewards.rule`), évaluées après chaque session (`core/rewards.rs`), popup de déblocage (même file `pending_popups` que le level-up) et écran Rewards.

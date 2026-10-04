@@ -18,10 +18,11 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
 
     let header = Row::new(["Nom", "Niv", "XP", "Temps"]).style(theme.title);
     let rows = app.visible_apps().into_iter().map(|entry| {
-        let progress = xp::level_progress(entry.level, entry.xp);
+        let (level, xp) = app.shown_app_xp(entry);
+        let progress = xp::level_progress(level, xp);
         Row::new([
             Cell::from(entry.name.as_str()),
-            Cell::from(entry.level.to_string()),
+            Cell::from(level.to_string()),
             Cell::from(Span::styled(
                 xp_bar::text(progress, XP_BAR_WIDTH),
                 Style::new().fg(theme.xp_fill),
