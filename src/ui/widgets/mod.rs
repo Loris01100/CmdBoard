@@ -1,6 +1,7 @@
 pub mod app_table;
 pub mod command_line;
 pub mod category_list;
+pub mod popup;
 pub mod profile_panel;
 pub mod status_bar;
 pub mod xp_bar;

@@ -5,7 +5,7 @@ mod widgets;
 
 use ratatui::Frame;
 
-use crate::app::{App, Screen};
+use crate::app::{App, Mode, Screen};
 
 /// Pure rendering: reads `app`, never mutates it.
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -13,6 +13,9 @@ pub fn draw(frame: &mut Frame, app: &App) {
         Screen::Dashboard => screens::dashboard::draw(frame, app),
         Screen::Help => screens::help::draw(frame, app),
         Screen::Stats | Screen::Rewards => screens::coming_soon(frame, app),
+    }
+    if let Mode::Popup(popup) = &app.mode {
+        widgets::popup::render(frame, popup, app);
     }
 }
 
@@ -44,13 +47,13 @@ mod tests {
             buffer.content().iter().map(|c| c.symbol()).collect::<String>()
         };
         app.mode = Mode::Command;
-        "help add".chars().for_each(|c| app.command_line.insert(c));
+        "help add".chars().for_each(|c| app.command_line.input.insert(c));
         assert!(render(&app).contains(":help add"));
 
         let text = app.command_line.submit();
         app.mode = Mode::Normal;
         app.execute(crate::command::parser::parse(&text).unwrap());
-        assert!(render(&app).contains("add <nom> <cible>"));
+        assert!(render(&app).contains("add [<nom> <cible>"));
     }
 
     #[test]

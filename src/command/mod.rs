@@ -2,6 +2,7 @@ pub mod line;
 pub mod parser;
 
 use crate::app::{Focus, Screen};
+use crate::popup::FormKind;
 
 /// Every user action. Keys and the `:` command line (and later aliases) are translated
 /// into a `Command`, then run by `App::execute`.
@@ -15,10 +16,34 @@ pub enum Command {
     ToggleFocus,
 
     // actions, also available from the command line
-    Launch { app: String },
-    Add { name: String, target: String, category: Option<String> },
-    Move { app: String, category: String },
-    Help { command: Option<String> },
+    Launch {
+        app: String,
+    },
+    /// `watch_exe: None` derives the process from the target when it is an exe.
+    Add {
+        name: String,
+        target: String,
+        category: Option<String>,
+        watch_exe: Option<String>,
+    },
+    Move {
+        app: String,
+        category: String,
+    },
+    /// Destructive: without `confirmed`, opens a confirmation popup first.
+    RemoveApp {
+        app: String,
+        confirmed: bool,
+    },
+    /// Only empty categories can be removed.
+    RemoveCategory {
+        category: String,
+        confirmed: bool,
+    },
+    OpenForm(FormKind),
+    Help {
+        command: Option<String>,
+    },
     Quit,
 }
 
@@ -40,14 +65,26 @@ pub const COMMANDS: &[CommandHelp] = &[
     CommandHelp {
         name: "add",
         aliases: &[],
-        usage: "add <nom> <cible> [catégorie]",
-        summary: "Ajoute une app (exe ou URI) dans la catégorie donnée, sinon la catégorie sélectionnée",
+        usage: "add [<nom> <cible> [catégorie]]",
+        summary: "Ajoute une app (exe ou URI). Sans argument : ouvre le formulaire",
     },
     CommandHelp {
         name: "move",
         aliases: &["mv"],
-        usage: "move <app> <catégorie>",
-        summary: "Déplace une app dans une autre catégorie",
+        usage: "move <app> [catégorie]",
+        summary: "Déplace une app. Sans catégorie : ouvre le formulaire",
+    },
+    CommandHelp {
+        name: "rm",
+        aliases: &["delete"],
+        usage: "rm <app>",
+        summary: "Supprime une app et son historique, après confirmation",
+    },
+    CommandHelp {
+        name: "rmcat",
+        aliases: &[],
+        usage: "rmcat <catégorie>",
+        summary: "Supprime une catégorie vide, après confirmation",
     },
     CommandHelp {
         name: "help",

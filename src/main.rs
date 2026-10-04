@@ -2,7 +2,9 @@ mod app;
 mod command;
 mod core;
 mod launcher;
+mod popup;
 mod storage;
+mod text_input;
 mod ui;
 
 use app::App;

@@ -7,6 +7,7 @@ use ratatui::{
 
 use crate::command::{Command, find_help, line::CommandLine, parser};
 use crate::launcher::launch;
+use crate::popup::{Form, FormKind, Popup};
 use crate::storage::{
     Database,
     models::{AppEntry, Category, NewApp, Profile},
@@ -32,12 +33,14 @@ impl Screen {
     }
 }
 
-/// How keys are interpreted. Search and popups come in steps 6 and 10.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// How keys are interpreted. Search comes in step 10.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
     Normal,
     /// Typing after `:`.
     Command,
+    /// A confirmation or form captures every key.
+    Popup(Popup),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,9 +135,10 @@ impl App {
             self.execute(Command::Quit);
             return;
         }
-        match self.mode {
+        match &self.mode {
             Mode::Normal => self.on_normal_key(key),
             Mode::Command => self.on_command_key(key),
+            Mode::Popup(_) => self.on_popup_key(key),
         }
     }
 
@@ -162,10 +166,25 @@ impl App {
             KeyCode::Tab | KeyCode::BackTab => Command::ToggleFocus,
             KeyCode::Left | KeyCode::Char('h') => Command::FocusPanel(Focus::Categories),
             KeyCode::Right | KeyCode::Char('l') => Command::FocusPanel(Focus::Apps),
-            KeyCode::Enter if self.screen == Screen::Dashboard => match self.focus {
+            _ if self.screen != Screen::Dashboard => return None,
+            KeyCode::Enter => match self.focus {
                 Focus::Categories => Command::FocusPanel(Focus::Apps),
                 Focus::Apps => Command::Launch {
                     app: self.selected_app()?.name.clone(),
+                },
+            },
+            KeyCode::Char('a') => Command::OpenForm(FormKind::AddApp),
+            KeyCode::Char('m') => Command::OpenForm(FormKind::MoveApp {
+                app: self.selected_app()?.name.clone(),
+            }),
+            KeyCode::Char('d') => match self.focus {
+                Focus::Categories => Command::RemoveCategory {
+                    category: self.selected_category()?.name.clone(),
+                    confirmed: false,
+                },
+                Focus::Apps => Command::RemoveApp {
+                    app: self.selected_app()?.name.clone(),
+                    confirmed: false,
                 },
             },
             _ => return None,
@@ -189,17 +208,67 @@ impl App {
             }
             // Backspace on an empty line leaves command mode, like Vim.
             KeyCode::Backspace if line.input.is_empty() => self.mode = Mode::Normal,
-            KeyCode::Backspace => line.backspace(),
-            KeyCode::Delete => line.delete(),
-            KeyCode::Left => line.left(),
-            KeyCode::Right => line.right(),
-            KeyCode::Home => line.home(),
-            KeyCode::End => line.end(),
             KeyCode::Up => line.history_prev(),
             KeyCode::Down => line.history_next(),
-            KeyCode::Char(c) => line.insert(c),
-            _ => {}
+            _ => {
+                line.input.handle_key(key);
+            }
         }
+    }
+
+    fn on_popup_key(&mut self, key: KeyEvent) {
+        let Mode::Popup(popup) = &mut self.mode else { return };
+        match popup {
+            Popup::Confirm { command, .. } => match key.code {
+                KeyCode::Enter | KeyCode::Char('o' | 'O' | 'y' | 'Y') => {
+                    let command = command.clone();
+                    self.mode = Mode::Normal;
+                    self.execute(command);
+                }
+                KeyCode::Esc | KeyCode::Char('n' | 'N') => self.cancel_popup(),
+                _ => {}
+            },
+            Popup::Form(form) => match key.code {
+                KeyCode::Esc => self.cancel_popup(),
+                KeyCode::Tab | KeyCode::Down => form.next_field(),
+                KeyCode::BackTab | KeyCode::Up => form.prev_field(),
+                KeyCode::Enter if !form.is_last_field() => form.next_field(),
+                KeyCode::Enter => self.submit_form(),
+                _ => {
+                    if form.focused_input().handle_key(key) {
+                        form.error = None;
+                    }
+                }
+            },
+        }
+    }
+
+    /// Runs the form's command. On error the form stays open and shows it.
+    fn submit_form(&mut self) {
+        let Mode::Popup(Popup::Form(form)) = &mut self.mode else { return };
+        let command = match form.to_command() {
+            Ok(command) => command,
+            Err(e) => {
+                form.error = Some(e);
+                return;
+            }
+        };
+        match self.run_command(command) {
+            Ok(message) => {
+                self.mode = Mode::Normal;
+                self.message = message;
+            }
+            Err(e) => {
+                if let Mode::Popup(Popup::Form(form)) = &mut self.mode {
+                    form.error = Some(format!("{e:#}"));
+                }
+            }
+        }
+    }
+
+    fn cancel_popup(&mut self) {
+        self.mode = Mode::Normal;
+        self.message = Some(("Annulé".into(), MsgKind::Info));
     }
 
     /// Single execution path for every `Command`. Shows the outcome as a message.
@@ -231,7 +300,7 @@ impl App {
                 launch::launch(&entry.launch_target)?;
                 return success(format!("Lancé : {}", entry.name));
             }
-            Command::Add { name, target, category } => {
+            Command::Add { name, target, category, watch_exe } => {
                 if self.find_app(&name).is_some() {
                     bail!("« {name} » existe déjà");
                 }
@@ -246,7 +315,7 @@ impl App {
                     }
                 };
                 let id = self.db.add_app(&NewApp {
-                    watch_exe: launch::watch_exe_for(&target),
+                    watch_exe: watch_exe.or_else(|| launch::watch_exe_for(&target)),
                     name: name.clone(),
                     launch_target: target,
                     category_id,
@@ -266,6 +335,63 @@ impl App {
                 self.select_app(id);
                 let category = &self.selected_category().map_or(category, |c| c.name.clone());
                 return success(format!("{name} → {category}{}", created_note(created)));
+            }
+            Command::RemoveApp { app, confirmed } => {
+                let (id, name) = {
+                    let entry = self.app_named(&app)?;
+                    (entry.id, entry.name.clone())
+                };
+                if !confirmed {
+                    self.mode = Mode::Popup(Popup::Confirm {
+                        message: format!(
+                            "Supprimer « {name} » ? Son temps de jeu, son XP et ses \
+                             récompenses seront perdus."
+                        ),
+                        command: Command::RemoveApp { app: name, confirmed: true },
+                    });
+                    return Ok(None);
+                }
+                self.db.delete_app(id)?;
+                self.reload()?;
+                return success(format!("Supprimé : {name}"));
+            }
+            Command::RemoveCategory { category, confirmed } => {
+                let (id, name) = {
+                    let found = self.category_named(&category)?;
+                    (found.id, found.name.clone())
+                };
+                let count = self.app_count(id);
+                if count > 0 {
+                    bail!("« {name} » contient encore {count} app(s) : déplacez-les ou supprimez-les d'abord");
+                }
+                if !confirmed {
+                    self.mode = Mode::Popup(Popup::Confirm {
+                        message: format!("Supprimer la catégorie « {name} » ?"),
+                        command: Command::RemoveCategory { category: name, confirmed: true },
+                    });
+                    return Ok(None);
+                }
+                self.db.delete_category(id)?;
+                self.reload()?;
+                return success(format!("Catégorie supprimée : {name}"));
+            }
+            Command::OpenForm(kind) => {
+                let form = match kind {
+                    FormKind::AddApp => {
+                        let category = self.selected_category().map_or("", |c| c.name.as_str());
+                        Form::add_app(category)
+                    }
+                    FormKind::MoveApp { app } => {
+                        let entry = self.app_named(&app)?;
+                        let category = self
+                            .categories
+                            .iter()
+                            .find(|c| c.id == entry.category_id)
+                            .map_or("", |c| c.name.as_str());
+                        Form::move_app(&entry.name, category)
+                    }
+                };
+                self.mode = Mode::Popup(Popup::Form(form));
             }
             Command::Help { command: None } => self.screen = Screen::Help,
             Command::Help { command: Some(name) } => {
@@ -287,12 +413,19 @@ impl App {
             .with_context(|| format!("app inconnue : {name}"))
     }
 
+    fn category_named(&self, name: &str) -> anyhow::Result<&Category> {
+        let lower = name.to_lowercase();
+        self.categories
+            .iter()
+            .find(|c| c.name.to_lowercase() == lower)
+            .with_context(|| format!("catégorie inconnue : {name}"))
+    }
+
     /// Id of the category with this name (ignoring case), created if missing.
     fn category_or_create(&mut self, name: &str) -> anyhow::Result<(i64, bool)> {
-        let lower = name.to_lowercase();
-        match self.categories.iter().find(|c| c.name.to_lowercase() == lower) {
-            Some(category) => Ok((category.id, false)),
-            None => Ok((self.db.add_category(name)?, true)),
+        match self.category_named(name) {
+            Ok(category) => Ok((category.id, false)),
+            Err(_) => Ok((self.db.add_category(name)?, true)),
         }
     }
 
@@ -512,7 +645,115 @@ mod tests {
         run(&mut app, "help add");
         press(&mut app, KeyCode::Char(':'));
         press(&mut app, KeyCode::Up);
-        assert_eq!(app.command_line.input, "help add");
+        assert_eq!(app.command_line.input.text(), "help add");
+    }
+
+    fn type_text(app: &mut App, text: &str) {
+        text.chars().for_each(|c| press(app, KeyCode::Char(c)));
+    }
+
+    fn form(app: &App) -> &Form {
+        match &app.mode {
+            Mode::Popup(Popup::Form(form)) => form,
+            other => panic!("expected a form, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn add_form_adds_app() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char('a'));
+        assert_eq!(form(&app).fields[2].input.text(), "Jeux"); // selected category
+
+        type_text(&mut app, "Paint");
+        press(&mut app, KeyCode::Enter);
+        type_text(&mut app, "mspaint.exe");
+        press(&mut app, KeyCode::Tab);
+        press(&mut app, KeyCode::Tab);
+        press(&mut app, KeyCode::Enter); // last field: submit
+
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(message_kind(&app), Some(MsgKind::Success));
+        let paint = app.selected_app().unwrap();
+        assert_eq!(paint.name, "Paint");
+        assert_eq!(paint.watch_exe.as_deref(), Some("mspaint.exe"));
+    }
+
+    #[test]
+    fn form_keeps_errors_inside() {
+        let mut app = App::with_defaults();
+        run(&mut app, "add");
+        for _ in 0..4 {
+            press(&mut app, KeyCode::Enter); // empty name: submit fails on the last field
+        }
+        assert_eq!(form(&app).error.as_deref(), Some("Nom : champ requis"));
+        assert_eq!(form(&app).focused, 0);
+
+        type_text(&mut app, "steam"); // already exists, ignoring case
+        assert_eq!(form(&app).error, None); // typing clears the error
+        press(&mut app, KeyCode::Tab);
+        type_text(&mut app, "x.exe");
+        press(&mut app, KeyCode::BackTab);
+        press(&mut app, KeyCode::BackTab); // wraps to the last field
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(form(&app).error.as_deref(), Some("« steam » existe déjà"));
+
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(app.apps.len(), 5);
+    }
+
+    #[test]
+    fn move_form_moves_selected_app() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char('m'));
+        assert_eq!(form(&app).fields[0].input.text(), "Jeux");
+        for _ in 0..4 {
+            press(&mut app, KeyCode::Backspace);
+        }
+        type_text(&mut app, "Outils");
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.selected_category().unwrap().name, "Outils");
+        assert_eq!(app.selected_app().unwrap().name, "Steam");
+    }
+
+    #[test]
+    fn delete_app_asks_first() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Tab);
+        press(&mut app, KeyCode::Char('d'));
+        assert!(matches!(app.mode, Mode::Popup(Popup::Confirm { .. })));
+        press(&mut app, KeyCode::Char('n'));
+        assert_eq!(app.apps.len(), 5);
+
+        press(&mut app, KeyCode::Char('d'));
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.apps.len(), 4);
+        assert!(app.find_app("Steam").is_none());
+        assert_eq!(app.selected_app().map(|a| a.name.as_str()), None); // Jeux is empty now
+    }
+
+    #[test]
+    fn rm_from_command_line_also_asks() {
+        let mut app = App::with_defaults();
+        run(&mut app, "rm bloc-notes");
+        assert!(matches!(app.mode, Mode::Popup(Popup::Confirm { .. })));
+        press(&mut app, KeyCode::Char('o'));
+        assert!(app.find_app("Bloc-notes").is_none());
+    }
+
+    #[test]
+    fn only_empty_categories_can_be_removed() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char('d')); // "Jeux" holds Steam
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(message_kind(&app), Some(MsgKind::Error));
+
+        run(&mut app, "mv steam Dev");
+        run(&mut app, "rmcat jeux");
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(message_kind(&app), Some(MsgKind::Success));
+        assert!(app.categories.iter().all(|c| c.name != "Jeux"));
     }
 
     #[test]

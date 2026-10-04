@@ -34,6 +34,8 @@ src/
 ├── launcher/
 │   ├── launch.rs        // lancement (exe, URI)
 │   └── scan.rs          // import des .lnk
+├── popup.rs             // état des popups : confirmation, formulaires
+├── text_input.rs        // champ texte éditable (ligne de commande, formulaires)
 ├── tracker.rs           // thread de suivi des sessions (sysinfo)
 ├── update.rs            // vérification et installation des mises à jour (self_update)
 └── ui/
@@ -96,7 +98,7 @@ pub enum Mode {
     Normal,
     Command,            // saisie après ':'
     Search,             // saisie après '/'
-    Popup(PopupKind),   // LevelUp, RewardUnlocked, Confirm, Form
+    Popup(Popup),       // Confirm, Form ; LevelUp et RewardUnlocked aux étapes 8-9
 }
 
 pub struct App {
@@ -192,8 +194,10 @@ La table `COMMANDS` (`command/mod.rs`) décrit chaque commande (nom, alias, usag
 | Commande | Alias | Usage |
 |---|---|---|
 | `launch` | `l` | `launch <app>` (le reste de la ligne, guillemets inutiles) |
-| `add` | | `add <nom> <cible> [catégorie]` (sans catégorie : la catégorie sélectionnée) |
-| `move` | `mv` | `move <app> <catégorie>` |
+| `add` | | `add [<nom> <cible> [catégorie]]` (sans catégorie : la sélectionnée ; sans argument : formulaire) |
+| `move` | `mv` | `move <app> [catégorie]` (sans catégorie : formulaire) |
+| `rm` | `delete` | `rm <app>` (confirmation, supprime aussi sessions et récompenses) |
+| `rmcat` | | `rmcat <catégorie>` (catégorie vide uniquement, confirmation) |
 | `help` | `h`, `?` | `help [commande]` |
 | `quit` | `q` | `quit` |
 
@@ -233,10 +237,20 @@ Découpage sur `;` puis exécution séquentielle. Variables `$1`, `$2` possibles
 | Normal | `/` | Recherche rapide |
 | Normal | `1 2 3 4` | Changer d'écran |
 | Normal | `?` | Aide |
-| Normal | `a` / `d` / `m` | Ajouter / supprimer / déplacer |
+| Normal | `a` / `m` | Formulaire d'ajout / de déplacement de l'app sélectionnée |
+| Normal | `d` | Supprimer l'app sélectionnée, ou la catégorie si le focus y est (vide uniquement) |
 | Command | `Enter` / `Esc` | Valider / annuler |
 | Command | `↑↓` / `Tab` | Historique / autocomplétion |
-| Popup | `Enter` / `Esc` | Fermer ou confirmer |
+| Popup (confirmation) | `Enter` `o` `y` / `Esc` `n` | Confirmer / annuler |
+| Popup (formulaire) | `Tab` `↓` / `Shift-Tab` `↑` | Champ suivant / précédent |
+| Popup (formulaire) | `Enter` / `Esc` | Champ suivant, valider sur le dernier / annuler |
+
+### Popups (`src/popup.rs`, rendu dans `ui/widgets/popup.rs`)
+
+- **Confirmation** : toute commande destructive (`RemoveApp`, `RemoveCategory`) porte un champ `confirmed`. Non confirmée, son exécution ouvre une popup qui contient la même commande avec `confirmed: true`. Touche `d` et `:rm` passent donc par la même confirmation.
+- **Formulaires** : `Form` = liste de champs (`TextInput`, partagé avec la ligne de commande) avec un champ focalisé. La validation produit une `Command` (`Add`, `Move`) exécutée par le chemin habituel. En cas d'erreur (champ requis, nom déjà pris, fichier introuvable), le formulaire reste ouvert et affiche l'erreur ; le premier champ requis vide reçoit le focus.
+- Formulaire d'ajout : Nom*, Cible*, Catégorie* (pré-remplie avec la catégorie sélectionnée), Process (vide : déduit de la cible, affiché en grisé « auto : X.exe »).
+- Les popups se dessinent par-dessus l'écran courant (`Clear` puis cadre centré).
 
 ---
 
@@ -562,4 +576,4 @@ CmdBoard est Windows uniquement (`.lnk`, `%APPDATA%`, URI des launchers). winget
 
 ## Prochaine étape
 
-Les étapes 1 à 5 sont faites. Suivante : **étape 6**. Popups et formulaires : `Mode::Popup`, formulaire d'ajout d'app (touche `a`), déplacement (`m`), et suppression (`d`) derrière une popup de confirmation, qui branche enfin `delete_app` / `delete_category` de `storage/`.
+Les étapes 1 à 6 sont faites. Suivante : **étape 7**. Tracker de sessions : thread d'événements (clavier + `Tick` ~250 ms) qui remplace l'`event::read` bloquant, thread tracker `sysinfo` qui surveille les `watch_exe`, enregistrement des sessions, fermeture des sessions orphelines au démarrage, et chrono en direct dans le header.

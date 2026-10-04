@@ -6,21 +6,28 @@ use ratatui::{
 };
 
 use crate::app::{App, Mode, Screen};
+use crate::popup::Popup;
 
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let hints: &[(&str, &str)] = match (app.mode, app.screen) {
+    let hints: &[(&str, &str)] = match (&app.mode, app.screen) {
         (Mode::Command, _) => &[
             ("Entrée", "valider"),
             ("Esc", "annuler"),
             ("↑↓", "historique"),
         ],
+        (Mode::Popup(Popup::Confirm { .. }), _) => &[("Entrée/o", "confirmer"), ("Esc/n", "annuler")],
+        (Mode::Popup(Popup::Form(_)), _) => &[
+            ("Tab ↑↓", "champ"),
+            ("Entrée", "suivant / valider"),
+            ("Esc", "annuler"),
+        ],
         (Mode::Normal, Screen::Dashboard) => &[
             ("j/k", "naviguer"),
-            ("Tab ←→", "panneau"),
+            ("Tab", "panneau"),
             ("Entrée", "lancer"),
+            ("a/m/d", "ajouter/déplacer/suppr."),
             (":", "commande"),
-            ("1-4", "écrans"),
             ("q", "quitter"),
         ],
         (Mode::Normal, _) => &[(":", "commande"), ("1-4", "écrans"), ("q", "quitter")],

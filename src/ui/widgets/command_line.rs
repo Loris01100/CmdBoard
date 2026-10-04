@@ -12,17 +12,17 @@ const PLACEHOLDER: &str = "launch <app>, add, move, help…";
 
 /// Rows the command area needs: a bordered box while typing, one line otherwise.
 pub fn height(app: &App) -> u16 {
-    match app.mode {
+    match &app.mode {
         Mode::Command => 3,
-        Mode::Normal => 1,
+        Mode::Normal | Mode::Popup(_) => 1,
     }
 }
 
 /// The `:` input box while typing a command, otherwise the last message.
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
-    match app.mode {
+    match &app.mode {
         Mode::Command => render_input(frame, area, app),
-        Mode::Normal => render_message(frame, area, app),
+        Mode::Normal | Mode::Popup(_) => render_message(frame, area, app),
     }
 }
 
@@ -35,13 +35,10 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    let line = &app.command_line;
-    // Room left after the ':' prompt; scroll so the cursor always stays visible.
-    let room = (inner.width - 1) as usize;
-    let offset = line.cursor.saturating_sub(room - 1);
-    let visible: String = line.input.chars().skip(offset).take(room).collect();
-
-    let text = if line.input.is_empty() {
+    let input = &app.command_line.input;
+    // Room left after the ':' prompt.
+    let (visible, cursor) = input.view((inner.width - 1) as usize);
+    let text = if input.is_empty() {
         Span::styled(PLACEHOLDER, theme.muted())
     } else {
         Span::raw(visible)
@@ -50,8 +47,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(prompt), inner);
 
     // Placing the terminal cursor is not a state change.
-    let x = inner.x + 1 + (line.cursor - offset) as u16;
-    frame.set_cursor_position(Position::new(x, inner.y));
+    frame.set_cursor_position(Position::new(inner.x + 1 + cursor as u16, inner.y));
 }
 
 fn render_message(frame: &mut Frame, area: Rect, app: &App) {
@@ -92,7 +88,7 @@ mod tests {
         app.mode = Mode::Command;
         assert!(render_box(&app, 40).0[1].contains(PLACEHOLDER));
 
-        "launch Steam".chars().for_each(|c| app.command_line.insert(c));
+        "launch Steam".chars().for_each(|c| app.command_line.input.insert(c));
         let (rows, cursor) = render_box(&app, 40);
         assert!(rows[0].contains("Commande"));
         assert!(rows[1].contains(":launch Steam"));
@@ -104,7 +100,7 @@ mod tests {
         let mut app = App::with_defaults();
         app.mode = Mode::Command;
         let long = format!("add Jeu {}end", "x".repeat(40));
-        long.chars().for_each(|c| app.command_line.insert(c));
+        long.chars().for_each(|c| app.command_line.input.insert(c));
         let (rows, cursor) = render_box(&app, 20);
         assert!(rows[1].contains("end"));
         assert!(cursor.x < 19); // inside the right border

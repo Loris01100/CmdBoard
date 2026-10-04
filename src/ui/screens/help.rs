@@ -16,6 +16,7 @@ const KEYS: &[(&str, &str)] = &[
     ("j/k ↑↓", "naviguer"),
     ("Tab ←→ h/l", "changer de panneau"),
     ("Entrée", "lancer l'app sélectionnée"),
+    ("a / m / d", "ajouter / déplacer / supprimer (app ou catégorie vide)"),
     (":", "ligne de commande (↑↓ historique, Esc annuler)"),
     ("1 2 3 4", "Dashboard, Stats, Récompenses, Aide"),
     ("q  Ctrl-C", "quitter"),

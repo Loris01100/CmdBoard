@@ -1,6 +1,7 @@
 //! Text typed after `:` -> `Command`.
 
 use super::{Command, find_help};
+use crate::popup::FormKind;
 
 pub fn parse(input: &str) -> Result<Command, String> {
     let args = split_args(input)?;
@@ -11,18 +12,30 @@ pub fn parse(input: &str) -> Result<Command, String> {
         .ok_or_else(|| format!("Commande inconnue : {name} (:help pour la liste)"))?;
 
     match (help.name, rest) {
-        // `launch` takes the rest of the line, so names with spaces need no quotes.
+        // Single-argument commands take the rest of the line, so names need no quotes.
         ("launch", [_, ..]) => Ok(Command::Launch { app: rest.join(" ") }),
+        ("rm", [_, ..]) => Ok(Command::RemoveApp {
+            app: rest.join(" "),
+            confirmed: false,
+        }),
+        ("rmcat", [_, ..]) => Ok(Command::RemoveCategory {
+            category: rest.join(" "),
+            confirmed: false,
+        }),
+        ("add", []) => Ok(Command::OpenForm(FormKind::AddApp)),
         ("add", [name, target]) => Ok(Command::Add {
             name: name.clone(),
             target: target.clone(),
             category: None,
+            watch_exe: None,
         }),
         ("add", [name, target, category]) => Ok(Command::Add {
             name: name.clone(),
             target: target.clone(),
             category: Some(category.clone()),
+            watch_exe: None,
         }),
+        ("move", [app]) => Ok(Command::OpenForm(FormKind::MoveApp { app: app.clone() })),
         ("move", [app, category]) => Ok(Command::Move {
             app: app.clone(),
             category: category.clone(),
@@ -88,6 +101,7 @@ mod tests {
                     name: s("Code"),
                     target: s(r"C:\Program Files\VS Code\Code.exe"),
                     category: None,
+                    watch_exe: None,
                 },
             ),
             (
@@ -96,11 +110,22 @@ mod tests {
                     name: s("Hollow Knight"),
                     target: s("steam://rungameid/367520"),
                     category: Some(s("Jeux")),
+                    watch_exe: None,
                 },
             ),
             (
                 r#"mv "Bloc-notes" Dev"#,
                 Command::Move { app: s("Bloc-notes"), category: s("Dev") },
+            ),
+            ("add", Command::OpenForm(FormKind::AddApp)),
+            ("move Hades", Command::OpenForm(FormKind::MoveApp { app: s("Hades") })),
+            (
+                "rm Windows Terminal",
+                Command::RemoveApp { app: s("Windows Terminal"), confirmed: false },
+            ),
+            (
+                "rmcat Jeux",
+                Command::RemoveCategory { category: s("Jeux"), confirmed: false },
             ),
             ("help", Command::Help { command: None }),
             ("? add", Command::Help { command: Some(s("add")) }),
@@ -118,8 +143,9 @@ mod tests {
             ("   ", "Commande vide"),
             ("fly away", "Commande inconnue : fly (:help pour la liste)"),
             ("launch", "Usage : launch <app>"),
-            ("add Code", "Usage : add <nom> <cible> [catégorie]"),
-            ("move Hades", "Usage : move <app> <catégorie>"),
+            ("add Code", "Usage : add [<nom> <cible> [catégorie]]"),
+            ("move", "Usage : move <app> [catégorie]"),
+            ("rm", "Usage : rm <app>"),
             ("quit now", "Usage : quit"),
             (r#"launch "Hades"#, "Guillemet non fermé"),
         ];

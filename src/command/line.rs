@@ -1,55 +1,18 @@
-//! Editable text of the `:` command line, with its history.
+//! The `:` command line: its input plus the history.
+
+use crate::text_input::TextInput;
 
 const HISTORY_LIMIT: usize = 100;
 
 #[derive(Debug, Default)]
 pub struct CommandLine {
-    pub input: String,
-    /// Cursor position, in characters.
-    pub cursor: usize,
+    pub input: TextInput,
     history: Vec<String>,
     /// Entry currently recalled with Up/Down; `None` while typing a new line.
     history_idx: Option<usize>,
 }
 
 impl CommandLine {
-    pub fn insert(&mut self, c: char) {
-        let at = self.byte_index();
-        self.input.insert(at, c);
-        self.cursor += 1;
-    }
-
-    pub fn backspace(&mut self) {
-        if self.cursor > 0 {
-            self.cursor -= 1;
-            let at = self.byte_index();
-            self.input.remove(at);
-        }
-    }
-
-    pub fn delete(&mut self) {
-        if self.cursor < self.len() {
-            let at = self.byte_index();
-            self.input.remove(at);
-        }
-    }
-
-    pub fn left(&mut self) {
-        self.cursor = self.cursor.saturating_sub(1);
-    }
-
-    pub fn right(&mut self) {
-        self.cursor = (self.cursor + 1).min(self.len());
-    }
-
-    pub fn home(&mut self) {
-        self.cursor = 0;
-    }
-
-    pub fn end(&mut self) {
-        self.cursor = self.len();
-    }
-
     /// Recalls the previous (older) history entry.
     pub fn history_prev(&mut self) {
         if self.history.is_empty() {
@@ -73,8 +36,7 @@ impl CommandLine {
 
     /// Takes the typed line, records it in the history and clears the input.
     pub fn submit(&mut self) -> String {
-        let line = std::mem::take(&mut self.input);
-        self.cursor = 0;
+        let line = self.input.take();
         self.history_idx = None;
         let trimmed = line.trim();
         if !trimmed.is_empty() && self.history.last().map(String::as_str) != Some(trimmed) {
@@ -88,26 +50,14 @@ impl CommandLine {
 
     /// Abandons the line being typed; the history is kept.
     pub fn clear(&mut self) {
-        self.input.clear();
-        self.cursor = 0;
+        self.input.take();
         self.history_idx = None;
     }
 
     fn recall(&mut self, idx: Option<usize>) {
         self.history_idx = idx;
-        self.input = idx.map(|i| self.history[i].clone()).unwrap_or_default();
-        self.cursor = self.len();
-    }
-
-    fn len(&self) -> usize {
-        self.input.chars().count()
-    }
-
-    fn byte_index(&self) -> usize {
-        self.input
-            .char_indices()
-            .nth(self.cursor)
-            .map_or(self.input.len(), |(i, _)| i)
+        let text = idx.map_or("", |i| self.history[i].as_str()).to_string();
+        self.input.set(&text);
     }
 }
 
@@ -115,57 +65,37 @@ impl CommandLine {
 mod tests {
     use super::*;
 
-    fn typed(text: &str) -> CommandLine {
-        let mut line = CommandLine::default();
-        text.chars().for_each(|c| line.insert(c));
-        line
-    }
-
-    #[test]
-    fn edits_around_the_cursor_with_accents() {
-        let mut line = typed("catégrie");
-        line.left();
-        line.left();
-        line.left();
-        line.insert('o');
-        assert_eq!(line.input, "catégorie");
-        line.home();
-        line.delete();
-        line.end();
-        line.backspace();
-        assert_eq!(line.input, "atégori");
-        assert_eq!(line.cursor, 7);
+    fn type_and_submit(line: &mut CommandLine, text: &str) {
+        text.chars().for_each(|c| line.input.insert(c));
+        line.submit();
     }
 
     #[test]
     fn history_walks_both_ways() {
-        let mut line = typed("launch a");
-        line.submit();
-        "launch b".chars().for_each(|c| line.insert(c));
-        line.submit();
+        let mut line = CommandLine::default();
+        type_and_submit(&mut line, "launch a");
+        type_and_submit(&mut line, "launch b");
 
         line.history_prev();
-        assert_eq!(line.input, "launch b");
+        assert_eq!(line.input.text(), "launch b");
         line.history_prev();
         line.history_prev(); // stays on the oldest
-        assert_eq!(line.input, "launch a");
+        assert_eq!(line.input.text(), "launch a");
         line.history_next();
-        assert_eq!(line.input, "launch b");
+        assert_eq!(line.input.text(), "launch b");
         line.history_next();
-        assert_eq!(line.input, "");
+        assert_eq!(line.input.text(), "");
     }
 
     #[test]
     fn history_skips_blanks_and_repeats() {
-        let mut line = typed("  ");
-        line.submit();
-        for _ in 0..2 {
-            "help".chars().for_each(|c| line.insert(c));
-            line.submit();
-        }
+        let mut line = CommandLine::default();
+        type_and_submit(&mut line, "  ");
+        type_and_submit(&mut line, "help");
+        type_and_submit(&mut line, "help");
         line.history_prev();
         line.history_prev();
-        assert_eq!(line.input, "help");
+        assert_eq!(line.input.text(), "help");
         assert_eq!(line.history.len(), 1);
     }
 }
