@@ -1,4 +1,4 @@
-//! Popup state: confirmations, forms and level-ups. Rendering lives in `ui/widgets/popup.rs`.
+//! Popup state: confirmations, forms, level-ups and unlocked rewards. Rendering lives in `ui/widgets/popup.rs`.
 
 use crate::command::Command;
 use crate::launcher::launch;
@@ -10,6 +10,16 @@ pub enum Popup {
     Confirm { message: String, command: Command },
     Form(Form),
     LevelUp(LevelUp),
+    RewardUnlocked(RewardUnlocked),
+}
+
+/// A reward a session just unlocked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RewardUnlocked {
+    pub name: String,
+    pub description: String,
+    /// App it was unlocked for, `None` for a global reward.
+    pub app: Option<String>,
 }
 
 /// An app, the global profile, or both reached a new level.

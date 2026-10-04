@@ -73,13 +73,15 @@ wix/main.wxs                    // installeur MSI, généré par `dist init`
 categories(id, name, color, icon)
 apps(id, name, launch_target, watch_exe, icon, category_id, total_xp)
 sessions(id, app_id, started_at, ended_at, duration_s, xp_gained)
-rewards(id, app_id NULL, code, name, description, rule)
-unlocked_rewards(reward_id, unlocked_at, session_id)
+rewards(id, app_id NULL, code, name, description, rule, scope)
+unlocked_rewards(id, reward_id, app_id NULL, unlocked_at, session_id)
 ```
 
 - `launch_target` : chemin ou URI de lancement (`steam://rungameid/...`).
 - `watch_exe` : nom de l'exécutable réel à surveiller (utile pour les launchers).
-- `app_id NULL` dans `rewards` : récompense globale. Sinon : récompense individuelle.
+- `app_id NULL` dans `rewards` : récompense commune à toutes les apps. Sinon : récompense propre à cette app.
+- `scope` (migration v2) : `global` se débloque une seule fois en tout ; `app` se débloque une fois par app. Une récompense propre à une app (`app_id` renseigné) est traitée comme `app`.
+- `unlocked_rewards.app_id` : l'app pour laquelle une récompense `app` a été débloquée (`NULL` pour une `global`). Index unique sur `(reward_id, IFNULL(app_id, 0))` : pas de double déblocage.
 - Le niveau n'est pas stocké : il se déduit de `total_xp` (`core::xp::level_from_total`), ce qui évite toute incohérence. Le niveau global se déduit de la somme des `total_xp`.
 - Temps total, dernière session et nombre de récompenses d'une app sont agrégés depuis `sessions` et `unlocked_rewards` à la lecture.
 - Horodatages en secondes Unix (`INTEGER`). Les jours (XP du jour, streak) suivent le fuseau local via `date(..., 'unixepoch', 'localtime')`.
@@ -98,7 +100,7 @@ pub enum Mode {
     Normal,
     Command,            // saisie après ':'
     Search,             // saisie après '/'
-    Popup(Popup),       // Confirm, Form, LevelUp ; RewardUnlocked à l'étape 9
+    Popup(Popup),       // Confirm, Form, LevelUp, RewardUnlocked
 }
 
 pub struct App {
@@ -252,7 +254,8 @@ Découpage sur `;` puis exécution séquentielle. Variables `$1`, `$2` possibles
 - **Formulaires** : `Form` = liste de champs (`TextInput`, partagé avec la ligne de commande) avec un champ focalisé. La validation produit une `Command` (`Add`, `Move`) exécutée par le chemin habituel. En cas d'erreur (champ requis, nom déjà pris, fichier introuvable), le formulaire reste ouvert et affiche l'erreur ; le premier champ requis vide reçoit le focus.
 - Formulaire d'ajout : Nom*, Cible*, Catégorie* (pré-remplie avec la catégorie sélectionnée), Process (vide : déduit de la cible, affiché en grisé « auto : X.exe »).
 - **Level-up** : ouverte quand une app ou le profil gagne un niveau (fin de session ou `:xp`). Bordure qui alterne de couleur à chaque `Tick`. `Entrée`, `Esc` ou `Espace` la ferment.
-- Une popup déclenchée par un événement (level-up) n'interrompt pas une saisie : elle attend dans une file (`pending_popups`) que l'utilisateur revienne en mode Normal.
+- **Récompense débloquée** : une popup par récompense, après celle de level-up, mêmes touches et même clignotement.
+- Une popup déclenchée par un événement (level-up, récompense) n'interrompt pas une saisie : elle attend dans une file (`pending_popups`) que l'utilisateur revienne en mode Normal.
 - Les popups se dessinent par-dessus l'écran courant (`Clear` puis cadre centré).
 
 ---
@@ -295,7 +298,7 @@ let cols = Layout::horizontal([
 ### Autres écrans
 
 - **Stats** : historique des sessions (`Table`), temps par catégorie (`BarChart`), activité des 30 derniers jours (`Sparkline`).
-- **Rewards** : grille des récompenses, débloquées en couleur et verrouillées en gris avec leur condition.
+- **Rewards** : tableau des récompenses (🏆 débloquées en couleur, 🔒 verrouillées en gris), titre « Récompenses (n/total) », sélection propre (`reward_state`, `j`/`k`). Un panneau Détail montre la portée, la condition (`rule`) et qui l'a débloquée, et quand.
 - **Help** : commandes et raccourcis, générés à partir du parser.
 
 ### Responsive
@@ -415,15 +418,24 @@ pub fn xp_to_next_level(level: u32) -> u32 {
 - À la fin d'une session gardée (≥ 60 s), `xp_gained` est enregistré dans `sessions` et ajouté à `apps.total_xp`, dans une même transaction. Les sessions fermées à la sortie et les orphelines fermées au démarrage reçoivent aussi leur XP.
 - Le niveau d'une app vient de son `total_xp`, le niveau global de la somme des `total_xp`. Un level-up est détecté en comparant les niveaux avant et après.
 
-Les récompenses sont définies **en données** (table ou JSON), pas en dur :
+Les récompenses sont définies **en données** (table `rewards`), pas en dur. La migration v2 insère un jeu de départ : Premiers pas, Marathon, Noctambule, Habitué, Passionné, Vétéran, Régulier, Assidu, Touche-à-tout, Centurion, Expert.
 
-```json
-{ "code": "marathon", "condition": "session_duration >= 180", "scope": "app" }
+```
+code = "marathon", scope = "app", rule = "session_minutes >= 180"
 ```
 
-Après chaque session, on évalue les règles non débloquées et on enregistre celles qui passent.
+**Langage des règles** (`core/rewards.rs`, testable sans base) : `variable opérateur nombre`, combinées par `&&` et `||` (`&&` prioritaire). Opérateurs `>= > <= < == !=`. Toutes les conditions sont vérifiées, même quand le résultat est déjà connu, pour signaler une règle cassée.
 
-Idées : seuils d'heures cumulées par app, longue session, première session du jour, streak, niveau atteint, nombre d'apps différentes dans la semaine.
+| Variable | Mesure |
+|---|---|
+| `session_minutes` | durée de la session |
+| `session_hour` | heure locale de début (0-23) |
+| `app_hours`, `app_sessions`, `app_level` | cumul, nombre de sessions et niveau de l'app |
+| `level`, `streak_days` | niveau global, jours consécutifs |
+| `total_hours`, `total_sessions` | cumul toutes apps |
+| `apps_this_week` | apps différentes sur 7 jours |
+
+**Évaluation** : après chaque session gardée (fin normale, sortie de CmdBoard, orpheline au démarrage), une fois l'XP attribuée pour que les niveaux comptent. `storage` calcule les faits (`session_facts`) et la liste des récompenses encore à débloquer pour l'app (`pending_rewards`), `core::rewards::evaluate` tranche, `storage` enregistre. Une règle cassée n'empêche pas les autres : l'erreur s'affiche dans la ligne de message. `:xp` ne déclenche pas d'évaluation.
 
 ---
 
@@ -587,4 +599,4 @@ CmdBoard est Windows uniquement (`.lnk`, `%APPDATA%`, URI des launchers). winget
 
 ## Prochaine étape
 
-Les étapes 1 à 8 sont faites. Suivante : **étape 9**. Récompenses : règles stockées en données (`rewards.rule`), évaluées après chaque session (`core/rewards.rs`), popup de déblocage (même file `pending_popups` que le level-up) et écran Rewards.
+Les étapes 1 à 9 sont faites. Suivante : **étape 10**. Écran Stats (historique, temps par catégorie, activité sur 30 jours), recherche `/`, alias `commands.toml` et autocomplétion Tab.

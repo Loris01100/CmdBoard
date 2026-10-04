@@ -33,6 +33,40 @@ pub struct NewApp {
     pub category_id: i64,
 }
 
+/// A reward that can still be unlocked for the app being checked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reward {
+    pub id: i64,
+    pub code: String,
+    pub name: String,
+    pub description: String,
+    pub rule: String,
+    /// Unlocked once per app rather than once overall.
+    pub per_app: bool,
+}
+
+/// A reward as listed on the Rewards screen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RewardView {
+    pub id: i64,
+    pub name: String,
+    pub description: String,
+    pub rule: String,
+    pub per_app: bool,
+    /// The only app this reward applies to, if any.
+    pub app: Option<String>,
+    /// Oldest first. Empty while locked.
+    pub unlocks: Vec<Unlock>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unlock {
+    /// App it was unlocked for, `None` for a global reward.
+    pub app: Option<String>,
+    /// Local date, "dd/mm/yyyy".
+    pub date: String,
+}
+
 /// A session closed by `close_orphan_sessions`, still to be awarded its XP.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClosedSession {

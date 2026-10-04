@@ -10,13 +10,13 @@ use ratatui::{
 };
 
 use crate::command::{Command, find_help, line::CommandLine, parser};
-use crate::core::xp;
+use crate::core::{rewards, xp};
 use crate::event::AppEvent;
 use crate::launcher::launch;
-use crate::popup::{Form, FormKind, LevelUp, Popup};
+use crate::popup::{Form, FormKind, LevelUp, Popup, RewardUnlocked};
 use crate::storage::{
     Database,
-    models::{AppEntry, Category, NewApp, Profile},
+    models::{AppEntry, Category, NewApp, Profile, RewardView},
     unix_now,
 };
 use crate::tracker::Watched;
@@ -89,6 +89,15 @@ pub struct XpAnim {
     pub start: u64,
 }
 
+/// What a recorded session earned.
+#[derive(Debug, Clone, Default)]
+struct SessionOutcome {
+    xp: u32,
+    rewards: Vec<RewardUnlocked>,
+    /// Rewards whose rule could not be evaluated, as "rule « code » : error".
+    rule_errors: Vec<String>,
+}
+
 impl XpAnim {
     /// The total to show at tick `frame`.
     pub fn value(&self, frame: u64) -> u32 {
@@ -113,6 +122,9 @@ pub struct App {
     pub apps: Vec<AppEntry>,
     pub profile: Profile,
     pub recent_rewards: Vec<String>,
+    /// Every reward, for the Rewards screen.
+    pub rewards: Vec<RewardView>,
+    pub reward_state: TableState,
     pub active_sessions: HashMap<i64, ActiveSession>,
 
     // animations, driven by `Tick`
@@ -148,6 +160,8 @@ impl App {
             apps: Vec::new(),
             profile: Profile::default(),
             recent_rewards: Vec::new(),
+            rewards: Vec::new(),
+            reward_state: TableState::default(),
             active_sessions: HashMap::new(),
             frame_count: 0,
             xp_anims: HashMap::new(),
@@ -170,6 +184,9 @@ impl App {
         self.apps = self.db.apps()?;
         self.profile = self.db.profile()?;
         self.recent_rewards = self.db.recent_rewards(3)?;
+        self.rewards = self.db.reward_views()?;
+        self.reward_state
+            .select(clamp(self.reward_state.selected(), self.rewards.len()));
         self.cat_state
             .select(clamp(self.cat_state.selected(), self.categories.len()));
         let visible = self.visible_apps().len();
@@ -267,31 +284,42 @@ impl App {
         let profile_before = self.profile.total_xp;
         let result = self
             .finish_session(session.session_id, secs)
-            .and_then(|gained| self.reload().map(|()| gained));
+            .and_then(|outcome| self.reload().map(|()| outcome));
         let Some(name) = self.app_name(app_id) else { return };
-        if let Ok(Some(gained)) = result {
-            self.on_xp_changed(app_id, before, profile_before, gained);
-        }
-        self.message = Some(match result {
-            Ok(Some(gained)) => (
-                format!("Session terminée : {name} ({} min, +{gained} XP)", secs / 60),
-                MsgKind::Success,
-            ),
+        let message = match result {
+            Ok(Some(outcome)) => {
+                let text = format!("Session terminée : {name} ({} min, +{} XP)", secs / 60, outcome.xp);
+                let message = match outcome.rule_errors.first() {
+                    Some(error) => (format!("{text} · {error}"), MsgKind::Error),
+                    None => (text, MsgKind::Success),
+                };
+                self.on_xp_changed(app_id, before, profile_before, outcome.xp);
+                self.queue_rewards(outcome.rewards);
+                message
+            }
             Ok(None) => (
                 format!("Session trop courte, non enregistrée : {name}"),
                 MsgKind::Info,
             ),
             Err(e) => (format!("{e:#}"), MsgKind::Error),
-        });
+        };
+        self.message = Some(message);
     }
 
-    /// Closes a session and awards its XP. Returns the XP, or `None` if the session was
-    /// too short to be recorded.
-    fn finish_session(&self, session_id: i64, secs: u64) -> anyhow::Result<Option<u32>> {
+    /// Closes a session, then rewards it. Returns `None` if the session was too short to
+    /// be recorded.
+    fn finish_session(&self, session_id: i64, secs: u64) -> anyhow::Result<Option<SessionOutcome>> {
         if !self.db.end_session(session_id, unix_now(), secs)? {
             return Ok(None);
         }
-        self.award_session_xp(session_id, secs).map(Some)
+        self.reward_session(session_id, secs).map(Some)
+    }
+
+    /// XP first, so rules see the new levels, then rewards.
+    fn reward_session(&self, session_id: i64, secs: u64) -> anyhow::Result<SessionOutcome> {
+        let xp = self.award_session_xp(session_id, secs)?;
+        let (rewards, rule_errors) = self.unlock_rewards(session_id)?;
+        Ok(SessionOutcome { xp, rewards, rule_errors })
     }
 
     /// XP of a closed session, with the streak bonus. The streak includes today, now that
@@ -305,20 +333,57 @@ impl App {
         Ok(gained)
     }
 
-    /// At startup, closes the sessions a crash left open and gives them their XP.
+    /// Evaluates the rewards the session's app can still unlock, and unlocks those whose
+    /// rule passes. A broken rule is reported, not fatal: the other rewards still count.
+    fn unlock_rewards(&self, session_id: i64) -> anyhow::Result<(Vec<RewardUnlocked>, Vec<String>)> {
+        let (app_id, facts) = self.db.session_facts(session_id)?;
+        let app_name = self.app_name(app_id);
+        let (mut unlocked, mut errors) = (Vec::new(), Vec::new());
+        for reward in self.db.pending_rewards(app_id)? {
+            match rewards::evaluate(&reward.rule, &facts) {
+                Ok(true) => {
+                    let for_app = reward.per_app.then_some(app_id);
+                    self.db.unlock_reward(reward.id, for_app, session_id, unix_now())?;
+                    unlocked.push(RewardUnlocked {
+                        name: reward.name,
+                        description: reward.description,
+                        app: if reward.per_app { app_name.clone() } else { None },
+                    });
+                }
+                Ok(false) => {}
+                Err(e) => errors.push(format!("règle « {} » : {e}", reward.code)),
+            }
+        }
+        Ok((unlocked, errors))
+    }
+
+    /// At startup, closes the sessions a crash left open and rewards them.
     pub fn close_orphan_sessions(&mut self) -> anyhow::Result<()> {
         let closed = self.db.close_orphan_sessions()?;
+        if closed.is_empty() {
+            return Ok(());
+        }
+        let mut errors = Vec::new();
+        let mut unlocked = Vec::new();
         for session in &closed {
-            self.award_session_xp(session.session_id, session.secs)?;
+            let outcome = self.reward_session(session.session_id, session.secs)?;
+            unlocked.extend(outcome.rewards);
+            errors.extend(outcome.rule_errors);
         }
-        if !closed.is_empty() {
-            self.reload()?;
-            self.message = Some((
-                format!("{} session(s) interrompue(s) récupérée(s)", closed.len()),
-                MsgKind::Info,
-            ));
-        }
+        self.reload()?;
+        self.queue_rewards(unlocked);
+        let text = format!("{} session(s) interrompue(s) récupérée(s)", closed.len());
+        self.message = Some(match errors.first() {
+            Some(error) => (format!("{text} · {error}"), MsgKind::Error),
+            None => (text, MsgKind::Info),
+        });
         Ok(())
+    }
+
+    fn queue_rewards(&mut self, unlocked: Vec<RewardUnlocked>) {
+        self.pending_popups
+            .extend(unlocked.into_iter().map(Popup::RewardUnlocked));
+        self.show_pending_popup();
     }
 
     /// On quit, closes running sessions as if their apps had stopped.
@@ -492,7 +557,7 @@ impl App {
                     }
                 }
             },
-            Popup::LevelUp(_) => {
+            Popup::LevelUp(_) | Popup::RewardUnlocked(_) => {
                 if matches!(key.code, KeyCode::Enter | KeyCode::Esc | KeyCode::Char(' ')) {
                     self.mode = Mode::Normal;
                     self.show_pending_popup();
@@ -743,6 +808,11 @@ impl App {
     }
 
     fn move_selection(&mut self, forward: bool) {
+        if self.screen == Screen::Rewards {
+            let next = step(self.reward_state.selected(), self.rewards.len(), forward);
+            self.reward_state.select(next);
+            return;
+        }
         match self.focus {
             Focus::Categories => {
                 let next = step(self.cat_state.selected(), self.categories.len(), forward);
@@ -1056,7 +1126,8 @@ mod tests {
         assert_eq!(entry.total_secs, 42 * 60);
         assert_eq!(entry.total_xp, 47);
         assert_eq!(app.profile.total_xp, 47);
-        assert_eq!(app.mode, Mode::Normal); // no level reached
+        // No level reached, but the first session ever unlocks a reward.
+        assert_eq!(popup_title(&app), Some("Premiers pas".into()));
         assert!(entry.last_played.is_some());
     }
 
@@ -1110,6 +1181,7 @@ mod tests {
         app.close_orphan_sessions().unwrap();
         assert_eq!(app.find_app("Steam").unwrap().total_xp, 15); // 10 min + 5 streak
         assert_eq!(message_kind(&app), Some(MsgKind::Info));
+        assert_eq!(popup_title(&app), Some("Premiers pas".into()));
     }
 
     #[test]
@@ -1137,8 +1209,86 @@ mod tests {
         assert_eq!(app.shown_profile_xp(), (2, 85));
         assert!(app.xp_anims.is_empty() && app.profile_anim.is_none());
 
+        // Then the rewards: first session ever, and 3 h in a row on Steam (plus
+        // "Noctambule" when the test runs at night).
         press(&mut app, KeyCode::Enter);
+        let mut rewards = Vec::new();
+        while let Mode::Popup(Popup::RewardUnlocked(reward)) = &app.mode {
+            rewards.push((reward.name.clone(), reward.app.clone()));
+            press(&mut app, KeyCode::Esc);
+        }
+        assert_eq!(rewards[0], ("Premiers pas".to_string(), None));
+        assert!(rewards.contains(&("Marathon".to_string(), Some("Steam".to_string()))));
         assert_eq!(app.mode, Mode::Normal);
+    }
+
+    /// Name of the reward shown in the current popup, if any.
+    fn popup_title(app: &App) -> Option<String> {
+        match &app.mode {
+            Mode::Popup(Popup::RewardUnlocked(reward)) => Some(reward.name.clone()),
+            _ => None,
+        }
+    }
+
+    /// Plays a whole session on `app_id` and closes every popup it opens.
+    fn play(app: &mut App, app_id: i64, secs: u64) {
+        app.on_session_start(app_id);
+        app.on_session_end(app_id, secs);
+        while matches!(app.mode, Mode::Popup(_)) {
+            press(app, KeyCode::Esc);
+        }
+    }
+
+    fn unlocked(app: &App, name: &str) -> Vec<Option<String>> {
+        let reward = app.rewards.iter().find(|r| r.name == name).unwrap();
+        reward.unlocks.iter().map(|u| u.app.clone()).collect()
+    }
+
+    #[test]
+    fn rewards_unlock_once_globally_and_once_per_app() {
+        let mut app = App::with_defaults();
+        let steam = steam_id(&app);
+        let notepad = app.find_app("Bloc-notes").unwrap().id;
+        play(&mut app, steam, 3 * 3600);
+        play(&mut app, steam, 3 * 3600);
+        play(&mut app, notepad, 3 * 3600);
+
+        assert_eq!(unlocked(&app, "Premiers pas"), [None]);
+        assert_eq!(
+            unlocked(&app, "Marathon"),
+            [Some("Steam".to_string()), Some("Bloc-notes".to_string())]
+        );
+        assert!(unlocked(&app, "Centurion").is_empty());
+        assert_eq!(app.find_app("Steam").unwrap().rewards, 1);
+        assert_eq!(app.recent_rewards[0], "Marathon (Bloc-notes)");
+    }
+
+    #[test]
+    fn broken_rule_is_reported_and_others_still_unlock() {
+        let mut app = App::with_defaults();
+        app.db
+            .execute_for_tests("UPDATE rewards SET rule = 'hours >= 1' WHERE code = 'marathon'");
+        let steam = steam_id(&app);
+        app.on_session_start(steam);
+        app.on_session_end(steam, 3 * 3600);
+        let (text, kind) = app.message.clone().unwrap();
+        assert_eq!(kind, MsgKind::Error);
+        assert!(text.contains("règle « marathon » : variable inconnue : hours"), "{text}");
+        play(&mut app, steam, 0); // closes the popups
+        assert_eq!(unlocked(&app, "Premiers pas"), [None]);
+    }
+
+    #[test]
+    fn rewards_screen_has_its_own_selection() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char('3'));
+        assert_eq!(app.reward_state.selected(), Some(0));
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.reward_state.selected(), Some(1));
+        press(&mut app, KeyCode::Char('k'));
+        press(&mut app, KeyCode::Char('k')); // wraps
+        assert_eq!(app.reward_state.selected(), Some(app.rewards.len() - 1));
+        assert_eq!(app.selected_app().unwrap().name, "Steam"); // dashboard untouched
     }
 
     #[test]

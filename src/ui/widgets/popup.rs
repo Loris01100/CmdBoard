@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::popup::{Form, LevelUp, Popup};
+use crate::popup::{Form, LevelUp, Popup, RewardUnlocked};
 
 const MAX_WIDTH: u16 = 64;
 
@@ -17,7 +17,32 @@ pub fn render(frame: &mut Frame, popup: &Popup, app: &App) {
         Popup::Confirm { message, .. } => render_confirm(frame, message, app),
         Popup::Form(form) => render_form(frame, form, app),
         Popup::LevelUp(level_up) => render_level_up(frame, level_up, app),
+        Popup::RewardUnlocked(reward) => render_reward(frame, reward, app),
     }
+}
+
+/// Announces an unlocked reward. Blinks like the level-up popup.
+fn render_reward(frame: &mut Frame, reward: &RewardUnlocked, app: &App) {
+    let theme = &app.theme;
+    let accent = if app.frame_count % 2 == 0 { theme.success } else { theme.info };
+    let accent_style = Style::new().fg(accent).add_modifier(Modifier::BOLD);
+
+    let mut text = vec![
+        Line::styled("Récompense débloquée !", accent_style).centered(),
+        Line::from(""),
+        Line::styled(format!("🏆 {}", reward.name), theme.title).centered(),
+        Line::from(reward.description.clone()).centered(),
+    ];
+    if let Some(app_name) = &reward.app {
+        text.push(Line::styled(format!("({app_name})"), theme.muted()).centered());
+    }
+    text.push(Line::from(""));
+    text.push(Line::styled("Entrée pour continuer", theme.muted()).centered());
+
+    let area = centered(frame.area(), popup_width(frame.area()).min(50), text.len() as u16 + 2);
+    let block = theme.panel("Récompense", true).border_style(Style::new().fg(accent));
+    frame.render_widget(Clear, area);
+    frame.render_widget(Paragraph::new(text).block(block), area);
 }
 
 /// Level-up announcement. Its border and title alternate colors on each tick.
@@ -202,6 +227,20 @@ mod tests {
     }
 
     #[test]
+    fn reward_renders_name_and_app() {
+        let mut app = App::with_defaults();
+        app.mode = Mode::Popup(Popup::RewardUnlocked(RewardUnlocked {
+            name: "Marathon".into(),
+            description: "Jouer 3 h d'affilée".into(),
+            app: Some("Steam".into()),
+        }));
+        let text = screen(&app, 100, 30);
+        for expected in ["Récompense débloquée", "Marathon", "Jouer 3 h d'affilée", "(Steam)"] {
+            assert!(text.contains(expected), "missing {expected:?} in\n{text}");
+        }
+    }
+
+    #[test]
     fn popups_fit_tiny_terminals() {
         let mut app = App::with_defaults();
         let level_up = Popup::LevelUp(LevelUp {
@@ -210,7 +249,12 @@ mod tests {
             global_level: None,
             gained: 100,
         });
-        for popup in [Popup::Form(Form::add_app("Jeux")), level_up] {
+        let reward = Popup::RewardUnlocked(RewardUnlocked {
+            name: "Marathon".into(),
+            description: "Jouer 3 h d'affilée".into(),
+            app: None,
+        });
+        for popup in [Popup::Form(Form::add_app("Jeux")), level_up, reward] {
             app.mode = Mode::Popup(popup);
             for (w, h) in [(30, 8), (10, 3), (1, 1)] {
                 screen(&app, w, h);

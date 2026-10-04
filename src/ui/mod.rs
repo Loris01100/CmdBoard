@@ -12,7 +12,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
     match app.screen {
         Screen::Dashboard => screens::dashboard::draw(frame, app),
         Screen::Help => screens::help::draw(frame, app),
-        Screen::Stats | Screen::Rewards => screens::coming_soon(frame, app),
+        Screen::Rewards => screens::rewards::draw(frame, app),
+        Screen::Stats => screens::coming_soon(frame, app),
     }
     if let Mode::Popup(popup) = &app.mode {
         widgets::popup::render(frame, popup, app);

@@ -6,8 +6,10 @@ use anyhow::Context;
 use rusqlite::params;
 
 use super::db::Database;
-use super::models::{AppEntry, Category, ClosedSession, NewApp, Profile};
-use crate::core::xp;
+use super::models::{
+    AppEntry, Category, ClosedSession, NewApp, Profile, Reward, RewardView, Unlock,
+};
+use crate::core::{rewards::Facts, xp};
 
 /// Shorter sessions (a quick launch and close) are not recorded.
 pub const MIN_SESSION_SECS: u64 = 60;
@@ -46,8 +48,7 @@ impl Database {
                 (SELECT COALESCE(SUM(duration_s), 0) FROM sessions s
                     WHERE s.app_id = a.id AND s.ended_at IS NOT NULL),
                 (SELECT MAX(ended_at) FROM sessions s WHERE s.app_id = a.id),
-                (SELECT COUNT(*) FROM unlocked_rewards u JOIN rewards r ON r.id = u.reward_id
-                    WHERE r.app_id = a.id)
+                (SELECT COUNT(*) FROM unlocked_rewards u WHERE u.app_id = a.id)
              FROM apps a
              ORDER BY a.name COLLATE NOCASE",
         )?;
@@ -223,8 +224,8 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT r.name, a.name FROM unlocked_rewards u
              JOIN rewards r ON r.id = u.reward_id
-             LEFT JOIN apps a ON a.id = r.app_id
-             ORDER BY u.unlocked_at DESC LIMIT ?1",
+             LEFT JOIN apps a ON a.id = u.app_id
+             ORDER BY u.unlocked_at DESC, u.id DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit], |r| {
             let reward: String = r.get(0)?;
@@ -235,6 +236,134 @@ impl Database {
             })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// What reward rules can test about a closed session. Returns the session's app too.
+    pub fn session_facts(&self, session_id: i64) -> anyhow::Result<(i64, Facts)> {
+        self.session_facts_at(session_id, unix_now())
+    }
+
+    fn session_facts_at(&self, session_id: i64, now: i64) -> anyhow::Result<(i64, Facts)> {
+        let (app_id, secs, hour): (i64, i64, i64) = self.conn.query_row(
+            "SELECT app_id, duration_s,
+                CAST(strftime('%H', started_at, 'unixepoch', 'localtime') AS INTEGER)
+             FROM sessions WHERE id = ?1",
+            [session_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?;
+        let (app_secs, app_sessions, app_xp): (i64, i64, u32) = self.conn.query_row(
+            "SELECT
+                (SELECT COALESCE(SUM(duration_s), 0) FROM sessions
+                    WHERE app_id = ?1 AND ended_at IS NOT NULL),
+                (SELECT COUNT(*) FROM sessions WHERE app_id = ?1 AND ended_at IS NOT NULL),
+                total_xp
+             FROM apps WHERE id = ?1",
+            [app_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?;
+        let (total_secs, total_sessions, apps_this_week): (i64, i64, i64) = self.conn.query_row(
+            "SELECT COALESCE(SUM(duration_s), 0), COUNT(*),
+                COUNT(DISTINCT CASE WHEN ended_at > ?1 - 7 * 86400 THEN app_id END)
+             FROM sessions WHERE ended_at IS NOT NULL",
+            [now],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?;
+        let profile = self.profile_at(now)?;
+        let facts = Facts {
+            session_minutes: (secs / 60) as f64,
+            session_hour: hour as f64,
+            app_hours: app_secs as f64 / 3600.0,
+            app_sessions: app_sessions as f64,
+            app_level: xp::level_from_total(app_xp).0 as f64,
+            level: profile.level as f64,
+            streak_days: profile.streak_days as f64,
+            total_hours: total_secs as f64 / 3600.0,
+            total_sessions: total_sessions as f64,
+            apps_this_week: apps_this_week as f64,
+        };
+        Ok((app_id, facts))
+    }
+
+    /// Rewards `app_id` can still unlock: global ones nobody unlocked yet, and per-app
+    /// ones not unlocked for this app. Rewards tied to another app are skipped.
+    pub fn pending_rewards(&self, app_id: i64) -> anyhow::Result<Vec<Reward>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT r.id, r.code, r.name, r.description, r.rule,
+                r.scope = 'app' OR r.app_id IS NOT NULL AS per_app
+             FROM rewards r
+             WHERE (r.app_id IS NULL OR r.app_id = ?1)
+               AND NOT EXISTS (
+                   SELECT 1 FROM unlocked_rewards u WHERE u.reward_id = r.id
+                     AND (u.app_id = ?1 OR NOT (r.scope = 'app' OR r.app_id IS NOT NULL)))
+             ORDER BY r.id",
+        )?;
+        let rows = stmt.query_map([app_id], |r| {
+            Ok(Reward {
+                id: r.get(0)?,
+                code: r.get(1)?,
+                name: r.get(2)?,
+                description: r.get(3)?,
+                rule: r.get(4)?,
+                per_app: r.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// `app_id` is the app a per-app reward is unlocked for, `None` for a global one.
+    pub fn unlock_reward(
+        &self,
+        reward_id: i64,
+        app_id: Option<i64>,
+        session_id: i64,
+        unlocked_at: i64,
+    ) -> anyhow::Result<()> {
+        self.conn.execute(
+            "INSERT INTO unlocked_rewards (reward_id, app_id, unlocked_at, session_id)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![reward_id, app_id, unlocked_at, session_id],
+        )?;
+        Ok(())
+    }
+
+    /// Every reward with its unlocks, in definition order.
+    pub fn reward_views(&self) -> anyhow::Result<Vec<RewardView>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT r.id, r.name, r.description, r.rule,
+                r.scope = 'app' OR r.app_id IS NOT NULL, a.name
+             FROM rewards r LEFT JOIN apps a ON a.id = r.app_id
+             ORDER BY r.id",
+        )?;
+        let mut views = stmt
+            .query_map([], |r| {
+                Ok(RewardView {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    description: r.get(2)?,
+                    rule: r.get(3)?,
+                    per_app: r.get(4)?,
+                    app: r.get(5)?,
+                    unlocks: Vec::new(),
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT u.reward_id, a.name,
+                strftime('%d/%m/%Y', u.unlocked_at, 'unixepoch', 'localtime')
+             FROM unlocked_rewards u LEFT JOIN apps a ON a.id = u.app_id
+             ORDER BY u.unlocked_at, u.id",
+        )?;
+        let unlocks = stmt.query_map([], |r| {
+            Ok((r.get::<_, i64>(0)?, Unlock { app: r.get(1)?, date: r.get(2)? }))
+        })?;
+        for unlock in unlocks {
+            let (reward_id, unlock) = unlock?;
+            if let Some(view) = views.iter_mut().find(|v| v.id == reward_id) {
+                view.unlocks.push(unlock);
+            }
+        }
+        Ok(views)
     }
 }
 
@@ -333,20 +462,107 @@ mod tests {
             .unwrap();
         db.conn
             .execute(
-                "INSERT INTO rewards (app_id, code, name, rule) VALUES (?1, 'marathon', 'Marathon', 'true')",
+                "INSERT INTO rewards (app_id, code, name, rule) VALUES (?1, 'hades_only', 'Fan', 'level >= 1')",
                 [app],
             )
             .unwrap();
-        db.conn
-            .execute("INSERT INTO unlocked_rewards (reward_id, unlocked_at) VALUES (1, 20000)", [])
-            .unwrap();
+        let reward = db.conn.last_insert_rowid();
+        db.unlock_reward(reward, Some(app), 1, 20_000).unwrap();
 
         let hades = &db.apps().unwrap()[0];
         assert_eq!(hades.total_secs, 5_400);
         assert_eq!(hades.last_played, Some(20_000));
         assert_eq!((hades.level, hades.xp), (2, 50));
         assert_eq!(hades.rewards, 1);
-        assert_eq!(db.recent_rewards(3).unwrap(), ["Marathon (Hades)"]);
+        assert_eq!(db.recent_rewards(3).unwrap(), ["Fan (Hades)"]);
+    }
+
+    fn reward_id(db: &Database, code: &str) -> i64 {
+        db.conn
+            .query_row("SELECT id FROM rewards WHERE code = ?1", [code], |r| r.get(0))
+            .unwrap()
+    }
+
+    fn pending_codes(db: &Database, app: i64) -> Vec<String> {
+        db.pending_rewards(app).unwrap().into_iter().map(|r| r.code).collect()
+    }
+
+    #[test]
+    fn rewards_unlock_once_globally_or_per_app() {
+        let (db, cat, hades) = db_with_app();
+        let celeste = db
+            .add_app(&NewApp {
+                name: "Celeste".into(),
+                launch_target: "celeste.exe".into(),
+                watch_exe: None,
+                category_id: cat,
+            })
+            .unwrap();
+        let pending = db.pending_rewards(hades).unwrap();
+        let marathon = pending.iter().find(|r| r.code == "marathon").unwrap();
+        assert!(marathon.per_app);
+        assert!(!pending.iter().find(|r| r.code == "premiers_pas").unwrap().per_app);
+
+        let s = db.start_session(hades, 1_000).unwrap();
+        db.unlock_reward(reward_id(&db, "premiers_pas"), None, s, 1_000).unwrap();
+        db.unlock_reward(reward_id(&db, "marathon"), Some(hades), s, 1_000).unwrap();
+        for app in [hades, celeste] {
+            assert!(!pending_codes(&db, app).contains(&"premiers_pas".to_string()));
+        }
+        assert!(!pending_codes(&db, hades).contains(&"marathon".to_string()));
+        assert!(pending_codes(&db, celeste).contains(&"marathon".to_string()));
+
+        // The same unlock twice is refused by the database.
+        assert!(db.unlock_reward(reward_id(&db, "premiers_pas"), None, s, 2_000).is_err());
+        assert!(db.unlock_reward(reward_id(&db, "marathon"), Some(hades), s, 2_000).is_err());
+
+        let views = db.reward_views().unwrap();
+        let view = views.iter().find(|v| v.name == "Marathon").unwrap();
+        assert_eq!(view.unlocks.len(), 1);
+        assert_eq!(view.unlocks[0].app.as_deref(), Some("Hades"));
+        assert_eq!(db.apps().unwrap()[1].rewards, 1); // Hades (sorted after Celeste)
+    }
+
+    #[test]
+    fn rewards_tied_to_another_app_are_skipped() {
+        let (db, cat, hades) = db_with_app();
+        let other = db
+            .add_app(&NewApp {
+                name: "Celeste".into(),
+                launch_target: "celeste.exe".into(),
+                watch_exe: None,
+                category_id: cat,
+            })
+            .unwrap();
+        db.conn
+            .execute(
+                "INSERT INTO rewards (app_id, code, name, rule) VALUES (?1, 'fan', 'Fan', 'level >= 1')",
+                [hades],
+            )
+            .unwrap();
+        assert!(pending_codes(&db, hades).contains(&"fan".to_string()));
+        assert!(!pending_codes(&db, other).contains(&"fan".to_string()));
+    }
+
+    #[test]
+    fn session_facts_measure_the_closed_session() {
+        let (db, _, app) = db_with_app();
+        let now = 20_000 * DAY + DAY / 2;
+        session(&db, app, now - 3 * DAY, 3_600, 0);
+        let id = db.start_session(app, now - 7_200).unwrap();
+        db.end_session(id, now, 7_200).unwrap();
+        db.add_session_xp(id, 150).unwrap();
+
+        let (app_id, facts) = db.session_facts_at(id, now).unwrap();
+        assert_eq!(app_id, app);
+        assert_eq!(facts.session_minutes, 120.0);
+        assert_eq!(facts.app_hours, 3.0);
+        assert_eq!(facts.app_sessions, 2.0);
+        assert_eq!(facts.app_level, 2.0);
+        assert_eq!(facts.total_sessions, 2.0);
+        assert_eq!(facts.apps_this_week, 1.0);
+        assert_eq!(facts.streak_days, 1.0);
+        assert!((0.0..24.0).contains(&facts.session_hour));
     }
 
     fn session_rows(db: &Database) -> Vec<(Option<i64>, i64)> {
