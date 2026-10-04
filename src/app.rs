@@ -1,4 +1,5 @@
 use std::collections::{HashMap, VecDeque};
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
@@ -17,6 +18,7 @@ use crate::command::{
     line::CommandLine,
     parser,
 };
+use crate::config;
 use crate::core::{rewards, xp};
 use crate::event::AppEvent;
 use crate::fuzzy;
@@ -29,7 +31,10 @@ use crate::storage::{
 };
 use crate::text_input::TextInput;
 use crate::tracker::Watched;
-use crate::ui::{self, theme::Theme};
+use crate::ui::{
+    self,
+    theme::{self, Theme},
+};
 
 /// How often running sessions save their time played, in case of a crash.
 const CHECKPOINT_EVERY: Duration = Duration::from_secs(60);
@@ -164,6 +169,11 @@ pub struct App {
     pub message: Option<Message>,
 
     pub theme: Theme,
+    /// Name `:theme` loads it by (file stem), shown by `:theme`.
+    pub theme_name: String,
+    /// User themes and `config.toml`. `None` in tests: built-in themes, nothing saved.
+    themes_dir: Option<PathBuf>,
+    config_path: Option<PathBuf>,
     pub db: Database,
     /// Receives the watch list after each reload. `None` in tests.
     tracker: Option<Sender<Vec<Watched>>>,
@@ -198,6 +208,9 @@ impl App {
             command_line: CommandLine::default(),
             message: None,
             theme: Theme::default(),
+            theme_name: theme::FALLBACK.into(),
+            themes_dir: None,
+            config_path: None,
             db,
             tracker: None,
             should_quit: false,
@@ -227,6 +240,29 @@ impl App {
         self.app_state.select(clamp(self.app_state.selected(), visible));
         self.send_watch_list();
         Ok(())
+    }
+
+    /// At startup: the configured theme, else one picked from the terminal's colors.
+    /// If the configured theme cannot load, falls back and returns the error to show.
+    pub fn init_theme(&mut self, data_dir: &Path, configured: Option<String>) -> Option<String> {
+        self.themes_dir = Some(data_dir.join("themes"));
+        self.config_path = Some(data_dir.join("config.toml"));
+        let wanted = configured.unwrap_or_else(|| theme::default_name().into());
+        match theme::load(&wanted, self.themes_dir.as_deref()) {
+            Ok(loaded) => {
+                self.theme = loaded;
+                self.theme_name = wanted.trim().to_lowercase();
+                None
+            }
+            Err(e) => {
+                let fallback = theme::default_name();
+                if let Ok(loaded) = theme::load(fallback, None) {
+                    self.theme = loaded;
+                    self.theme_name = fallback.into();
+                }
+                Some(e)
+            }
+        }
     }
 
     /// Connects the session tracker and sends it the current watch list.
@@ -678,7 +714,9 @@ impl App {
 
     /// Tab in the command line: completes commands, apps and categories.
     fn complete_command(&mut self, forward: bool) {
+        let themes = theme::available(self.themes_dir.as_deref());
         let sources = Sources {
+            themes: themes.iter().map(String::as_str).collect(),
             aliases: self.aliases.names().collect(),
             apps: self.apps.iter().map(|a| a.name.as_str()).collect(),
             categories: self.categories.iter().map(|c| c.name.as_str()).collect(),
@@ -871,6 +909,21 @@ impl App {
                 self.stats_state = TableState::default()
                     .with_selected((!self.stats.sessions.is_empty()).then_some(0));
                 self.screen = Screen::Stats;
+            }
+            Command::Theme { name: None } => {
+                let names = theme::available(self.themes_dir.as_deref());
+                let text = format!("Thèmes : {} (actuel : {})", names.join(", "), self.theme_name);
+                return Ok(Some((text, MsgKind::Info)));
+            }
+            Command::Theme { name: Some(name) } => {
+                // A broken theme file is an error message; the current theme stays.
+                self.theme = theme::load(&name, self.themes_dir.as_deref()).map_err(anyhow::Error::msg)?;
+                self.theme_name = name.trim().to_lowercase();
+                if let Some(path) = &self.config_path {
+                    config::save_value(path, "theme", &self.theme_name)
+                        .context("thème appliqué mais non mémorisé")?;
+                }
+                return success(format!("Thème : {}", self.theme.name));
             }
             Command::Help { command: None } => self.screen = Screen::Help,
             Command::Help { command: Some(name) } => {
@@ -1554,6 +1607,41 @@ mod tests {
 
         run(&mut app, "stats inconnue");
         assert_eq!(message_kind(&app), Some(MsgKind::Error));
+    }
+
+    #[test]
+    fn theme_command_switches_and_keeps_current_on_error() {
+        let mut app = App::with_defaults();
+        run(&mut app, "theme");
+        let (text, _) = app.message.clone().unwrap();
+        assert!(text.starts_with("Thèmes : catppuccin-frappe, catppuccin-latte"), "{text}");
+        assert!(text.ends_with("(actuel : terminal)"));
+
+        run(&mut app, "theme Catppuccin-Latte");
+        assert_eq!(app.message.as_ref().unwrap().0, "Thème : Catppuccin Latte");
+        assert_eq!(app.theme_name, "catppuccin-latte");
+
+        run(&mut app, "theme nope");
+        assert_eq!(message_kind(&app), Some(MsgKind::Error));
+        assert_eq!(app.theme.name, "Catppuccin Latte");
+    }
+
+    #[test]
+    fn configured_theme_is_loaded_and_saved() {
+        let dir = std::env::temp_dir().join(format!("cmdboard-app-theme-{}", std::process::id()));
+        let mut app = App::with_defaults();
+        assert_eq!(app.init_theme(&dir, Some("catppuccin-frappe".into())), None);
+        assert_eq!(app.theme.name, "Catppuccin Frappé");
+
+        run(&mut app, "theme catppuccin-macchiato");
+        let (config, _) = config::Config::load(&dir.join("config.toml"));
+        assert_eq!(config.theme.as_deref(), Some("catppuccin-macchiato"));
+
+        let mut app = App::with_defaults();
+        let warning = app.init_theme(&dir, Some("gone".into()));
+        assert!(warning.unwrap().contains("thème inconnu"));
+        assert_eq!(app.theme_name, theme::default_name()); // fell back
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

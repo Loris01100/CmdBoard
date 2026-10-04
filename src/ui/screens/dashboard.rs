@@ -27,8 +27,12 @@ pub fn draw(frame: &mut Frame, app: &App) {
     if let Some(details) = areas.details {
         render_details(frame, details, app);
     }
-    profile_panel::render(frame, areas.profile, app);
-    render_recent_rewards(frame, areas.rewards, app);
+    if let Some(profile) = areas.profile {
+        profile_panel::render(frame, profile, app);
+    }
+    if let Some(rewards) = areas.rewards {
+        render_recent_rewards(frame, rewards, app);
+    }
     command_line::render(frame, areas.command, app);
     status_bar::render(frame, areas.status, app);
 }

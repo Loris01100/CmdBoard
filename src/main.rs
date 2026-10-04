@@ -1,5 +1,6 @@
 mod app;
 mod command;
+mod config;
 mod core;
 mod event;
 mod fuzzy;
@@ -14,6 +15,7 @@ use std::sync::mpsc;
 
 use app::{App, MsgKind};
 use command::alias::Aliases;
+use config::Config;
 use storage::{Database, db::data_dir};
 
 fn main() -> anyhow::Result<()> {
@@ -21,10 +23,18 @@ fn main() -> anyhow::Result<()> {
     let db = Database::open_default()?;
     let mut app = App::new(db)?;
     app.close_orphan_sessions()?; // left open by a previous crash
-    let (aliases, warning) = Aliases::load(&data_dir()?.join("commands.toml"));
+
+    // Broken user files are reported, never fatal.
+    let dir = data_dir()?;
+    let mut warnings = Vec::new();
+    let (config, warning) = Config::load(&dir.join("config.toml"));
+    warnings.extend(warning);
+    warnings.extend(app.init_theme(&dir, config.theme));
+    let (aliases, warning) = Aliases::load(&dir.join("commands.toml"));
     app.aliases = aliases;
-    if let Some(warning) = warning {
-        app.message = Some((warning, MsgKind::Error));
+    warnings.extend(warning);
+    if !warnings.is_empty() {
+        app.message = Some((warnings.join(" · "), MsgKind::Error));
     }
 
     let (tx, rx) = mpsc::channel();

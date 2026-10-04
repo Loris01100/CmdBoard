@@ -203,6 +203,7 @@ La table `COMMANDS` (`command/mod.rs`) décrit chaque commande (nom, alias, usag
 | `rmcat` | | `rmcat <catégorie>` (catégorie vide uniquement, confirmation) |
 | `xp` | | `xp <app> <montant>` (montant en dernier, signé ; l'XP ne descend pas sous 0) |
 | `stats` | | `stats [app]` (sans argument : toutes les apps ; avec : filtre jusqu'au prochain `:stats`) |
+| `theme` | | `theme [nom]` (sans nom : liste les thèmes et l'actuel ; nom complété par Tab) |
 | `help` | `h`, `?` | `help [commande]` |
 | `quit` | `q` | `quit` |
 
@@ -311,7 +312,9 @@ let cols = Layout::horizontal([
 ### Responsive
 
 - Moins de ~90 colonnes : masquer le panneau Détails.
-- Moins de ~60 colonnes : empiler les panneaux.
+- Moins de 60 colonnes : catégories (5 lignes) au-dessus des apps.
+- Moins de 24 lignes : masquer « Dernières récompenses » ; moins de 18 : masquer aussi le profil. Les listes gardent la place.
+- Stats : graphiques masqués sous 18 lignes de corps, temps par catégorie masqué sous 60 colonnes. Rewards : panneau Détail masqué sous 12 lignes.
 
 ---
 
@@ -361,15 +364,16 @@ border             = "overlay0"
 border_focused     = "sapphire"
 title              = { fg = "mauve", bold = true }
 selected           = { fg = "base", bg = "mauve", bold = true }
-selected_unfocused = { bold = true }
+selected_unfocused = { bg = "surface0", bold = true }
 xp_fill            = "green"
+info               = "sky"
 success            = "green"
 warning            = "yellow"
 error              = "red"
 muted              = "overlay1"
 ```
 
-Ajouter un thème revient à coller une palette et à remplir les slots. Les noms de palette sont libres : le code ne lit que les slots.
+Ajouter un thème revient à coller une palette et à remplir les slots. Les noms de palette sont libres : le code ne lit que les slots. Un slot de style accepte une couleur (premier plan) ou une table `{ fg, bg, bold, italic, underlined, dim }` ; un slot de couleur (`xp_fill`…`muted`) n'accepte qu'une couleur. Une couleur est un nom de la palette, sinon tout ce que `ratatui::Color` sait lire (`#rrggbb`, noms ANSI comme `darkgray`, index). Tous les slots sont obligatoires, un slot inconnu est une erreur (faute de frappe).
 
 ```rust
 // Résolu au chargement : la palette n'est pas conservée.
@@ -381,8 +385,9 @@ pub struct Theme {
     pub selected: Style,
     pub selected_unfocused: Style,
     pub xp_fill: Color,
+    pub info: Color,      // messages d'information
     pub success: Color,
-    pub warning: Color,
+    pub warning: Color,   // clignotement des popups level-up et récompense (avec success)
     pub error: Color,
     pub muted: Color,
 }
@@ -391,9 +396,9 @@ pub struct Theme {
 ### Chargement
 
 - **Intégrés** : les 4 saveurs Catppuccin et `terminal`, embarqués via `include_str!`. Pas de dépendance au crate `catppuccin` : thèmes intégrés et thèmes utilisateur passent par le même parseur.
-- **Utilisateur** : `%APPDATA%\CmdBoard\themes\*.toml`. À nom égal, le fichier utilisateur remplace le thème intégré.
+- **Utilisateur** : `%APPDATA%\CmdBoard\themes\*.toml`. Le nom d'un thème est celui du fichier sans extension, en minuscules (`name` dans le fichier est le nom affiché). À nom égal, le fichier utilisateur remplace le thème intégré.
 - **Erreurs** : un slot manquant ou une référence inconnue affiche une erreur claire dans la ligne de message, et le thème courant est conservé.
-- `:theme` liste les thèmes, `:theme catppuccin-latte` en change. Le choix est mémorisé dans `%APPDATA%\CmdBoard\config.toml`.
+- `:theme` liste les thèmes, `:theme catppuccin-latte` en change. Le choix est mémorisé dans `%APPDATA%\CmdBoard\config.toml` (`theme = "..."`, les autres clés du fichier sont conservées). Au démarrage, un thème configuré introuvable ou cassé affiche l'erreur et bascule sur le thème par défaut. Les erreurs de `config.toml`, du thème et de `commands.toml` sont réunies dans la ligne de message.
 
 ### Truecolor et repli
 
@@ -466,7 +471,7 @@ Cas Steam / Epic / Battle.net : la commande de lancement (URI) et le process sur
 Pilotées par `Tick` et un compteur `frame_count` dans `App` :
 
 - Barre d'XP qui se remplit progressivement après une session (ou `:xp`) : `App` garde une `XpAnim { from, to, start }` par app et une pour le profil. Le rendu en déduit le total affiché à partir de `frame_count` (8 ticks, soit 2 s, avec ralenti en fin de course), en repassant par `level_from_total`, donc le niveau affiché monte en même temps que la barre.
-- Popup de level-up qui clignote ou change de couleur.
+- Popups de level-up et de récompense dont la bordure et le titre alternent entre `warning` et `success` à chaque `Tick`.
 - Spinner pendant l'import des raccourcis.
 - Chrono de session en direct dans le header.
 
@@ -606,4 +611,4 @@ CmdBoard est Windows uniquement (`.lnk`, `%APPDATA%`, URI des launchers). winget
 
 ## Prochaine étape
 
-Les étapes 1 à 10 sont faites. Suivante : **étape 11**. Thèmes Catppuccin en TOML (`themes/*.toml`, palette + slots, `:theme`, choix mémorisé dans `config.toml`), mise en page responsive (panneaux empilés sous ~60 colonnes) et finitions.
+Les étapes 1 à 11 sont faites. Suivante : **étape 12**. Distribution : `dist init` (cible `x86_64-pc-windows-msvc`, installeurs `powershell` et `msi`), workflow de release GitHub, `:update` via `self_update` (refus sous `Program Files`, renvoi vers winget), manifeste winget.

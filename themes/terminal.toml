@@ -1,0 +1,18 @@
+# 16 ANSI colors only: follows the terminal's own color scheme.
+# Default when no truecolor terminal is detected.
+name = "Terminal"
+
+[palette]
+
+[slots]
+border             = "darkgray"
+border_focused     = "cyan"
+title              = { fg = "cyan", bold = true }
+selected           = { fg = "black", bg = "cyan", bold = true }
+selected_unfocused = { bold = true }
+xp_fill            = "green"
+info               = "cyan"
+success            = "green"
+warning            = "yellow"
+error              = "red"
+muted              = "darkgray"

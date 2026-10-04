@@ -10,6 +10,7 @@ pub struct Sources<'a> {
     pub aliases: Vec<&'a str>,
     pub apps: Vec<&'a str>,
     pub categories: Vec<&'a str>,
+    pub themes: Vec<&'a str>,
 }
 
 /// The line splits into `base`, kept as typed, followed by one of the `candidates`.
@@ -30,6 +31,7 @@ enum Kind {
     Command,
     App,
     Category,
+    Theme,
 }
 
 /// Completes the last word of `line`. `None` when nothing applies or nothing matches.
@@ -49,6 +51,7 @@ pub fn complete(line: &str, sources: &Sources) -> Option<Completion> {
         "launch" | "rm" | "stats" | "xp" => whole(line, rest_start, Kind::App, sources),
         "rmcat" => whole(line, rest_start, Kind::Category, sources),
         "help" => whole(line, rest_start, Kind::Command, sources),
+        "theme" => whole(line, rest_start, Kind::Theme, sources),
         "move" => argument(line, rest_start, &[Some(Kind::App), Some(Kind::Category)], sources),
         "add" => argument(line, rest_start, &[None, None, Some(Kind::Category)], sources),
         _ => None,
@@ -109,6 +112,7 @@ fn build(base: &str, partial: &str, kind: Kind, sources: &Sources, suffix: &str)
             .collect(),
         Kind::App => sources.apps.clone(),
         Kind::Category => sources.categories.clone(),
+        Kind::Theme => sources.themes.clone(),
     };
     items.sort_by_key(|item| item.to_lowercase());
     let candidates: Vec<String> = fuzzy::rank(partial, items.iter().copied())
@@ -127,6 +131,7 @@ mod tests {
             aliases: vec!["gaming"],
             apps: vec!["Steam", "Windows Terminal", "Bloc-notes"],
             categories: vec!["Jeux", "Dev", "Outils"],
+            themes: vec!["catppuccin-latte", "catppuccin-mocha", "terminal"],
         }
     }
 
@@ -144,6 +149,7 @@ mod tests {
             ("l wterm", Some("l Windows Terminal")), // alias of launch, fuzzy match
             ("rmcat ou", Some("rmcat Outils")),
             ("help mo", Some("help move")),
+            ("theme moc", Some("theme catppuccin-mocha")),
             ("move wind", Some(r#"move "Windows Terminal""#)),
             (r#"move "Windows Terminal" d"#, Some(r#"move "Windows Terminal" Dev"#)),
             ("add Hades steam://x je", Some("add Hades steam://x Jeux")),

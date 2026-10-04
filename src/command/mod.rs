@@ -51,6 +51,10 @@ pub enum Command {
     Stats {
         app: Option<String>,
     },
+    /// Switches theme and remembers it; `None` lists the themes.
+    Theme {
+        name: Option<String>,
+    },
     /// Adds (or removes, if negative) XP to an app by hand, outside of any session.
     Xp {
         app: String,
@@ -106,6 +110,12 @@ pub const COMMANDS: &[CommandHelp] = &[
         aliases: &[],
         usage: "stats [app]",
         summary: "Statistiques de toutes les apps, ou d'une seule",
+    },
+    CommandHelp {
+        name: "theme",
+        aliases: &[],
+        usage: "theme [nom]",
+        summary: "Change de thème (mémorisé). Sans nom : liste les thèmes",
     },
     CommandHelp {
         name: "xp",

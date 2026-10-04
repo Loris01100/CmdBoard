@@ -18,8 +18,10 @@ use crate::ui::{
 pub fn draw(frame: &mut Frame, app: &App) {
     let theme = &app.theme;
     let (body, command, status) = layout::screen(frame.area(), command_line::height(app));
+    // On short terminals the list keeps the room and the detail panel goes.
+    let detail_height = if body.height >= 12 { 5 } else { 0 };
     let [list_area, detail_area] =
-        Layout::vertical([Constraint::Min(3), Constraint::Length(5)]).areas(body);
+        Layout::vertical([Constraint::Min(3), Constraint::Length(detail_height)]).areas(body);
 
     let unlocked = app.rewards.iter().filter(|r| !r.unlocks.is_empty()).count();
     let title = format!("Récompenses ({unlocked}/{})", app.rewards.len());
@@ -54,17 +56,19 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let mut state = app.reward_state.clone();
     frame.render_stateful_widget(table, list_area, &mut state);
 
-    let selected = app.reward_state.selected().and_then(|i| app.rewards.get(i));
-    let detail = match selected {
-        Some(reward) => detail_lines(reward, app),
-        None => vec![Line::styled("Aucune récompense définie", theme.muted())],
-    };
-    frame.render_widget(
-        Paragraph::new(detail)
-            .wrap(Wrap { trim: true })
-            .block(theme.panel("Détail", false)),
-        detail_area,
-    );
+    if detail_height > 0 {
+        let selected = app.reward_state.selected().and_then(|i| app.rewards.get(i));
+        let detail = match selected {
+            Some(reward) => detail_lines(reward, app),
+            None => vec![Line::styled("Aucune récompense définie", theme.muted())],
+        };
+        frame.render_widget(
+            Paragraph::new(detail)
+                .wrap(Wrap { trim: true })
+                .block(theme.panel("Détail", false)),
+            detail_area,
+        );
+    }
 
     command_line::render(frame, command, app);
     status_bar::render(frame, status, app);

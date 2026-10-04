@@ -24,7 +24,7 @@ pub fn render(frame: &mut Frame, popup: &Popup, app: &App) {
 /// Announces an unlocked reward. Blinks like the level-up popup.
 fn render_reward(frame: &mut Frame, reward: &RewardUnlocked, app: &App) {
     let theme = &app.theme;
-    let accent = if app.frame_count % 2 == 0 { theme.success } else { theme.info };
+    let accent = blink(app);
     let accent_style = Style::new().fg(accent).add_modifier(Modifier::BOLD);
 
     let mut text = vec![
@@ -45,10 +45,15 @@ fn render_reward(frame: &mut Frame, reward: &RewardUnlocked, app: &App) {
     frame.render_widget(Paragraph::new(text).block(block), area);
 }
 
+/// Gold and green, alternating on each tick: the level-up and reward popups blink.
+fn blink(app: &App) -> ratatui::style::Color {
+    if app.frame_count % 2 == 0 { app.theme.warning } else { app.theme.success }
+}
+
 /// Level-up announcement. Its border and title alternate colors on each tick.
 fn render_level_up(frame: &mut Frame, level_up: &LevelUp, app: &App) {
     let theme = &app.theme;
-    let accent = if app.frame_count % 2 == 0 { theme.success } else { theme.info };
+    let accent = blink(app);
     let accent_style = Style::new().fg(accent).add_modifier(Modifier::BOLD);
 
     let mut text = vec![Line::styled("★  Niveau supérieur !  ★", accent_style).centered(), Line::from("")];

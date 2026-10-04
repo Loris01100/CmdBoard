@@ -18,9 +18,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let theme = &app.theme;
     let stats = &app.stats;
     let (body, command, status) = layout::screen(frame.area(), command_line::height(app));
+    // On short terminals the history keeps the room and the charts go.
+    let charts_height = if body.height >= 18 { 8 } else { 0 };
     let [summary_area, charts_area, sessions_area] = Layout::vertical([
         Constraint::Length(1),
-        Constraint::Length(8),
+        Constraint::Length(charts_height),
         Constraint::Min(3),
     ])
     .areas(body);
@@ -44,11 +46,19 @@ pub fn draw(frame: &mut Frame, app: &App) {
         summary_area,
     );
 
-    let [categories_area, activity_area] =
-        Layout::horizontal([Constraint::Percentage(45), Constraint::Percentage(55)])
-            .areas(charts_area);
-    render_categories(frame, categories_area, app);
-    render_activity(frame, activity_area, app);
+    if charts_height > 0 {
+        // Side by side, or only the activity chart when narrow.
+        let split = if charts_area.width >= 60 { 45 } else { 0 };
+        let [categories_area, activity_area] = Layout::horizontal([
+            Constraint::Percentage(split),
+            Constraint::Percentage(100 - split),
+        ])
+        .areas(charts_area);
+        if split > 0 {
+            render_categories(frame, categories_area, app);
+        }
+        render_activity(frame, activity_area, app);
+    }
     render_sessions(frame, sessions_area, app);
 
     command_line::render(frame, command, app);

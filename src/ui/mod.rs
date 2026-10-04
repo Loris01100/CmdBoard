@@ -83,4 +83,19 @@ mod tests {
         assert!(render(120).contains("Détails"));
         assert!(!render(80).contains("Détails"));
     }
+
+    #[test]
+    fn every_theme_and_size_renders() {
+        let mut app = App::with_defaults();
+        for name in crate::ui::theme::available(None) {
+            app.theme = crate::ui::theme::load(&name, None).unwrap();
+            for screen in [Screen::Dashboard, Screen::Stats, Screen::Rewards, Screen::Help] {
+                app.screen = screen;
+                for (w, h) in [(160, 50), (100, 30), (55, 22), (40, 12), (20, 6)] {
+                    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+                    terminal.draw(|f| draw(f, &app)).unwrap();
+                }
+            }
+        }
+    }
 }
