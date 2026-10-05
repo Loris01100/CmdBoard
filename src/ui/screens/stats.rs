@@ -1,9 +1,13 @@
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Layout, Rect},
     style::Style,
+    symbols::Marker,
     text::{Line, Span},
-    widgets::{Bar, BarChart, BarGroup, Cell, Paragraph, Row, Table},
+    widgets::{
+        Cell, Paragraph, Row, Table,
+        canvas::{Canvas, Points},
+    },
 };
 
 use crate::app::App;
@@ -80,26 +84,99 @@ fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
         );
         return;
     }
-    let bars: Vec<Bar> = app
-        .stats
-        .by_category
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    // Distinct theme colors; categories past them share the muted "others" slice.
+    let colors = [theme.xp_fill, theme.info, theme.warning, theme.error];
+    let slices = pie_slices(&app.stats.by_category, colors.len());
+    let color = |i: usize| colors.get(i).copied().unwrap_or(theme.muted);
+    let total: u64 = slices.iter().map(|(_, secs)| secs).sum::<u64>().max(1);
+
+    // A cell is about twice as tall as wide, and holds 2×4 braille dots: square dots.
+    let [pie_area, legend_area] =
+        Layout::horizontal([Constraint::Length(inner.height * 2 + 1), Constraint::Min(0)])
+            .areas(inner);
+    let (w, h) = (pie_area.width as i32 * 2, pie_area.height as i32 * 4);
+    let (cx, cy, r) = (
+        (w - 1) as f64 / 2.0,
+        (h - 1) as f64 / 2.0,
+        w.min(h) as f64 / 2.0,
+    );
+    let mut dots = vec![Vec::new(); slices.len()];
+    for x in 0..w {
+        for y in 0..h {
+            let (dx, dy) = (x as f64 - cx, y as f64 - cy);
+            if dx.hypot(dy) > r {
+                continue;
+            }
+            // Clockwise from the top, as a fraction of the turn.
+            let turn = dx.atan2(dy).rem_euclid(std::f64::consts::TAU) / std::f64::consts::TAU;
+            let mut start = 0.0;
+            let slice = slices
+                .iter()
+                .position(|(_, secs)| {
+                    start += *secs as f64 / total as f64;
+                    turn < start
+                })
+                .unwrap_or(slices.len() - 1);
+            dots[slice].push((x as f64, y as f64));
+        }
+    }
+    let pie = Canvas::default()
+        .marker(Marker::Braille)
+        .x_bounds([0.0, (w - 1) as f64])
+        .y_bounds([0.0, (h - 1) as f64])
+        .paint(|ctx| {
+            for (i, coords) in dots.iter().enumerate() {
+                ctx.draw(&Points {
+                    coords,
+                    color: color(i),
+                });
+            }
+        });
+    frame.render_widget(pie, pie_area);
+
+    let names: Vec<String> = slices
         .iter()
-        .map(|(name, secs)| {
-            Bar::default()
-                .label(Line::from(name.clone()))
-                .value(*secs / 60)
-                .text_value(format_duration(*secs))
+        .map(|(name, _)| name.clone().unwrap_or_else(|| t!("stats.others")))
+        .collect();
+    let pad = names.iter().map(|n| n.chars().count()).max().unwrap_or(0);
+    let legend: Vec<Line> = slices
+        .iter()
+        .zip(&names)
+        .enumerate()
+        .map(|(i, ((_, secs), name))| {
+            Line::from(vec![
+                Span::styled("● ", Style::new().fg(color(i))),
+                Span::raw(format!("{name:pad$}")),
+                Span::styled(
+                    format!(
+                        "  {:>6} · {:>3}%",
+                        format_duration(*secs),
+                        (secs * 100 + total / 2) / total
+                    ),
+                    Style::new().fg(theme.info),
+                ),
+            ])
         })
         .collect();
-    let chart = BarChart::default()
-        .block(block)
-        .direction(Direction::Horizontal)
-        .bar_width(1)
-        .bar_gap(0)
-        .bar_style(Style::new().fg(theme.xp_fill))
-        .value_style(Style::new().fg(theme.info))
-        .data(BarGroup::default().bars(&bars));
-    frame.render_widget(chart, area);
+    frame.render_widget(Paragraph::new(legend), legend_area);
+}
+
+/// The `max - 1` most played categories, then the rest summed as `None` ("others").
+/// Fits in `max` slices as is.
+fn pie_slices(by_category: &[(String, u64)], max: usize) -> Vec<(Option<String>, u64)> {
+    if by_category.len() <= max {
+        return by_category
+            .iter()
+            .map(|(n, s)| (Some(n.clone()), *s))
+            .collect();
+    }
+    let (top, rest) = by_category.split_at(max - 1);
+    let mut slices: Vec<_> = top.iter().map(|(n, s)| (Some(n.clone()), *s)).collect();
+    slices.push((None, rest.iter().map(|(_, s)| s).sum()));
+    slices
 }
 
 fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
@@ -233,6 +310,18 @@ mod tests {
 {text}"
         );
         screen(&app, 20); // narrow: no panic
+    }
+
+    #[test]
+    fn pie_groups_the_tail() {
+        let cats: Vec<_> = [("a", 5), ("b", 4), ("c", 3)]
+            .map(|(n, s)| (n.to_string(), s))
+            .into();
+        assert_eq!(super::pie_slices(&cats, 3).len(), 3);
+        assert_eq!(
+            super::pie_slices(&cats, 2),
+            [(Some("a".to_string()), 5), (None, 7)]
+        );
     }
 
     #[test]

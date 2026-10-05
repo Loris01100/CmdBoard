@@ -311,7 +311,7 @@ let cols = Layout::horizontal([
 
 ### Autres écrans
 
-- **Stats** : ligne de résumé (portée, nombre de sessions, temps total, plus longue session), temps par catégorie (`BarChart` horizontal), heatmap d'activité des 12 dernières semaines façon GitHub (une colonne par semaine, lundi en haut, aujourd'hui en bas à droite, blocs `▁▂▃▅▇` selon le temps joué rapporté au max, couleur `xp_fill`, jours vides en `muted`), historique des 200 dernières sessions (`Table`, sélection `stats_state`, `j`/`k`). `:stats <app>` filtre tout l'écran sur une app. Les données (`Database::stats`) sont rechargées avec le reste à chaque `reload()`.
+- **Stats** : ligne de résumé (portée, nombre de sessions, temps total, plus longue session), temps par catégorie (camembert en braille via `Canvas`, couleurs `xp_fill`/`info`/`warning`/`error`, au-delà les catégories sont regroupées en « Autres » en `muted`, légende avec durée et %), heatmap d'activité des 12 dernières semaines façon GitHub (une colonne par semaine, lundi en haut, aujourd'hui en bas à droite, blocs `▁▂▃▅▇` selon le temps joué rapporté au max, couleur `xp_fill`, jours vides en `muted`), historique des 200 dernières sessions (`Table`, sélection `stats_state`, `j`/`k`). `:stats <app>` filtre tout l'écran sur une app. Les données (`Database::stats`) sont rechargées avec le reste à chaque `reload()`.
 - **Rewards** : tableau des récompenses (🏆 débloquées en couleur, 🔒 verrouillées en gris), titre « Récompenses (n/total) », sélection propre (`reward_state`, `j`/`k`). Un panneau Détail montre la portée, la condition (`rule`) et qui l'a débloquée, et quand.
 - **Help** : commandes et raccourcis, générés à partir du parser.
 
