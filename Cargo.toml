@@ -16,6 +16,7 @@ eula = false
 project-key = "Loris01100_CmdBoard"
 organization = "loris01100"
 exclusions = ["target/**"]
+"rust.lcov.reportPaths" = "target/lcov.info"
 
 [dependencies]
 anyhow = "1.0.104"
