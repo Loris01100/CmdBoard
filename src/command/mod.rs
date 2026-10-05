@@ -16,6 +16,8 @@ pub enum Command {
     SelectPrev,
     FocusPanel(Focus),
     ToggleFocus,
+    /// Stats screen: pie of the time per category, or per app.
+    ToggleStatsPie,
 
     // actions, also available from the command line
     Launch {

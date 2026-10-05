@@ -252,6 +252,7 @@ Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le pa
 | Normal | `a` / `m` | Formulaire d'ajout / de déplacement de l'app sélectionnée |
 | Normal | `d` | Supprimer l'app sélectionnée, ou la catégorie si le focus y est (vide uniquement) |
 | Normal | `s` | Tri suivant des apps (`Command::Sort`) : nom, XP, récent, temps |
+| Normal (Stats) | `s` | Camembert par catégorie ↔ par app (`Command::ToggleStatsPie`) |
 | Command | `Enter` / `Esc` | Valider / annuler |
 | Command | `↑↓` / `Tab` `Shift-Tab` | Historique / autocomplétion |
 | Search | saisie | Filtre le panneau Applications (toutes catégories, meilleur résultat en tête et sélectionné) |
@@ -311,7 +312,7 @@ let cols = Layout::horizontal([
 
 ### Autres écrans
 
-- **Stats** : ligne de résumé (portée, nombre de sessions, temps total, plus longue session), temps par catégorie et temps par app (deux camemberts en braille via `Canvas`, côte à côte, couleurs `xp_fill`/`info`/`warning`/`error`, au-delà le reste est regroupé en « Autres » en `muted`, légende avec durée et %; sous 90 colonnes seul le camembert par catégorie reste, sous 60 aucun, et celui par app est masqué quand `:stats <app>` filtre sur une app), heatmap d'activité des 12 dernières semaines façon GitHub (une colonne par semaine, lundi en haut, aujourd'hui en bas à droite, blocs `▁▂▃▅▇` selon le temps joué rapporté au max, couleur `xp_fill`, jours vides en `muted`), historique des 200 dernières sessions (`Table`, sélection `stats_state`, `j`/`k`). `:stats <app>` filtre tout l'écran sur une app. Les données (`Database::stats`) sont rechargées avec le reste à chaque `reload()`.
+- **Stats** : ligne de résumé (portée, nombre de sessions, temps total, plus longue session), temps par catégorie ou par app (un camembert en braille via `Canvas`, `s` bascule entre les deux via `Command::ToggleStatsPie`, état `App::stats_by_app` ; couleurs `xp_fill`/`info`/`warning`/`error`, au-delà le reste est regroupé en « Autres » en `muted`, légende avec durée et % ; masqué sous 60 colonnes), heatmap d'activité des 12 dernières semaines façon GitHub (une colonne par semaine, lundi en haut, aujourd'hui en bas à droite, blocs `▁▂▃▅▇` selon le temps joué rapporté au max, couleur `xp_fill`, jours vides en `muted`), historique des 200 dernières sessions (`Table`, sélection `stats_state`, `j`/`k`). `:stats <app>` filtre tout l'écran sur une app. Les données (`Database::stats`) sont rechargées avec le reste à chaque `reload()`.
 - **Rewards** : tableau des récompenses (🏆 débloquées en couleur, 🔒 verrouillées en gris), titre « Récompenses (n/total) », sélection propre (`reward_state`, `j`/`k`). Un panneau Détail montre la portée, la condition (`rule`) et qui l'a débloquée, et quand.
 - **Help** : commandes et raccourcis, générés à partir du parser.
 

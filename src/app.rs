@@ -209,6 +209,8 @@ pub struct App {
     pub stats: Stats,
     pub stats_app: Option<i64>,
     pub stats_state: TableState,
+    /// The Stats pie shows the time per app instead of per category.
+    pub stats_by_app: bool,
 
     // `/` search
     pub search: TextInput,
@@ -270,6 +272,7 @@ impl App {
             stats: Stats::default(),
             stats_app: None,
             stats_state: TableState::default(),
+            stats_by_app: false,
             search: TextInput::default(),
             search_restore: None,
             aliases: Aliases::default(),
@@ -796,6 +799,7 @@ impl App {
             KeyCode::Tab | KeyCode::BackTab => Command::ToggleFocus,
             KeyCode::Left | KeyCode::Char('h') => Command::FocusPanel(Focus::Categories),
             KeyCode::Right | KeyCode::Char('l') => Command::FocusPanel(Focus::Apps),
+            KeyCode::Char('s') if self.screen == Screen::Stats => Command::ToggleStatsPie,
             _ if self.screen != Screen::Dashboard => return None,
             KeyCode::Enter => match self.focus {
                 Focus::Categories => Command::FocusPanel(Focus::Apps),
@@ -1061,6 +1065,7 @@ impl App {
                     Focus::Apps => Focus::Categories,
                 }
             }
+            Command::ToggleStatsPie => self.stats_by_app = !self.stats_by_app,
             Command::Quit => self.should_quit = true,
 
             Command::Launch { app } => {

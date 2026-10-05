@@ -55,36 +55,26 @@ pub fn draw(frame: &mut Frame, app: &App) {
     );
 
     if charts_height > 0 {
-        // Pies on the left, the heatmap (2 cells per week) on the right; narrow: heatmap only.
-        // Filtered on one app, the per-app pie would be a single slice: skipped.
-        let pies: Vec<(String, &[(String, u64)])> = match charts_area.width {
-            0..60 => vec![],
-            60..90 => vec![(t!("stats.by_category"), &stats.by_category)],
-            _ => [
-                Some((t!("stats.by_category"), &stats.by_category[..])),
-                app.stats_app
-                    .is_none()
-                    .then(|| (t!("stats.by_app"), &stats.by_app[..])),
-            ]
-            .into_iter()
-            .flatten()
-            .collect(),
-        };
-        let heatmap_width = if pies.is_empty() {
-            Constraint::Fill(1)
+        // The pie (`s`: per category or per app), then the heatmap (2 cells per week);
+        // narrow: heatmap only.
+        let heatmap_width = 2 + 2 * (ACTIVITY_DAYS / 7) as u16;
+        let pie_width = if charts_area.width >= 60 {
+            charts_area.width - heatmap_width
         } else {
-            Constraint::Length(2 + 2 * (ACTIVITY_DAYS / 7) as u16)
+            0
         };
-        let areas = Layout::horizontal(
-            pies.iter()
-                .map(|_| Constraint::Fill(1))
-                .chain([heatmap_width]),
-        )
-        .split(charts_area);
-        for ((title, data), area) in pies.iter().zip(areas.iter()) {
-            render_pie(frame, *area, app, title, data);
+        let [pie_area, activity_area] =
+            Layout::horizontal([Constraint::Length(pie_width), Constraint::Fill(1)])
+                .areas(charts_area);
+        if pie_width > 0 {
+            let (title, data) = if app.stats_by_app {
+                (t!("stats.by_app"), &stats.by_app)
+            } else {
+                (t!("stats.by_category"), &stats.by_category)
+            };
+            render_pie(frame, pie_area, app, &title, data);
         }
-        render_activity(frame, areas[pies.len()], app);
+        render_activity(frame, activity_area, app);
     }
     render_sessions(frame, sessions_area, app);
 
@@ -301,7 +291,11 @@ fn render_sessions(frame: &mut Frame, area: Rect, app: &App) {
 #[cfg(test)]
 mod tests {
     use crate::app::{App, Screen};
-    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui::{
+        Terminal,
+        backend::TestBackend,
+        crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
+    };
 
     fn screen(app: &App, width: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, 30)).unwrap();
@@ -329,7 +323,6 @@ mod tests {
             "Toutes les apps",
             "Temps par catégorie",
             "Jeux",
-            "Temps par app",
             "Activité",
             "Sessions (1)",
             "Steam",
@@ -338,11 +331,12 @@ mod tests {
         ] {
             assert!(text.contains(expected), "missing {expected:?} in\n{text}");
         }
-        assert!(
-            text.contains("▇"),
-            "today is the busiest day
-{text}"
-        );
+        assert!(text.contains("▇"), "today is the busiest day\n{text}");
+
+        app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+        let text = screen(&app, 110);
+        assert!(text.contains("Temps par app"), "{text}");
+        assert!(!text.contains("Jeux"), "{text}");
         screen(&app, 20); // narrow: no panic
     }
 
