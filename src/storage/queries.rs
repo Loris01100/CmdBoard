@@ -412,6 +412,8 @@ impl Database {
             longest_secs: longest_secs.max(0) as u64,
             by_category,
             daily,
+            // `today` is the julian day number minus one (cast from N.5), and JDN % 7 == 0 on Mondays.
+            today_weekday: ((today + 1) % 7) as u8,
         })
     }
 
@@ -677,7 +679,7 @@ mod tests {
         session(&db, hades, now - 60, 3_600, 60);
         session(&db, hades, now - 2 * DAY, 1_800, 30);
         session(&db, code, now - 60, 600, 10);
-        session(&db, code, now - 40 * DAY, 600, 10); // outside the activity chart
+        session(&db, code, now - 100 * DAY, 600, 10); // outside the activity chart
 
         let all = db.stats_at(None, now).unwrap();
         assert_eq!(all.session_count, 4);
@@ -690,6 +692,7 @@ mod tests {
         assert_eq!(all.daily[ACTIVITY_DAYS - 1], 4_200); // today
         assert_eq!(all.daily[ACTIVITY_DAYS - 3], 1_800); // two days ago
         assert_eq!(all.daily.iter().sum::<u64>(), 6_000);
+        assert_eq!(all.today_weekday, 4); // day 20 000 after 1970-01-01 is a Friday
         assert_eq!(all.sessions[0].app, "Code"); // most recently started first
 
         let only = db.stats_at(Some(code), now).unwrap();

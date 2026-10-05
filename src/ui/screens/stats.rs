@@ -2,8 +2,8 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
-    text::Line,
-    widgets::{Bar, BarChart, BarGroup, Cell, Paragraph, Row, Sparkline, Table},
+    text::{Line, Span},
+    widgets::{Bar, BarChart, BarGroup, Cell, Paragraph, Row, Table},
 };
 
 use crate::app::App;
@@ -19,7 +19,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let stats = &app.stats;
     let (body, command, status) = layout::screen(frame.area(), command_line::height(app));
     // On short terminals the history keeps the room and the charts go.
-    let charts_height = if body.height >= 18 { 8 } else { 0 };
+    let charts_height = if body.height >= 19 { 9 } else { 0 };
     let [summary_area, charts_area, sessions_area] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(charts_height),
@@ -104,21 +104,54 @@ fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
 
 fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let today = app.stats.daily.last().copied().unwrap_or(0);
+    let daily = &app.stats.daily;
+    let today = daily.last().copied().unwrap_or(0);
     let title = t!(
         "stats.activity",
-        days = ACTIVITY_DAYS,
+        weeks = ACTIVITY_DAYS / 7,
         today = format_duration(today)
     );
-    // One column per day, today on the right: keep the most recent days if too narrow.
-    let width = area.width.saturating_sub(2) as usize;
-    let daily = &app.stats.daily;
-    let shown = &daily[daily.len().saturating_sub(width)..];
-    let sparkline = Sparkline::default()
-        .block(theme.panel(&title, false))
-        .data(shown)
-        .style(Style::new().fg(theme.xp_fill));
-    frame.render_widget(sparkline, area);
+    // GitHub-style: one column per week (2 cells wide), Monday on top, today bottom right.
+    // Too narrow: keep the most recent weeks.
+    let weeks = (area.width.saturating_sub(2) as usize / 2).min(ACTIVITY_DAYS / 7);
+    let max = daily.iter().copied().max().unwrap_or(0);
+    let lines: Vec<Line> = (0..7)
+        .map(|row| {
+            let spans: Vec<Span> = (0..weeks)
+                .map(|col| {
+                    // Days back from today; negative is in the future.
+                    let back = (weeks - 1 - col) * 7 + row;
+                    let back = back.checked_sub(app.stats.today_weekday as usize);
+                    match back.and_then(|b| daily.len().checked_sub(b + 1)) {
+                        None => Span::raw("  "),
+                        Some(i) => match level(daily[i], max) {
+                            0 => Span::styled("▁ ", theme.muted()),
+                            n => Span::styled(
+                                format!("{} ", LEVELS[n]),
+                                Style::new().fg(theme.xp_fill),
+                            ),
+                        },
+                    }
+                })
+                .collect();
+            Line::from(spans)
+        })
+        .collect();
+    frame.render_widget(
+        Paragraph::new(lines).block(theme.panel(&title, false)),
+        area,
+    );
+}
+
+const LEVELS: [&str; 5] = ["▁", "▂", "▃", "▅", "▇"];
+
+/// 0 for no play, else 1..=4 by quarter of the busiest day.
+fn level(secs: u64, max: u64) -> usize {
+    if secs == 0 {
+        0
+    } else {
+        (secs * 4).div_ceil(max) as usize
+    }
 }
 
 fn render_sessions(frame: &mut Frame, area: Rect, app: &App) {
@@ -194,6 +227,20 @@ mod tests {
         ] {
             assert!(text.contains(expected), "missing {expected:?} in\n{text}");
         }
+        assert!(
+            text.contains("▇"),
+            "today is the busiest day
+{text}"
+        );
         screen(&app, 20); // narrow: no panic
+    }
+
+    #[test]
+    fn heatmap_levels() {
+        assert_eq!(super::level(0, 100), 0);
+        assert_eq!(super::level(1, 100), 1);
+        assert_eq!(super::level(25, 100), 1);
+        assert_eq!(super::level(26, 100), 2);
+        assert_eq!(super::level(100, 100), 4);
     }
 }
