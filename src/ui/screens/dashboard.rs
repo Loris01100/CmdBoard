@@ -7,7 +7,6 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::core::xp;
 use crate::storage::unix_now;
 use crate::ui::{
     layout,
@@ -97,13 +96,10 @@ fn render_details(frame: &mut Frame, area: Rect, app: &App) {
             entry.name.as_str(),
             theme.title.add_modifier(Modifier::BOLD),
         ),
-        Line::from(format!(
-            "Niveau {level}  ·  {xp}/{} XP",
-            xp::xp_to_next_level(level)
-        )),
+        Line::from(format!("Niveau {level}")),
     ];
     frame.render_widget(Paragraph::new(head_text), head);
-    frame.render_widget(xp_bar::gauge(xp::level_progress(level, xp), theme), gauge);
+    frame.render_widget(xp_bar::gauge(level, xp, theme), gauge);
 
     let last = entry
         .last_played

@@ -6,7 +6,6 @@ use ratatui::{
 
 use super::xp_bar;
 use crate::app::App;
-use crate::core::xp;
 
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
@@ -30,9 +29,6 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     .areas(inner);
 
     frame.render_widget(Paragraph::new(level).style(theme.title), level_area);
-    frame.render_widget(
-        xp_bar::gauge(xp::level_progress(shown_level, shown_xp), theme),
-        gauge_area,
-    );
+    frame.render_widget(xp_bar::gauge(shown_level, shown_xp, theme), gauge_area);
     frame.render_widget(Paragraph::new(stats), stats_area);
 }

@@ -1,5 +1,6 @@
 use ratatui::{style::Style, widgets::Gauge};
 
+use crate::core::xp;
 use crate::ui::theme::Theme;
 
 /// Text bar for table cells, e.g. "█████░░░".
@@ -8,14 +9,13 @@ pub fn text(ratio: f64, width: usize) -> String {
     "█".repeat(filled) + &"░".repeat(width - filled)
 }
 
-/// Full-size gauge with a percentage label.
-pub fn gauge(ratio: f64, theme: &Theme) -> Gauge<'static> {
-    let ratio = ratio.clamp(0.0, 1.0);
+/// Full-size gauge for `xp` within `level`, labelled "xp/needed".
+pub fn gauge(level: u32, xp: u32, theme: &Theme) -> Gauge<'static> {
     Gauge::default()
         .gauge_style(Style::new().fg(theme.xp_fill))
         .use_unicode(true)
-        .ratio(ratio)
-        .label(format!("{:.0}%", ratio * 100.0))
+        .ratio(xp::level_progress(level, xp))
+        .label(format!("{xp}/{} XP", xp::xp_to_next_level(level)))
 }
 
 #[cfg(test)]

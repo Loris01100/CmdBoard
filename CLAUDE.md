@@ -13,7 +13,7 @@ Development follows the 12 numbered steps in section 16 of the plan. Each step h
 - `cargo run`: launch the TUI
 - `cargo build`, `cargo clippy --all-targets`, `cargo fmt`. A pre-commit hook (`.githooks/pre-commit`, enable with `git config core.hooksPath .githooks`) rejects unformatted commits, and CI (`.github/workflows/ci.yml`) runs fmt, clippy and tests.
 - `cargo test`: all tests. `cargo test <name_substring>` runs a single test, `cargo test --lib core::xp` runs a single module.
-- Coverage + SonarCloud: `cargo llvm-cov --lcov --output-path target/lcov.info` (needs `cargo install cargo-llvm-cov` and `rustup component add llvm-tools-preview`), then `cargo sonar-scanner`, which reads `[package.metadata.sonar]` in `Cargo.toml` and imports the LCOV report.
+- Coverage + SonarCloud: `cargo llvm-cov --lcov --output-path target/lcov.info` (needs `cargo install cargo-llvm-cov` and `rustup component add llvm-tools-preview`), then `cargo sonar-scanner`, which reads `[package.metadata.sonar]` in `Cargo.toml` and imports the LCOV report. CI does both on every push/PR (needs the `SONAR_TOKEN` repo secret).
 - Add dependencies with `cargo add <crate>` to get current versions. The versions listed in the plan (section 17) are only indicative.
 - Releases (plan section 18): `dist plan` previews the release. Bump `version` in `Cargo.toml`, then push a `vX.Y.Z` tag; GitHub Actions builds the zip, MSI and PowerShell installer and publishes the GitHub Release. Don't tag or push without being asked.
 
