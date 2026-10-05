@@ -74,6 +74,7 @@ none_running = "no session running "
 [action]
 launched = "Launched: {name}"
 added = "Added: {name}{note}"
+moved = "Moved: {name} → {category}{note}"
 removed = "Removed: {name}"
 category_removed = "Category removed: {name}"
 xp = "{name}: {change} XP (total {total})"

@@ -1109,7 +1109,12 @@ impl App {
                 let category = &self
                     .selected_category()
                     .map_or(category, |c| c.name.clone());
-                return success(format!("{name} → {category}{}", created_note(created)));
+                return success(t!(
+                    "action.moved",
+                    name,
+                    category,
+                    note = created_note(created)
+                ));
             }
             Command::RemoveApp { app, confirmed } => {
                 let (id, name) = {
@@ -1605,7 +1610,10 @@ mod tests {
     fn move_follows_the_app() {
         let mut app = App::with_defaults();
         run(&mut app, "mv bloc-notes dev");
-        assert_eq!(app.message.as_ref().unwrap().0, "Bloc-notes → Dev");
+        assert_eq!(
+            app.message.as_ref().unwrap().0,
+            "Déplacé : Bloc-notes → Dev"
+        );
         assert_eq!(app.selected_category().unwrap().name, "Dev");
         assert_eq!(app.selected_app().unwrap().name, "Bloc-notes");
     }
