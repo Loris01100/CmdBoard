@@ -84,8 +84,8 @@ pub struct Stats {
     pub by_app: Vec<(String, u64)>,
     /// Seconds played per day over the last `ACTIVITY_DAYS` days, oldest first, today last.
     pub daily: Vec<u64>,
-    /// Today's day of the week, 0 = Monday.
-    pub today_weekday: u8,
+    /// Today, in local days since 1970-01-01 (a Thursday).
+    pub today: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

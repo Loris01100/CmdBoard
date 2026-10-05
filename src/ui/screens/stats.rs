@@ -23,7 +23,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let stats = &app.stats;
     let (body, command, status) = layout::screen(frame.area(), command_line::height(app));
     // On short terminals the history keeps the room and the charts go.
-    let charts_height = if body.height >= 19 { 9 } else { 0 };
+    let charts_height = if body.height >= 20 { 10 } else { 0 };
     let [summary_area, charts_area, sessions_area] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(charts_height),
@@ -55,18 +55,13 @@ pub fn draw(frame: &mut Frame, app: &App) {
     );
 
     if charts_height > 0 {
-        // The pie (`s`: per category or per app), then the heatmap (2 cells per week);
+        // The pie (`s`: per category or per app), then the heatmap on the right half;
         // narrow: heatmap only.
-        let heatmap_width = 2 + 2 * (ACTIVITY_DAYS / 7) as u16;
-        let pie_width = if charts_area.width >= 60 {
-            charts_area.width - heatmap_width
-        } else {
-            0
-        };
+        let pie = if charts_area.width >= 60 { 1 } else { 0 };
         let [pie_area, activity_area] =
-            Layout::horizontal([Constraint::Length(pie_width), Constraint::Fill(1)])
+            Layout::horizontal([Constraint::Fill(pie), Constraint::Percentage(50)])
                 .areas(charts_area);
-        if pie_width > 0 {
+        if pie > 0 {
             let (title, data) = if app.stats_by_app {
                 (t!("stats.by_app"), &stats.by_app)
             } else {
@@ -209,48 +204,87 @@ fn pie_slices(by_category: &[(String, u64)], max: usize) -> Vec<(Option<String>,
 
 fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let daily = &app.stats.daily;
-    let title = t!("stats.activity", weeks = ACTIVITY_DAYS / 7);
-    // GitHub-style: one column per week (2 cells wide), Monday on top, today bottom right.
-    // Too narrow: keep the most recent weeks.
-    let weeks = (area.width.saturating_sub(2) as usize / 2).min(ACTIVITY_DAYS / 7);
-    let max = daily.iter().copied().max().unwrap_or(0);
-    let lines: Vec<Line> = (0..7)
-        .map(|row| {
-            let spans: Vec<Span> = (0..weeks)
-                .map(|col| {
-                    // Days back from today; negative is in the future.
-                    let back = (weeks - 1 - col) * 7 + row;
-                    let back = back.checked_sub(app.stats.today_weekday as usize);
-                    match back.and_then(|b| daily.len().checked_sub(b + 1)) {
-                        None => Span::raw("  "),
-                        Some(i) => match level(daily[i], max) {
-                            0 => Span::styled("▁ ", theme.muted()),
-                            n => Span::styled(
-                                format!("{} ", LEVELS[n]),
-                                Style::new().fg(theme.xp_fill),
-                            ),
-                        },
-                    }
-                })
-                .collect();
-            Line::from(spans)
-        })
-        .collect();
-    frame.render_widget(
-        Paragraph::new(lines).block(theme.panel(&title, false)),
-        area,
-    );
+    let (daily, today) = (&app.stats.daily, app.stats.today);
+    let weekday = (today + 3).rem_euclid(7); // 0 = Monday
+    // Same square everywhere, the color tells the time played.
+    let cell = |secs: u64| ("■", theme.heat(level(secs)));
+
+    // Bottom border: what each color means, in time played.
+    let mut legend = vec![Span::raw(" ")];
+    for n in 0..=HEAT_STEPS.len() + 1 {
+        let label = match n {
+            0 => "0".to_string(),
+            n if n <= HEAT_STEPS.len() => format!("<{}", format_duration(HEAT_STEPS[n - 1])),
+            _ => format!("≥{}", format_duration(HEAT_STEPS[HEAT_STEPS.len() - 1])),
+        };
+        legend.push(Span::styled("■ ", theme.heat(n)));
+        legend.push(Span::styled(format!("{label}  "), theme.muted()));
+    }
+    let block = theme
+        .panel(&t!("stats.activity", weeks = ACTIVITY_DAYS / 7), false)
+        .title_bottom(Line::from(legend));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    // GitHub-style: one column per week, Monday on top, today bottom right, the date of
+    // each Monday above. Too narrow: keep the most recent weeks.
+    const LABELS: usize = 3;
+    let room = (inner.width as usize).saturating_sub(LABELS);
+    let width = (room / (ACTIVITY_DAYS / 7)).clamp(2, 4);
+    let weeks = (room / width).min(ACTIVITY_DAYS / 7);
+    // Days back from today of a cell; `None` in the future.
+    let back =
+        |col: usize, row: i64| usize::try_from(((weeks - 1 - col) * 7) as i64 + weekday - row).ok();
+
+    let mut header = vec![' '; LABELS + weeks * width + 5];
+    let step = 6usize.div_ceil(width); // "dd/mm" and a space
+    for col in (0..weeks).filter(|col| (weeks - 1 - col).is_multiple_of(step)) {
+        let (day, month) = day_month(today - back(col, 0).unwrap_or(0) as i64);
+        let start = LABELS + col * width;
+        header.splice(start..start + 5, format!("{day:02}/{month:02}").chars());
+    }
+    let mut lines = vec![Line::styled(
+        header.into_iter().collect::<String>(),
+        theme.muted(),
+    )];
+
+    let names = t!("stats.weekdays");
+    for (row, name) in names.split_whitespace().take(7).enumerate() {
+        let mut spans = vec![Span::styled(format!("{name:<LABELS$}"), theme.muted())];
+        for col in 0..weeks {
+            let index = back(col, row as i64).and_then(|b| daily.len().checked_sub(b + 1));
+            spans.push(match index {
+                None => Span::raw(" ".repeat(width)),
+                Some(i) => {
+                    let (glyph, style) = cell(daily[i]);
+                    Span::styled(format!("{glyph:<width$}"), style)
+                }
+            });
+        }
+        lines.push(Line::from(spans));
+    }
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
-const LEVELS: [&str; 5] = ["▁", "▂", "▃", "▅", "▇"];
+/// `(day, month)` of a count of days since 1970-01-01 (Howard Hinnant's `civil_from_days`).
+fn day_month(days: i64) -> (i64, i64) {
+    let z = days + 719_468;
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    (doy - (153 * mp + 2) / 5 + 1, month)
+}
 
-/// 0 for no play, else 1..=4 by quarter of the busiest day.
-fn level(secs: u64, max: u64) -> usize {
-    if secs == 0 {
-        0
-    } else {
-        (secs * 4).div_ceil(max) as usize
+/// Upper bounds (seconds) of heat levels 1 to 3; level 4 is the rest.
+const HEAT_STEPS: [u64; 3] = [22 * 60, 45 * 60, 60 * 60];
+
+/// 0 for no play, else 1..=4 by fixed steps of time played.
+fn level(secs: u64) -> usize {
+    match secs {
+        0 => 0,
+        _ => 1 + HEAT_STEPS.iter().take_while(|&&step| secs >= step).count(),
     }
 }
 
@@ -331,7 +365,7 @@ mod tests {
         ] {
             assert!(text.contains(expected), "missing {expected:?} in\n{text}");
         }
-        assert!(text.contains("▇"), "today is the busiest day\n{text}");
+        assert!(text.contains("■"), "heatmap squares\n{text}");
 
         app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
         let text = screen(&app, 110);
@@ -359,11 +393,20 @@ mod tests {
     }
 
     #[test]
+    fn day_month_from_epoch_days() {
+        assert_eq!(super::day_month(0), (1, 1));
+        assert_eq!(super::day_month(19_782), (29, 2)); // 2024, leap year
+        assert_eq!(super::day_month(20_000), (4, 10));
+    }
+
+    #[test]
     fn heatmap_levels() {
-        assert_eq!(super::level(0, 100), 0);
-        assert_eq!(super::level(1, 100), 1);
-        assert_eq!(super::level(25, 100), 1);
-        assert_eq!(super::level(26, 100), 2);
-        assert_eq!(super::level(100, 100), 4);
+        let level = |minutes: u64| super::level(minutes * 60);
+        assert_eq!(super::level(0), 0);
+        assert_eq!(super::level(1), 1);
+        assert_eq!((level(21), level(22)), (1, 2));
+        assert_eq!((level(44), level(45)), (2, 3));
+        assert_eq!((level(59), level(60)), (3, 4));
+        assert_eq!(level(600), 4);
     }
 }

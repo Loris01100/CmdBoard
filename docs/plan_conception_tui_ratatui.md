@@ -312,7 +312,7 @@ let cols = Layout::horizontal([
 
 ### Autres écrans
 
-- **Stats** : ligne de résumé (portée, nombre de sessions, temps total, plus longue session), temps par catégorie ou par app (un camembert en braille via `Canvas`, `s` bascule entre les deux via `Command::ToggleStatsPie`, état `App::stats_by_app` ; couleurs `xp_fill`/`info`/`warning`/`error`, au-delà le reste est regroupé en « Autres » en `muted`, légende avec durée et % ; masqué sous 60 colonnes), heatmap d'activité des 12 dernières semaines façon GitHub (une colonne par semaine, lundi en haut, aujourd'hui en bas à droite, blocs `▁▂▃▅▇` selon le temps joué rapporté au max, couleur `xp_fill`, jours vides en `muted`), historique des 200 dernières sessions (`Table`, sélection `stats_state`, `j`/`k`). `:stats <app>` filtre tout l'écran sur une app. Les données (`Database::stats`) sont rechargées avec le reste à chaque `reload()`.
+- **Stats** : ligne de résumé (portée, nombre de sessions, temps total, plus longue session), temps par catégorie ou par app (un camembert en braille via `Canvas`, `s` bascule entre les deux via `Command::ToggleStatsPie`, état `App::stats_by_app` ; couleurs `xp_fill`/`info`/`warning`/`error`, au-delà le reste est regroupé en « Autres » en `muted`, légende avec durée et % ; masqué sous 60 colonnes), heatmap d'activité des 12 dernières semaines façon GitHub sur la moitié droite (une colonne par semaine, lundi en haut, aujourd'hui en bas à droite, jours de la semaine à gauche, date du lundi au-dessus des colonnes, un carré `■` par jour dont la couleur dit le temps joué (`Theme::heat` : rien en `muted`, < 22 min `success`, < 45 min `warning`, < 1 h `caution`, au-delà `error`), légende des durées par bloc dans la bordure du bas ; `Stats::today` donne le jour local en jours depuis 1970), historique des 200 dernières sessions (`Table`, sélection `stats_state`, `j`/`k`). `:stats <app>` filtre tout l'écran sur une app. Les données (`Database::stats`) sont rechargées avec le reste à chaque `reload()`.
 - **Rewards** : tableau des récompenses (🏆 débloquées en couleur, 🔒 verrouillées en gris), titre « Récompenses (n/total) », sélection propre (`reward_state`, `j`/`k`). Un panneau Détail montre la portée, la condition (`rule`) et qui l'a débloquée, et quand.
 - **Help** : commandes et raccourcis, générés à partir du parser.
 
@@ -376,11 +376,12 @@ xp_fill            = "green"
 info               = "sky"
 success            = "green"
 warning            = "yellow"
+caution            = "peach"
 error              = "red"
 muted              = "overlay1"
 ```
 
-Ajouter un thème revient à coller une palette et à remplir les slots. Les noms de palette sont libres : le code ne lit que les slots. Un slot de style accepte une couleur (premier plan) ou une table `{ fg, bg, bold, italic, underlined, dim }` ; un slot de couleur (`xp_fill`…`muted`) n'accepte qu'une couleur. Une couleur est un nom de la palette, sinon tout ce que `ratatui::Color` sait lire (`#rrggbb`, noms ANSI comme `darkgray`, index). Tous les slots sont obligatoires, un slot inconnu est une erreur (faute de frappe).
+Ajouter un thème revient à coller une palette et à remplir les slots. Les noms de palette sont libres : le code ne lit que les slots. Un slot de style accepte une couleur (premier plan) ou une table `{ fg, bg, bold, italic, underlined, dim }` ; un slot de couleur (`xp_fill`…`muted`) n'accepte qu'une couleur. Une couleur est un nom de la palette, sinon tout ce que `ratatui::Color` sait lire (`#rrggbb`, noms ANSI comme `darkgray`, index). Tous les slots sont obligatoires sauf `caution` (orange, `warning` s'il manque, pour ne pas casser les thèmes utilisateur existants), un slot inconnu est une erreur (faute de frappe).
 
 ```rust
 // Résolu au chargement : la palette n'est pas conservée.
@@ -395,6 +396,7 @@ pub struct Theme {
     pub info: Color,      // messages d'information
     pub success: Color,
     pub warning: Color,   // clignotement des popups level-up et récompense (avec success)
+    pub caution: Color,   // orange, entre warning et error (heatmap)
     pub error: Color,
     pub muted: Color,
 }

@@ -419,8 +419,8 @@ impl Database {
             by_category,
             by_app,
             daily,
-            // `today` is the julian day number minus one (cast from N.5), and JDN % 7 == 0 on Mondays.
-            today_weekday: ((today + 1) % 7) as u8,
+            // Julian day of 1970-01-01, cast down like `today`.
+            today: today - 2_440_587,
         })
     }
 
@@ -703,7 +703,7 @@ mod tests {
         assert_eq!(all.daily[ACTIVITY_DAYS - 1], 4_200); // today
         assert_eq!(all.daily[ACTIVITY_DAYS - 3], 1_800); // two days ago
         assert_eq!(all.daily.iter().sum::<u64>(), 6_000);
-        assert_eq!(all.today_weekday, 4); // day 20 000 after 1970-01-01 is a Friday
+        assert_eq!(all.today, 20_000);
         assert_eq!(all.sessions[0].app, "Code"); // most recently started first
 
         let only = db.stats_at(Some(code), now).unwrap();

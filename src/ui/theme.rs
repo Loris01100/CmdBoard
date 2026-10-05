@@ -26,6 +26,8 @@ pub struct Theme {
     pub info: Color,
     pub success: Color,
     pub warning: Color,
+    /// Between `warning` and `error` (orange). Optional in theme files: `warning` if absent.
+    pub caution: Color,
     pub error: Color,
     pub muted: Color,
 }
@@ -61,7 +63,9 @@ const STYLE_SLOTS: &[&str] = &[
     "selected",
     "selected_unfocused",
 ];
-const COLOR_SLOTS: &[&str] = &["xp_fill", "info", "success", "warning", "error", "muted"];
+const COLOR_SLOTS: &[&str] = &[
+    "xp_fill", "info", "success", "warning", "caution", "error", "muted",
+];
 
 impl Default for Theme {
     fn default() -> Self {
@@ -118,6 +122,10 @@ impl Theme {
             info: color("info")?,
             success: color("success")?,
             warning: color("warning")?,
+            caution: match slots.contains_key("caution") {
+                true => color("caution")?,
+                false => color("warning")?,
+            },
             error: color("error")?,
             muted: color("muted")?,
         })
@@ -145,6 +153,17 @@ impl Theme {
 
     pub fn muted(&self) -> Style {
         Style::new().fg(self.muted)
+    }
+
+    /// Activity heat, 0 (none) to 4 (most): muted, then green, yellow, orange, red.
+    pub fn heat(&self, level: usize) -> Style {
+        match level {
+            0 => self.muted(),
+            1 => Style::new().fg(self.success),
+            2 => Style::new().fg(self.warning),
+            3 => Style::new().fg(self.caution),
+            _ => Style::new().fg(self.error),
+        }
     }
 }
 
@@ -264,6 +283,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn caution_is_optional() {
+        let theme = Theme::parse(&with_slots(
+            "caution = \"#ff8800\"
+",
+        ))
+        .unwrap();
+        assert_eq!(theme.caution, Color::Rgb(0xff, 0x88, 0x00));
+        let without = with_slots("").replace(
+            "caution = \"leaf\"
+",
+            "",
+        );
+        let theme = Theme::parse(&without).unwrap();
+        assert_eq!(theme.caution, theme.warning);
+    }
+
+    #[test]
     fn every_builtin_theme_resolves() {
         for (name, _) in BUILTIN {
             let theme = load(name, None).unwrap_or_else(|e| panic!("{name}: {e}"));
@@ -296,6 +332,7 @@ mod tests {
             theme.info,
             theme.success,
             theme.warning,
+            theme.caution,
             theme.error,
             theme.muted,
         ];
