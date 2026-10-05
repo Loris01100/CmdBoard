@@ -31,6 +31,7 @@ use crate::storage::{
 };
 use crate::text_input::TextInput;
 use crate::tracker::Watched;
+use crate::update;
 use crate::ui::{
     self,
     theme::{self, Theme},
@@ -177,6 +178,11 @@ pub struct App {
     pub db: Database,
     /// Receives the watch list after each reload. `None` in tests.
     tracker: Option<Sender<Vec<Watched>>>,
+    /// Lets `:update` start its thread. `None` in tests.
+    events: Option<Sender<AppEvent>>,
+    update_running: bool,
+    /// Newer version found by a check, shown in the status bar.
+    pub update_available: Option<String>,
     pub should_quit: bool,
 }
 
@@ -213,6 +219,9 @@ impl App {
             config_path: None,
             db,
             tracker: None,
+            events: None,
+            update_running: false,
+            update_available: None,
             should_quit: false,
         };
         app.reload()?;
@@ -271,6 +280,20 @@ impl App {
         self.send_watch_list();
     }
 
+    /// Starts the daily passive update check, when due and not turned off in `config.toml`.
+    pub fn attach_events(&mut self, events: Sender<AppEvent>, config: &config::Config) {
+        let now = unix_now();
+        if config.update_check && update::check_due(config.last_update_check, now) {
+            if let Some(path) = &self.config_path {
+                // Saved before checking, so being offline doesn't retry at every launch.
+                let _ = config::save_value(path, "last_update_check", now);
+            }
+            self.update_running = true;
+            update::spawn(events.clone(), update::Action::Check);
+        }
+        self.events = Some(events);
+    }
+
     fn send_watch_list(&self) {
         let Some(tracker) = &self.tracker else { return };
         let list = self
@@ -299,9 +322,38 @@ impl App {
                 AppEvent::Tick => self.on_tick(),
                 AppEvent::SessionStarted { app_id } => self.on_session_start(app_id),
                 AppEvent::SessionEnded { app_id, secs } => self.on_session_end(app_id, secs),
+                AppEvent::UpdateFinished { action, result } => self.on_update_finished(action, result),
             }
         }
         self.end_all_sessions()
+    }
+
+    pub fn on_update_finished(&mut self, action: update::Action, result: Result<update::Outcome, String>) {
+        use update::{Action, Outcome};
+        self.update_running = false;
+        let message = match (action, result) {
+            // The passive check stays silent, apart from the status bar.
+            (Action::Check, Ok(Outcome::Available { version, .. })) => {
+                self.update_available = Some(version);
+                return;
+            }
+            (Action::Check, _) => return,
+            (Action::Install, Err(e)) => (format!("Mise à jour : {e}"), MsgKind::Error),
+            (Action::Install, Ok(Outcome::UpToDate)) => {
+                self.update_available = None;
+                (format!("CmdBoard est à jour (v{})", update::CURRENT), MsgKind::Info)
+            }
+            (Action::Install, Ok(Outcome::Available { version, .. })) => {
+                let text = format!("v{version} disponible. Installé via MSI/winget : lancez « winget upgrade CmdBoard »");
+                self.update_available = Some(version);
+                (text, MsgKind::Info)
+            }
+            (Action::Install, Ok(Outcome::Installed { version })) => {
+                self.update_available = None;
+                (format!("Mis à jour en v{version} : relancez CmdBoard"), MsgKind::Success)
+            }
+        };
+        self.message = Some(message);
     }
 
     /// Each tick redraws (live timer, animations); running sessions also checkpoint here.
@@ -920,10 +972,19 @@ impl App {
                 self.theme = theme::load(&name, self.themes_dir.as_deref()).map_err(anyhow::Error::msg)?;
                 self.theme_name = name.trim().to_lowercase();
                 if let Some(path) = &self.config_path {
-                    config::save_value(path, "theme", &self.theme_name)
+                    config::save_value(path, "theme", self.theme_name.as_str())
                         .context("thème appliqué mais non mémorisé")?;
                 }
                 return success(format!("Thème : {}", self.theme.name));
+            }
+            Command::Update => {
+                if self.update_running {
+                    bail!("vérification de mise à jour déjà en cours");
+                }
+                let events = self.events.clone().context("mise à jour indisponible")?;
+                self.update_running = true;
+                update::spawn(events, update::Action::Install);
+                return Ok(Some(("Recherche d'une mise à jour…".into(), MsgKind::Info)));
             }
             Command::Help { command: None } => self.screen = Screen::Help,
             Command::Help { command: Some(name) } => {
@@ -1684,6 +1745,27 @@ mod tests {
         run(&mut app, "add Paint mspaint.exe");
         let list = rx.try_iter().last().unwrap();
         assert!(list.iter().any(|w| w.exe == "mspaint.exe"));
+    }
+
+    #[test]
+    fn update_outcomes_reach_status_bar_and_message() {
+        use update::{Action, Outcome};
+        let mut app = App::with_defaults();
+        run(&mut app, "update"); // no event channel in tests
+        assert_eq!(message_kind(&app), Some(MsgKind::Error));
+
+        app.message = None;
+        app.on_update_finished(Action::Check, Err("offline".into()));
+        assert_eq!(app.message, None); // the passive check stays silent
+        let available = Outcome::Available { version: "0.2.0".into(), managed: true };
+        app.on_update_finished(Action::Check, Ok(available.clone()));
+        assert_eq!((app.update_available.as_deref(), &app.message), (Some("0.2.0"), &None));
+
+        app.on_update_finished(Action::Install, Ok(available));
+        assert!(app.message.as_ref().unwrap().0.contains("winget upgrade CmdBoard"));
+        app.on_update_finished(Action::Install, Ok(Outcome::Installed { version: "0.2.0".into() }));
+        assert_eq!(message_kind(&app), Some(MsgKind::Success));
+        assert_eq!(app.update_available, None);
     }
 
     #[test]

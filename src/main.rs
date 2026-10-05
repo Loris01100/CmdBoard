@@ -10,6 +10,7 @@ mod storage;
 mod text_input;
 mod tracker;
 mod ui;
+mod update;
 
 use std::sync::mpsc;
 
@@ -29,7 +30,7 @@ fn main() -> anyhow::Result<()> {
     let mut warnings = Vec::new();
     let (config, warning) = Config::load(&dir.join("config.toml"));
     warnings.extend(warning);
-    warnings.extend(app.init_theme(&dir, config.theme));
+    warnings.extend(app.init_theme(&dir, config.theme.clone()));
     let (aliases, warning) = Aliases::load(&dir.join("commands.toml"));
     app.aliases = aliases;
     warnings.extend(warning);
@@ -39,6 +40,7 @@ fn main() -> anyhow::Result<()> {
 
     let (tx, rx) = mpsc::channel();
     app.attach_tracker(tracker::spawn(tx.clone()));
+    app.attach_events(tx.clone(), &config);
     event::spawn(tx);
 
     let mut terminal = ratatui::init(); // also installs the panic hook

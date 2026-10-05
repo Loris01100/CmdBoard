@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 
+use crate::update;
+
 /// Drives animations and the live session timer.
 pub const TICK: Duration = Duration::from_millis(250);
 
@@ -18,6 +20,11 @@ pub enum AppEvent {
     SessionStarted { app_id: i64 },
     /// The watched process is gone after running `secs` seconds (sent by the tracker).
     SessionEnded { app_id: i64, secs: u64 },
+    /// An update check or install finished (sent by a short-lived thread).
+    UpdateFinished {
+        action: update::Action,
+        result: Result<update::Outcome, String>,
+    },
 }
 
 /// Reads the keyboard and sends a `Tick` every `TICK`. Stops once the UI thread is gone.

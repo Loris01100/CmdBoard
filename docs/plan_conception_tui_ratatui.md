@@ -535,7 +535,7 @@ chrono = "0.4"
 anyhow = "1"
 directories = "6"
 fuzzy-matcher = "0.3"
-self_update = { version = "0.42", default-features = false, features = ["archive-zip", "compression-zip-deflate", "rustls"] }
+self_update = { version = "1.3", default-features = false, features = ["github", "ureq", "rustls", "archive-zip", "compression-zip-deflate"] }
 ```
 
 À vérifier avec `cargo add` au moment de créer le projet, pour obtenir les dernières versions. Pour lire les `.lnk`, ajouter `lnk` ou `parselnk`.
@@ -611,4 +611,4 @@ CmdBoard est Windows uniquement (`.lnk`, `%APPDATA%`, URI des launchers). winget
 
 ## Prochaine étape
 
-Les étapes 1 à 11 sont faites. Suivante : **étape 12**. Distribution : `dist init` (cible `x86_64-pc-windows-msvc`, installeurs `powershell` et `msi`), workflow de release GitHub, `:update` via `self_update` (refus sous `Program Files`, renvoi vers winget), manifeste winget.
+Les étapes 1 à 11 sont faites. Étape 12 en cours : `dist init` (`dist-workspace.toml`, `.github/workflows/release.yml`, `wix/main.wxs`), `:update` et la vérification passive quotidienne (`src/update.rs`, clés `update_check` et `last_update_check` dans `config.toml`) sont en place. `self_update` est en 1.x : il faut les features `github` et `ureq` en plus de celles de la section 17, et l'archive est choisie par son nom exact (`cmdboard-x86_64-pc-windows-msvc.zip`), sans quoi le `.msi` ou le `.sha256` pourraient correspondre. Reste : publier `v0.1.0`, puis le manifeste winget.

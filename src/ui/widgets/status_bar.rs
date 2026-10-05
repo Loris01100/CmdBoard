@@ -1,6 +1,7 @@
 use ratatui::{
     Frame,
-    layout::Rect,
+    layout::{Alignment, Rect},
+    style::Style,
     text::{Line, Span},
     widgets::Paragraph,
 };
@@ -56,4 +57,12 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         spans.push(Span::styled(format!(" {label}"), theme.muted()));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
+
+    if let Some(version) = &app.update_available {
+        let notice = Line::from(vec![
+            Span::styled(format!("v{version} disponible "), Style::new().fg(theme.info)),
+            Span::styled(":update ", theme.muted()),
+        ]);
+        frame.render_widget(Paragraph::new(notice).alignment(Alignment::Right), area);
+    }
 }

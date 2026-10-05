@@ -49,6 +49,7 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("stats", [_, ..]) => Ok(Command::Stats { app: Some(rest.join(" ")) }),
         ("theme", []) => Ok(Command::Theme { name: None }),
         ("theme", [name]) => Ok(Command::Theme { name: Some(name.clone()) }),
+        ("update", []) => Ok(Command::Update),
         ("help", []) => Ok(Command::Help { command: None }),
         ("help", [command]) => Ok(Command::Help { command: Some(command.clone()) }),
         ("quit", []) => Ok(Command::Quit),
@@ -143,6 +144,7 @@ mod tests {
             ("stats Windows Terminal", Command::Stats { app: Some(s("Windows Terminal")) }),
             ("theme", Command::Theme { name: None }),
             ("theme catppuccin-latte", Command::Theme { name: Some(s("catppuccin-latte")) }),
+            ("update", Command::Update),
             ("help", Command::Help { command: None }),
             ("? add", Command::Help { command: Some(s("add")) }),
             ("q", Command::Quit),
@@ -165,6 +167,7 @@ mod tests {
             ("xp 50", "Usage : xp <app> <montant>"),
             ("xp Steam lots", "Montant invalide : lots (usage : xp <app> <montant>)"),
             ("quit now", "Usage : quit"),
+            ("update now", "Usage : update"),
             (r#"launch "Hades"#, "Guillemet non fermé"),
         ];
         for (input, expected) in cases {

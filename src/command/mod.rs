@@ -60,6 +60,8 @@ pub enum Command {
         app: String,
         amount: i64,
     },
+    /// Installs the latest GitHub release, or points to winget for MSI installs.
+    Update,
     Help {
         command: Option<String>,
     },
@@ -122,6 +124,12 @@ pub const COMMANDS: &[CommandHelp] = &[
         aliases: &[],
         usage: "xp <app> <montant>",
         summary: "Ajoute (ou retire, si négatif) de l'XP à une app",
+    },
+    CommandHelp {
+        name: "update",
+        aliases: &[],
+        usage: "update",
+        summary: "Installe la dernière version (MSI/winget : winget upgrade CmdBoard)",
     },
     CommandHelp {
         name: "help",
