@@ -52,8 +52,18 @@ pub fn complete(line: &str, sources: &Sources) -> Option<Completion> {
         "rmcat" => whole(line, rest_start, Kind::Category, sources),
         "help" => whole(line, rest_start, Kind::Command, sources),
         "theme" => whole(line, rest_start, Kind::Theme, sources),
-        "move" => argument(line, rest_start, &[Some(Kind::App), Some(Kind::Category)], sources),
-        "add" => argument(line, rest_start, &[None, None, Some(Kind::Category)], sources),
+        "move" => argument(
+            line,
+            rest_start,
+            &[Some(Kind::App), Some(Kind::Category)],
+            sources,
+        ),
+        "add" => argument(
+            line,
+            rest_start,
+            &[None, None, Some(Kind::Category)],
+            sources,
+        ),
         _ => None,
     }
 }
@@ -64,7 +74,12 @@ fn whole(line: &str, start: usize, kind: Kind, sources: &Sources) -> Option<Comp
 
 /// Completes the argument at the end of the line, if its position has a known kind.
 /// Names holding spaces are quoted.
-fn argument(line: &str, rest_start: usize, kinds: &[Option<Kind>], sources: &Sources) -> Option<Completion> {
+fn argument(
+    line: &str,
+    rest_start: usize,
+    kinds: &[Option<Kind>],
+    sources: &Sources,
+) -> Option<Completion> {
     let rest = &line[rest_start..];
     let tokens = token_starts(rest);
     let (index, start) = if rest.is_empty() || rest.ends_with(char::is_whitespace) {
@@ -103,7 +118,13 @@ fn token_starts(text: &str) -> Vec<usize> {
     starts
 }
 
-fn build(base: &str, partial: &str, kind: Kind, sources: &Sources, suffix: &str) -> Option<Completion> {
+fn build(
+    base: &str,
+    partial: &str,
+    kind: Kind,
+    sources: &Sources,
+    suffix: &str,
+) -> Option<Completion> {
     let mut items: Vec<&str> = match kind {
         Kind::Command => COMMANDS
             .iter()
@@ -119,7 +140,10 @@ fn build(base: &str, partial: &str, kind: Kind, sources: &Sources, suffix: &str)
         .into_iter()
         .map(|i| format!("{}{suffix}", items[i]))
         .collect();
-    (!candidates.is_empty()).then(|| Completion { base: base.to_string(), candidates })
+    (!candidates.is_empty()).then(|| Completion {
+        base: base.to_string(),
+        candidates,
+    })
 }
 
 #[cfg(test)]
@@ -151,7 +175,10 @@ mod tests {
             ("help mo", Some("help move")),
             ("theme moc", Some("theme catppuccin-mocha")),
             ("move wind", Some(r#"move "Windows Terminal""#)),
-            (r#"move "Windows Terminal" d"#, Some(r#"move "Windows Terminal" Dev"#)),
+            (
+                r#"move "Windows Terminal" d"#,
+                Some(r#"move "Windows Terminal" Dev"#),
+            ),
             ("add Hades steam://x je", Some("add Hades steam://x Jeux")),
             ("add Had", None), // the name is free text
             ("quit x", None),

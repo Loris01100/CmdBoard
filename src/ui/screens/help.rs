@@ -16,9 +16,18 @@ const KEYS: &[(&str, &str)] = &[
     ("j/k ↑↓", "naviguer"),
     ("Tab ←→ h/l", "changer de panneau"),
     ("Entrée", "lancer l'app sélectionnée"),
-    ("a / m / d", "ajouter / déplacer / supprimer (app ou catégorie vide)"),
-    ("/", "chercher une app dans toutes les catégories (Entrée : y aller)"),
-    (":", "ligne de commande (↑↓ historique, Tab compléter, Esc annuler)"),
+    (
+        "a / m / d",
+        "ajouter / déplacer / supprimer (app ou catégorie vide)",
+    ),
+    (
+        "/",
+        "chercher une app dans toutes les catégories (Entrée : y aller)",
+    ),
+    (
+        ":",
+        "ligne de commande (↑↓ historique, Tab compléter, Esc annuler)",
+    ),
     ("1 2 3 4", "Dashboard, Stats, Récompenses, Aide"),
     ("q  Ctrl-C", "quitter"),
 ];
@@ -68,7 +77,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let rows = commands.chain(user_aliases);
     let table = Table::new(
         rows,
-        [Constraint::Length(34), Constraint::Length(9), Constraint::Min(10)],
+        [
+            Constraint::Length(34),
+            Constraint::Length(9),
+            Constraint::Min(10),
+        ],
     )
     .header(Row::new([Line::styled("Commandes", theme.title)]));
     frame.render_widget(table, commands_area);

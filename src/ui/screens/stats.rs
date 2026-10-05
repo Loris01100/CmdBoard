@@ -28,7 +28,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
     .areas(body);
 
     // Which apps, and the totals.
-    let scope = match app.stats_app.and_then(|id| app.apps.iter().find(|a| a.id == id)) {
+    let scope = match app
+        .stats_app
+        .and_then(|id| app.apps.iter().find(|a| a.id == id))
+    {
         Some(entry) => format!(" {} (:stats pour tout voir)", entry.name),
         None => " Toutes les apps".into(),
     };
@@ -70,7 +73,9 @@ fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
     let block = theme.panel("Temps par catégorie", false);
     if app.stats.by_category.is_empty() {
         frame.render_widget(
-            Paragraph::new("Aucune session").style(theme.muted()).block(block),
+            Paragraph::new("Aucune session")
+                .style(theme.muted())
+                .block(block),
             area,
         );
         return;
@@ -100,7 +105,10 @@ fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
 fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
     let today = app.stats.daily.last().copied().unwrap_or(0);
-    let title = format!("Activité ({ACTIVITY_DAYS} jours) · aujourd'hui : {}", format_duration(today));
+    let title = format!(
+        "Activité ({ACTIVITY_DAYS} jours) · aujourd'hui : {}",
+        format_duration(today)
+    );
     // One column per day, today on the right: keep the most recent days if too narrow.
     let width = area.width.saturating_sub(2) as usize;
     let daily = &app.stats.daily;
@@ -163,7 +171,16 @@ mod tests {
         app.on_session_end(steam, 42 * 60);
         app.mode = crate::app::Mode::Normal; // dismiss the popups
         let text = screen(&app, 110);
-        for expected in ["Toutes les apps", "Temps par catégorie", "Jeux", "Activité", "Sessions (1)", "Steam", "42m", "+47"] {
+        for expected in [
+            "Toutes les apps",
+            "Temps par catégorie",
+            "Jeux",
+            "Activité",
+            "Sessions (1)",
+            "Steam",
+            "42m",
+            "+47",
+        ] {
             assert!(text.contains(expected), "missing {expected:?} in\n{text}");
         }
         screen(&app, 20); // narrow: no panic

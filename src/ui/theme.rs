@@ -32,17 +32,35 @@ pub struct Theme {
 
 /// Built-in themes, by name (the file stem).
 const BUILTIN: &[(&str, &str)] = &[
-    ("catppuccin-latte", include_str!("../../themes/catppuccin-latte.toml")),
-    ("catppuccin-frappe", include_str!("../../themes/catppuccin-frappe.toml")),
-    ("catppuccin-macchiato", include_str!("../../themes/catppuccin-macchiato.toml")),
-    ("catppuccin-mocha", include_str!("../../themes/catppuccin-mocha.toml")),
+    (
+        "catppuccin-latte",
+        include_str!("../../themes/catppuccin-latte.toml"),
+    ),
+    (
+        "catppuccin-frappe",
+        include_str!("../../themes/catppuccin-frappe.toml"),
+    ),
+    (
+        "catppuccin-macchiato",
+        include_str!("../../themes/catppuccin-macchiato.toml"),
+    ),
+    (
+        "catppuccin-mocha",
+        include_str!("../../themes/catppuccin-mocha.toml"),
+    ),
     ("terminal", include_str!("../../themes/terminal.toml")),
 ];
 
 /// Used without truecolor: 16 ANSI colors that follow the terminal's scheme.
 pub const FALLBACK: &str = "terminal";
 
-const STYLE_SLOTS: &[&str] = &["border", "border_focused", "title", "selected", "selected_unfocused"];
+const STYLE_SLOTS: &[&str] = &[
+    "border",
+    "border_focused",
+    "title",
+    "selected",
+    "selected_unfocused",
+];
 const COLOR_SLOTS: &[&str] = &["xp_fill", "info", "success", "warning", "error", "muted"];
 
 impl Default for Theme {
@@ -71,10 +89,13 @@ impl Theme {
             return Err(format!("slot inconnu : {unknown}"));
         }
 
-        let slot = |key: &str| slots.get(key).ok_or_else(|| format!("slot manquant : {key}"));
-        let style = |key: &str| {
-            resolve_style(slot(key)?, palette).map_err(|e| format!("slot {key} : {e}"))
+        let slot = |key: &str| {
+            slots
+                .get(key)
+                .ok_or_else(|| format!("slot manquant : {key}"))
         };
+        let style =
+            |key: &str| resolve_style(slot(key)?, palette).map_err(|e| format!("slot {key} : {e}"));
         let color = |key: &str| match slot(key)? {
             toml::Value::String(value) => {
                 resolve_color(value, palette).map_err(|e| format!("slot {key} : {e}"))
@@ -101,12 +122,20 @@ impl Theme {
     pub fn panel(&self, title: &str, focused: bool) -> Block<'static> {
         Block::bordered()
             .border_type(BorderType::Rounded)
-            .border_style(if focused { self.border_focused } else { self.border })
+            .border_style(if focused {
+                self.border_focused
+            } else {
+                self.border
+            })
             .title(Span::styled(format!(" {title} "), self.title))
     }
 
     pub fn highlight(&self, focused: bool) -> Style {
-        if focused { self.selected } else { self.selected_unfocused }
+        if focused {
+            self.selected
+        } else {
+            self.selected_unfocused
+        }
     }
 
     pub fn muted(&self) -> Style {
@@ -119,7 +148,9 @@ pub fn available(user_dir: Option<&Path>) -> Vec<String> {
     let mut names: Vec<String> = BUILTIN.iter().map(|(name, _)| name.to_string()).collect();
     if let Some(entries) = user_dir.and_then(|dir| std::fs::read_dir(dir).ok()) {
         for path in entries.flatten().map(|e| e.path()) {
-            if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
+            if path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
                 && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
             {
                 names.push(stem.to_lowercase());
@@ -165,7 +196,11 @@ pub fn default_name() -> &'static str {
 
 fn default_name_for(wt_session: bool, colorterm: Option<&str>) -> &'static str {
     let truecolor = wt_session || matches!(colorterm, Some("truecolor" | "24bit"));
-    if truecolor { "catppuccin-mocha" } else { FALLBACK }
+    if truecolor {
+        "catppuccin-mocha"
+    } else {
+        FALLBACK
+    }
 }
 
 fn table<'a>(file: &'a toml::Table, key: &str) -> Result<Option<&'a toml::Table>, String> {
@@ -182,7 +217,8 @@ fn resolve_color(value: &str, palette: &toml::Table) -> Result<Color, String> {
         let toml::Value::String(raw) = entry else {
             return Err(format!("palette {value} : couleur attendue"));
         };
-        return Color::from_str(raw).map_err(|_| format!("palette {value} : couleur invalide « {raw} »"));
+        return Color::from_str(raw)
+            .map_err(|_| format!("palette {value} : couleur invalide « {raw} »"));
     }
     Color::from_str(value).map_err(|_| format!("couleur inconnue « {value} »"))
 }
@@ -210,7 +246,11 @@ fn resolve_style(value: &toml::Value, palette: &toml::Table) -> Result<Style, St
 }
 
 fn modifier(style: Style, modifier: Modifier, on: bool) -> Style {
-    if on { style.add_modifier(modifier) } else { style }
+    if on {
+        style.add_modifier(modifier)
+    } else {
+        style
+    }
 }
 
 #[cfg(test)]
@@ -225,7 +265,10 @@ mod tests {
         }
         let mocha = load("Catppuccin-Mocha", None).unwrap();
         assert_eq!(mocha.name, "Catppuccin Mocha");
-        assert_eq!(mocha.border_focused, Style::new().fg(Color::Rgb(0x74, 0xc7, 0xec)));
+        assert_eq!(
+            mocha.border_focused,
+            Style::new().fg(Color::Rgb(0x74, 0xc7, 0xec))
+        );
         assert_eq!(
             mocha.selected,
             Style::new()
@@ -233,13 +276,23 @@ mod tests {
                 .bg(Color::Rgb(0xcb, 0xa6, 0xf7))
                 .add_modifier(Modifier::BOLD)
         );
-        assert_eq!(Theme::default().border_focused, Style::new().fg(Color::Cyan));
+        assert_eq!(
+            Theme::default().border_focused,
+            Style::new().fg(Color::Cyan)
+        );
     }
 
     #[test]
     fn terminal_theme_uses_ansi_colors_only() {
         let theme = load("terminal", None).unwrap();
-        let colors = [theme.xp_fill, theme.info, theme.success, theme.warning, theme.error, theme.muted];
+        let colors = [
+            theme.xp_fill,
+            theme.info,
+            theme.success,
+            theme.warning,
+            theme.error,
+            theme.muted,
+        ];
         assert!(colors.iter().all(|c| !matches!(c, Color::Rgb(..))));
     }
 
@@ -273,11 +326,23 @@ mod tests {
     #[test]
     fn broken_themes_are_reported() {
         let cases = [
-            (with_slots("error = \"nope\"\n"), "slot error : couleur inconnue « nope »"),
-            (with_slots("muted = { fg = \"leaf\" }\n"), "slot muted : couleur attendue"),
-            (with_slots("title = { size = 3 }\n"), "slot title : clé invalide : size"),
+            (
+                with_slots("error = \"nope\"\n"),
+                "slot error : couleur inconnue « nope »",
+            ),
+            (
+                with_slots("muted = { fg = \"leaf\" }\n"),
+                "slot muted : couleur attendue",
+            ),
+            (
+                with_slots("title = { size = 3 }\n"),
+                "slot title : clé invalide : size",
+            ),
             (with_slots("shadow = \"leaf\"\n"), "slot inconnu : shadow"),
-            ("name = \"T\"\n[slots]\nborder = \"red\"\n".into(), "slot manquant : border_focused"),
+            (
+                "name = \"T\"\n[slots]\nborder = \"red\"\n".into(),
+                "slot manquant : border_focused",
+            ),
             ("[slots]\n".into(), "name manquant"),
             ("name = \"T\"\n".into(), "section [slots] manquante"),
         ];
@@ -285,14 +350,21 @@ mod tests {
             assert_eq!(Theme::parse(&text), Err(expected.to_string()), "{text}");
         }
         assert!(Theme::parse("name = ").is_err());
-        assert_eq!(load("nope", None), Err("thème nope : thème inconnu (:theme pour la liste)".into()));
+        assert_eq!(
+            load("nope", None),
+            Err("thème nope : thème inconnu (:theme pour la liste)".into())
+        );
     }
 
     #[test]
     fn user_themes_override_and_extend() {
         let dir = std::env::temp_dir().join(format!("cmdboard-themes-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("Terminal.toml"), with_slots("").replace("\"T\"", "\"Mine\"")).unwrap();
+        std::fs::write(
+            dir.join("Terminal.toml"),
+            with_slots("").replace("\"T\"", "\"Mine\""),
+        )
+        .unwrap();
         std::fs::write(dir.join("broken.toml"), "name = \"B\"").unwrap();
         std::fs::write(dir.join("notes.txt"), "").unwrap();
 
@@ -302,7 +374,10 @@ mod tests {
         assert!(!names.contains(&"notes".to_string()));
         // Windows file names ignore case: "terminal" finds "Terminal.toml".
         assert_eq!(load("terminal", Some(&dir)).unwrap().name, "Mine");
-        assert_eq!(load("broken", Some(&dir)), Err("thème broken.toml : section [slots] manquante".into()));
+        assert_eq!(
+            load("broken", Some(&dir)),
+            Err("thème broken.toml : section [slots] manquante".into())
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -310,7 +385,10 @@ mod tests {
     #[test]
     fn truecolor_picks_catppuccin() {
         assert_eq!(default_name_for(true, None), "catppuccin-mocha");
-        assert_eq!(default_name_for(false, Some("truecolor")), "catppuccin-mocha");
+        assert_eq!(
+            default_name_for(false, Some("truecolor")),
+            "catppuccin-mocha"
+        );
         assert_eq!(default_name_for(false, Some("24bit")), "catppuccin-mocha");
         assert_eq!(default_name_for(false, None), "terminal");
         assert_eq!(default_name_for(false, Some("256")), "terminal");

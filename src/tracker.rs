@@ -39,14 +39,20 @@ pub fn spawn(events: Sender<AppEvent>) -> Sender<Vec<Watched>> {
                 true,
                 ProcessRefreshKind::nothing(),
             );
-            let names = system.processes().values().map(|p| p.name().to_string_lossy());
+            let names = system
+                .processes()
+                .values()
+                .map(|p| p.name().to_string_lossy());
             let now_running = running_apps(&watched, names);
             let previous: HashSet<i64> = started.keys().copied().collect();
             let (begun, ended) = diff(&previous, &now_running);
 
             for app_id in ended {
                 let secs = started.remove(&app_id).map_or(0, |t| t.elapsed().as_secs());
-                if events.send(AppEvent::SessionEnded { app_id, secs }).is_err() {
+                if events
+                    .send(AppEvent::SessionEnded { app_id, secs })
+                    .is_err()
+                {
                     return;
                 }
             }
@@ -100,7 +106,10 @@ mod tests {
     use super::*;
 
     fn watched(app_id: i64, exe: &str) -> Watched {
-        Watched { app_id, exe: exe.into() }
+        Watched {
+            app_id,
+            exe: exe.into(),
+        }
     }
 
     #[test]

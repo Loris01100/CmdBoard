@@ -126,7 +126,12 @@ impl Database {
         let tools = self.add_category("Outils")?;
         let apps = [
             ("Steam", "steam://open/main", Some("steam.exe"), games),
-            ("Windows Terminal", "wt.exe", Some("WindowsTerminal.exe"), dev),
+            (
+                "Windows Terminal",
+                "wt.exe",
+                Some("WindowsTerminal.exe"),
+                dev,
+            ),
             ("Bloc-notes", "notepad.exe", Some("Notepad.exe"), tools),
             ("Calculatrice", "calc.exe", Some("CalculatorApp.exe"), tools),
             ("Explorateur", "explorer.exe", None, tools),
@@ -213,12 +218,16 @@ mod tests {
 
         migrate(&mut conn).unwrap();
         let (app_id, at): (i64, i64) = conn
-            .query_row("SELECT app_id, unlocked_at FROM unlocked_rewards", [], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
+            .query_row(
+                "SELECT app_id, unlocked_at FROM unlocked_rewards",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .unwrap();
         assert_eq!((app_id, at), (1, 1000));
-        let rewards: i64 = conn.query_row("SELECT COUNT(*) FROM rewards", [], |r| r.get(0)).unwrap();
+        let rewards: i64 = conn
+            .query_row("SELECT COUNT(*) FROM rewards", [], |r| r.get(0))
+            .unwrap();
         assert!(rewards > 1); // starter rewards added
     }
 
@@ -232,8 +241,7 @@ mod tests {
     #[test]
     fn newer_database_is_refused() {
         let mut conn = Connection::open_in_memory().unwrap();
-        set_user_version(&conn, MIGRATIONS.len() + 1)
-            .unwrap();
+        set_user_version(&conn, MIGRATIONS.len() + 1).unwrap();
         assert!(migrate(&mut conn).is_err());
     }
 

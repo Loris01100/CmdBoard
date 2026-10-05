@@ -31,11 +31,11 @@ use crate::storage::{
 };
 use crate::text_input::TextInput;
 use crate::tracker::Watched;
-use crate::update;
 use crate::ui::{
     self,
     theme::{self, Theme},
 };
+use crate::update;
 
 /// How often running sessions save their time played, in case of a crash.
 const CHECKPOINT_EVERY: Duration = Duration::from_secs(60);
@@ -118,7 +118,12 @@ struct SessionOutcome {
 impl XpAnim {
     /// The total to show at tick `frame`.
     pub fn value(&self, frame: u64) -> u32 {
-        xp::animate(self.from, self.to, frame.saturating_sub(self.start), XP_ANIM_FRAMES)
+        xp::animate(
+            self.from,
+            self.to,
+            frame.saturating_sub(self.start),
+            XP_ANIM_FRAMES,
+        )
     }
 
     fn is_done(&self, frame: u64) -> bool {
@@ -234,19 +239,25 @@ impl App {
         self.apps = self.db.apps()?;
         self.profile = self.db.profile()?;
         self.recent_rewards = self.db.recent_rewards(3)?;
-        if self.stats_app.is_some_and(|id| self.find_app_by_id(id).is_none()) {
+        if self
+            .stats_app
+            .is_some_and(|id| self.find_app_by_id(id).is_none())
+        {
             self.stats_app = None; // the app was removed
         }
         self.stats = self.db.stats(self.stats_app)?;
-        self.stats_state
-            .select(clamp(self.stats_state.selected(), self.stats.sessions.len()));
+        self.stats_state.select(clamp(
+            self.stats_state.selected(),
+            self.stats.sessions.len(),
+        ));
         self.rewards = self.db.reward_views()?;
         self.reward_state
             .select(clamp(self.reward_state.selected(), self.rewards.len()));
         self.cat_state
             .select(clamp(self.cat_state.selected(), self.categories.len()));
         let visible = self.visible_apps().len();
-        self.app_state.select(clamp(self.app_state.selected(), visible));
+        self.app_state
+            .select(clamp(self.app_state.selected(), visible));
         self.send_watch_list();
         Ok(())
     }
@@ -301,7 +312,10 @@ impl App {
             .iter()
             .filter_map(|a| {
                 let exe = a.watch_exe.as_deref()?.trim();
-                (!exe.is_empty()).then(|| Watched { app_id: a.id, exe: exe.into() })
+                (!exe.is_empty()).then(|| Watched {
+                    app_id: a.id,
+                    exe: exe.into(),
+                })
             })
             .collect();
         // A closed channel means the tracker died: sessions just stop being tracked.
@@ -322,13 +336,19 @@ impl App {
                 AppEvent::Tick => self.on_tick(),
                 AppEvent::SessionStarted { app_id } => self.on_session_start(app_id),
                 AppEvent::SessionEnded { app_id, secs } => self.on_session_end(app_id, secs),
-                AppEvent::UpdateFinished { action, result } => self.on_update_finished(action, result),
+                AppEvent::UpdateFinished { action, result } => {
+                    self.on_update_finished(action, result)
+                }
             }
         }
         self.end_all_sessions()
     }
 
-    pub fn on_update_finished(&mut self, action: update::Action, result: Result<update::Outcome, String>) {
+    pub fn on_update_finished(
+        &mut self,
+        action: update::Action,
+        result: Result<update::Outcome, String>,
+    ) {
         use update::{Action, Outcome};
         self.update_running = false;
         let message = match (action, result) {
@@ -341,16 +361,24 @@ impl App {
             (Action::Install, Err(e)) => (format!("Mise à jour : {e}"), MsgKind::Error),
             (Action::Install, Ok(Outcome::UpToDate)) => {
                 self.update_available = None;
-                (format!("CmdBoard est à jour (v{})", update::CURRENT), MsgKind::Info)
+                (
+                    format!("CmdBoard est à jour (v{})", update::CURRENT),
+                    MsgKind::Info,
+                )
             }
             (Action::Install, Ok(Outcome::Available { version, .. })) => {
-                let text = format!("v{version} disponible. Installé via MSI/winget : lancez « winget upgrade CmdBoard »");
+                let text = format!(
+                    "v{version} disponible. Installé via MSI/winget : lancez « winget upgrade CmdBoard »"
+                );
                 self.update_available = Some(version);
                 (text, MsgKind::Info)
             }
             (Action::Install, Ok(Outcome::Installed { version })) => {
                 self.update_available = None;
-                (format!("Mis à jour en v{version} : relancez CmdBoard"), MsgKind::Success)
+                (
+                    format!("Mis à jour en v{version} : relancez CmdBoard"),
+                    MsgKind::Success,
+                )
             }
         };
         self.message = Some(message);
@@ -383,13 +411,19 @@ impl App {
             return;
         }
         // The app may have been removed since the tracker's last poll.
-        let Some(name) = self.app_name(app_id) else { return };
+        let Some(name) = self.app_name(app_id) else {
+            return;
+        };
         match self.db.start_session(app_id, unix_now()) {
             Ok(session_id) => {
                 let now = Instant::now();
                 self.active_sessions.insert(
                     app_id,
-                    ActiveSession { session_id, started: now, last_checkpoint: now },
+                    ActiveSession {
+                        session_id,
+                        started: now,
+                        last_checkpoint: now,
+                    },
                 );
                 self.message = Some((format!("Session démarrée : {name}"), MsgKind::Info));
             }
@@ -399,7 +433,9 @@ impl App {
 
     /// `secs` is measured by the tracker, from detection to disappearance.
     pub fn on_session_end(&mut self, app_id: i64, secs: u64) {
-        let Some(session) = self.active_sessions.remove(&app_id) else { return };
+        let Some(session) = self.active_sessions.remove(&app_id) else {
+            return;
+        };
         let Some(before) = self.find_app_by_id(app_id).map(|a| a.total_xp) else {
             return; // removed meanwhile
         };
@@ -407,10 +443,16 @@ impl App {
         let result = self
             .finish_session(session.session_id, secs)
             .and_then(|outcome| self.reload().map(|()| outcome));
-        let Some(name) = self.app_name(app_id) else { return };
+        let Some(name) = self.app_name(app_id) else {
+            return;
+        };
         let message = match result {
             Ok(Some(outcome)) => {
-                let text = format!("Session terminée : {name} ({} min, +{} XP)", secs / 60, outcome.xp);
+                let text = format!(
+                    "Session terminée : {name} ({} min, +{} XP)",
+                    secs / 60,
+                    outcome.xp
+                );
                 let message = match outcome.rule_errors.first() {
                     Some(error) => (format!("{text} · {error}"), MsgKind::Error),
                     None => (text, MsgKind::Success),
@@ -441,7 +483,11 @@ impl App {
     fn reward_session(&self, session_id: i64, secs: u64) -> anyhow::Result<SessionOutcome> {
         let xp = self.award_session_xp(session_id, secs)?;
         let (rewards, rule_errors) = self.unlock_rewards(session_id)?;
-        Ok(SessionOutcome { xp, rewards, rule_errors })
+        Ok(SessionOutcome {
+            xp,
+            rewards,
+            rule_errors,
+        })
     }
 
     /// XP of a closed session, with the streak bonus. The streak includes today, now that
@@ -457,7 +503,10 @@ impl App {
 
     /// Evaluates the rewards the session's app can still unlock, and unlocks those whose
     /// rule passes. A broken rule is reported, not fatal: the other rewards still count.
-    fn unlock_rewards(&self, session_id: i64) -> anyhow::Result<(Vec<RewardUnlocked>, Vec<String>)> {
+    fn unlock_rewards(
+        &self,
+        session_id: i64,
+    ) -> anyhow::Result<(Vec<RewardUnlocked>, Vec<String>)> {
         let (app_id, facts) = self.db.session_facts(session_id)?;
         let app_name = self.app_name(app_id);
         let (mut unlocked, mut errors) = (Vec::new(), Vec::new());
@@ -465,11 +514,16 @@ impl App {
             match rewards::evaluate(&reward.rule, &facts) {
                 Ok(true) => {
                     let for_app = reward.per_app.then_some(app_id);
-                    self.db.unlock_reward(reward.id, for_app, session_id, unix_now())?;
+                    self.db
+                        .unlock_reward(reward.id, for_app, session_id, unix_now())?;
                     unlocked.push(RewardUnlocked {
                         name: reward.name,
                         description: reward.description,
-                        app: if reward.per_app { app_name.clone() } else { None },
+                        app: if reward.per_app {
+                            app_name.clone()
+                        } else {
+                            None
+                        },
                     });
                 }
                 Ok(false) => {}
@@ -520,15 +574,31 @@ impl App {
     /// After an app's XP changed (data already reloaded): animates its bar and the
     /// profile's, and queues a level-up popup if a level went up.
     fn on_xp_changed(&mut self, app_id: i64, app_before: u32, profile_before: u32, gained: u32) {
-        let Some(entry) = self.find_app_by_id(app_id) else { return };
+        let Some(entry) = self.find_app_by_id(app_id) else {
+            return;
+        };
         let (name, app_after, app_level) = (entry.name.clone(), entry.total_xp, entry.level);
         let frame = self.frame_count;
 
         // Start from what is on screen, in case a previous animation is still running.
-        let from = self.xp_anims.get(&app_id).map_or(app_before, |a| a.value(frame));
-        self.xp_anims.insert(app_id, XpAnim { from, to: app_after, start: frame });
+        let from = self
+            .xp_anims
+            .get(&app_id)
+            .map_or(app_before, |a| a.value(frame));
+        self.xp_anims.insert(
+            app_id,
+            XpAnim {
+                from,
+                to: app_after,
+                start: frame,
+            },
+        );
         let from = self.profile_anim.map_or(profile_before, |a| a.value(frame));
-        self.profile_anim = Some(XpAnim { from, to: self.profile.total_xp, start: frame });
+        self.profile_anim = Some(XpAnim {
+            from,
+            to: self.profile.total_xp,
+            start: frame,
+        });
 
         let went_up =
             |before: u32, level: u32| (level > xp::level_from_total(before).0).then_some(level);
@@ -602,7 +672,8 @@ impl App {
         self.search = TextInput::default();
         self.mode = Mode::Search;
         self.focus = Focus::Apps;
-        self.app_state.select(clamp(Some(0), self.visible_apps().len()));
+        self.app_state
+            .select(clamp(Some(0), self.visible_apps().len()));
     }
 
     fn on_search_key(&mut self, key: KeyEvent) {
@@ -622,7 +693,8 @@ impl App {
             _ => {
                 if self.search.handle_key(key) {
                     // The best match comes first: select it again after each edit.
-                    self.app_state.select(clamp(Some(0), self.visible_apps().len()));
+                    self.app_state
+                        .select(clamp(Some(0), self.visible_apps().len()));
                 }
             }
         }
@@ -635,7 +707,8 @@ impl App {
             self.app_state.select(selected);
         }
         let visible = self.visible_apps().len();
-        self.app_state.select(clamp(self.app_state.selected(), visible));
+        self.app_state
+            .select(clamp(self.app_state.selected(), visible));
     }
 
     /// Normal-mode key bindings (plan section 7).
@@ -704,7 +777,9 @@ impl App {
     }
 
     fn on_popup_key(&mut self, key: KeyEvent) {
-        let Mode::Popup(popup) = &mut self.mode else { return };
+        let Mode::Popup(popup) = &mut self.mode else {
+            return;
+        };
         match popup {
             Popup::Confirm { command, .. } => match key.code {
                 KeyCode::Enter | KeyCode::Char('o' | 'O' | 'y' | 'Y') => {
@@ -738,7 +813,9 @@ impl App {
 
     /// Runs the form's command. On error the form stays open and shows it.
     fn submit_form(&mut self) {
-        let Mode::Popup(Popup::Form(form)) = &mut self.mode else { return };
+        let Mode::Popup(Popup::Form(form)) = &mut self.mode else {
+            return;
+        };
         let command = match form.to_command() {
             Ok(command) => command,
             Err(e) => {
@@ -841,7 +918,12 @@ impl App {
                 launch::launch(&entry.launch_target)?;
                 return success(format!("Lancé : {}", entry.name));
             }
-            Command::Add { name, target, category, watch_exe } => {
+            Command::Add {
+                name,
+                target,
+                category,
+                watch_exe,
+            } => {
                 if self.find_app(&name).is_some() {
                     bail!("« {name} » existe déjà");
                 }
@@ -874,7 +956,9 @@ impl App {
                 self.db.move_app(id, category_id)?;
                 self.reload()?;
                 self.select_app(id);
-                let category = &self.selected_category().map_or(category, |c| c.name.clone());
+                let category = &self
+                    .selected_category()
+                    .map_or(category, |c| c.name.clone());
                 return success(format!("{name} → {category}{}", created_note(created)));
             }
             Command::RemoveApp { app, confirmed } => {
@@ -888,7 +972,10 @@ impl App {
                             "Supprimer « {name} » ? Son temps de jeu, son XP et ses \
                              récompenses seront perdus."
                         ),
-                        command: Command::RemoveApp { app: name, confirmed: true },
+                        command: Command::RemoveApp {
+                            app: name,
+                            confirmed: true,
+                        },
                     });
                     return Ok(None);
                 }
@@ -896,19 +983,27 @@ impl App {
                 self.reload()?;
                 return success(format!("Supprimé : {name}"));
             }
-            Command::RemoveCategory { category, confirmed } => {
+            Command::RemoveCategory {
+                category,
+                confirmed,
+            } => {
                 let (id, name) = {
                     let found = self.category_named(&category)?;
                     (found.id, found.name.clone())
                 };
                 let count = self.app_count(id);
                 if count > 0 {
-                    bail!("« {name} » contient encore {count} app(s) : déplacez-les ou supprimez-les d'abord");
+                    bail!(
+                        "« {name} » contient encore {count} app(s) : déplacez-les ou supprimez-les d'abord"
+                    );
                 }
                 if !confirmed {
                     self.mode = Mode::Popup(Popup::Confirm {
                         message: format!("Supprimer la catégorie « {name} » ?"),
-                        command: Command::RemoveCategory { category: name, confirmed: true },
+                        command: Command::RemoveCategory {
+                            category: name,
+                            confirmed: true,
+                        },
                     });
                     return Ok(None);
                 }
@@ -964,12 +1059,17 @@ impl App {
             }
             Command::Theme { name: None } => {
                 let names = theme::available(self.themes_dir.as_deref());
-                let text = format!("Thèmes : {} (actuel : {})", names.join(", "), self.theme_name);
+                let text = format!(
+                    "Thèmes : {} (actuel : {})",
+                    names.join(", "),
+                    self.theme_name
+                );
                 return Ok(Some((text, MsgKind::Info)));
             }
             Command::Theme { name: Some(name) } => {
                 // A broken theme file is an error message; the current theme stays.
-                self.theme = theme::load(&name, self.themes_dir.as_deref()).map_err(anyhow::Error::msg)?;
+                self.theme =
+                    theme::load(&name, self.themes_dir.as_deref()).map_err(anyhow::Error::msg)?;
                 self.theme_name = name.trim().to_lowercase();
                 if let Some(path) = &self.config_path {
                     config::save_value(path, "theme", self.theme_name.as_str())
@@ -987,12 +1087,18 @@ impl App {
                 return Ok(Some(("Recherche d'une mise à jour…".into(), MsgKind::Info)));
             }
             Command::Help { command: None } => self.screen = Screen::Help,
-            Command::Help { command: Some(name) } => {
+            Command::Help {
+                command: Some(name),
+            } => {
                 if let Some(body) = self.aliases.get(&name) {
                     return Ok(Some((format!("alias {name} : {body}"), MsgKind::Info)));
                 }
-                let help = find_help(&name).with_context(|| format!("commande inconnue : {name}"))?;
-                return Ok(Some((format!("{} : {}", help.usage, help.summary), MsgKind::Info)));
+                let help =
+                    find_help(&name).with_context(|| format!("commande inconnue : {name}"))?;
+                return Ok(Some((
+                    format!("{} : {}", help.usage, help.summary),
+                    MsgKind::Info,
+                )));
             }
         }
         Ok(None)
@@ -1034,7 +1140,9 @@ impl App {
     }
 
     pub fn selected_category(&self) -> Option<&Category> {
-        self.cat_state.selected().and_then(|i| self.categories.get(i))
+        self.cat_state
+            .selected()
+            .and_then(|i| self.categories.get(i))
     }
 
     /// Apps of the selected category, in display order. While searching: the matches
@@ -1048,7 +1156,11 @@ impl App {
                 .collect();
         }
         match self.selected_category() {
-            Some(cat) => self.apps.iter().filter(|a| a.category_id == cat.id).collect(),
+            Some(cat) => self
+                .apps
+                .iter()
+                .filter(|a| a.category_id == cat.id)
+                .collect(),
             None => Vec::new(),
         }
     }
@@ -1059,13 +1171,15 @@ impl App {
     }
 
     pub fn app_count(&self, category_id: i64) -> usize {
-        self.apps.iter().filter(|a| a.category_id == category_id).count()
+        self.apps
+            .iter()
+            .filter(|a| a.category_id == category_id)
+            .count()
     }
 
     /// Selects an app and its category, and focuses the apps panel.
     fn select_app(&mut self, id: i64) {
-        let Some(category_id) = self.apps.iter().find(|a| a.id == id).map(|a| a.category_id)
-        else {
+        let Some(category_id) = self.apps.iter().find(|a| a.id == id).map(|a| a.category_id) else {
             return;
         };
         let cat_index = self.categories.iter().position(|c| c.id == category_id);
@@ -1083,7 +1197,11 @@ impl App {
                 return;
             }
             Screen::Stats => {
-                let next = step(self.stats_state.selected(), self.stats.sessions.len(), forward);
+                let next = step(
+                    self.stats_state.selected(),
+                    self.stats.sessions.len(),
+                    forward,
+                );
                 self.stats_state.select(next);
                 return;
             }
@@ -1098,7 +1216,11 @@ impl App {
                 }
             }
             Focus::Apps => {
-                let next = step(self.app_state.selected(), self.visible_apps().len(), forward);
+                let next = step(
+                    self.app_state.selected(),
+                    self.visible_apps().len(),
+                    forward,
+                );
                 self.app_state.select(next);
             }
         }
@@ -1111,7 +1233,11 @@ impl App {
 }
 
 fn created_note(created: bool) -> &'static str {
-    if created { " (nouvelle catégorie)" } else { "" }
+    if created {
+        " (nouvelle catégorie)"
+    } else {
+        ""
+    }
 }
 
 /// Next index in a list of `len` items, wrapping at both ends.
@@ -1218,8 +1344,16 @@ mod tests {
     #[test]
     fn add_creates_category_and_selects_app() {
         let mut app = App::with_defaults();
-        run(&mut app, r#"add "Hollow Knight" steam://rungameid/367520 Metroidvania"#);
-        assert_eq!(message_kind(&app), Some(MsgKind::Success), "{:?}", app.message);
+        run(
+            &mut app,
+            r#"add "Hollow Knight" steam://rungameid/367520 Metroidvania"#,
+        );
+        assert_eq!(
+            message_kind(&app),
+            Some(MsgKind::Success),
+            "{:?}",
+            app.message
+        );
         assert_eq!(app.selected_category().unwrap().name, "Metroidvania");
         assert_eq!(app.selected_app().unwrap().name, "Hollow Knight");
         assert_eq!(app.focus, Focus::Apps);
@@ -1397,7 +1531,10 @@ mod tests {
         app.on_session_end(steam, 42 * 60);
         assert!(app.active_sessions.is_empty());
         // 42 XP for the minutes + 5 for a one-day streak (today).
-        assert_eq!(app.message.as_ref().unwrap().0, "Session terminée : Steam (42 min, +47 XP)");
+        assert_eq!(
+            app.message.as_ref().unwrap().0,
+            "Session terminée : Steam (42 min, +47 XP)"
+        );
         let entry = app.find_app("Steam").unwrap();
         assert_eq!(entry.total_secs, 42 * 60);
         assert_eq!(entry.total_xp, 47);
@@ -1549,7 +1686,10 @@ mod tests {
         app.on_session_end(steam, 3 * 3600);
         let (text, kind) = app.message.clone().unwrap();
         assert_eq!(kind, MsgKind::Error);
-        assert!(text.contains("règle « marathon » : variable inconnue : hours"), "{text}");
+        assert!(
+            text.contains("règle « marathon » : variable inconnue : hours"),
+            "{text}"
+        );
         play(&mut app, steam, 0); // closes the popups
         assert_eq!(unlocked(&app, "Premiers pas"), [None]);
     }
@@ -1617,17 +1757,31 @@ mod tests {
         assert_eq!(app.stats_app, Some(app.find_app("Bloc-notes").unwrap().id));
 
         run(&mut app, "boost");
-        assert_eq!(app.message.as_ref().unwrap().0, "alias : argument $1 manquant");
+        assert_eq!(
+            app.message.as_ref().unwrap().0,
+            "alias : argument $1 manquant"
+        );
         run(&mut app, "help boost");
-        assert_eq!(app.message.as_ref().unwrap().0, "alias boost : xp $1 50; stats $1");
+        assert_eq!(
+            app.message.as_ref().unwrap().0,
+            "alias boost : xp $1 50; stats $1"
+        );
     }
 
     #[test]
     fn alias_stops_at_first_error_or_confirmation() {
-        let mut app = with_aliases("[alias]\nbad = \"xp nope 5; xp steam 5\"\nclean = \"rm steam; xp steam 5\"");
+        let mut app = with_aliases(
+            "[alias]\nbad = \"xp nope 5; xp steam 5\"\nclean = \"rm steam; xp steam 5\"",
+        );
         run(&mut app, "bad");
         assert_eq!(message_kind(&app), Some(MsgKind::Error));
-        assert!(app.message.as_ref().unwrap().0.starts_with("xp nope 5 : app inconnue"));
+        assert!(
+            app.message
+                .as_ref()
+                .unwrap()
+                .0
+                .starts_with("xp nope 5 : app inconnue")
+        );
         assert_eq!(app.find_app("Steam").unwrap().total_xp, 0);
 
         run(&mut app, "clean");
@@ -1675,7 +1829,10 @@ mod tests {
         let mut app = App::with_defaults();
         run(&mut app, "theme");
         let (text, _) = app.message.clone().unwrap();
-        assert!(text.starts_with("Thèmes : catppuccin-frappe, catppuccin-latte"), "{text}");
+        assert!(
+            text.starts_with("Thèmes : catppuccin-frappe, catppuccin-latte"),
+            "{text}"
+        );
         assert!(text.ends_with("(actuel : terminal)"));
 
         run(&mut app, "theme Catppuccin-Latte");
@@ -1709,7 +1866,10 @@ mod tests {
     fn level_up_waits_while_typing() {
         let mut app = App::with_defaults();
         press(&mut app, KeyCode::Char(':'));
-        app.execute(Command::Xp { app: "Steam".into(), amount: 100 });
+        app.execute(Command::Xp {
+            app: "Steam".into(),
+            amount: 100,
+        });
         assert_eq!(app.mode, Mode::Command); // not interrupted
         press(&mut app, KeyCode::Esc);
         app.on_tick();
@@ -1723,12 +1883,18 @@ mod tests {
         assert_eq!(app.find_app("Windows Terminal").unwrap().total_xp, 250);
         assert!(matches!(
             &app.mode,
-            Mode::Popup(Popup::LevelUp(LevelUp { app_level: Some(2), .. }))
+            Mode::Popup(Popup::LevelUp(LevelUp {
+                app_level: Some(2),
+                ..
+            }))
         ));
         press(&mut app, KeyCode::Esc);
 
         run(&mut app, "xp windows terminal -1000");
-        assert_eq!(app.message.as_ref().unwrap().0, "Windows Terminal : -250 XP (total 0)");
+        assert_eq!(
+            app.message.as_ref().unwrap().0,
+            "Windows Terminal : -250 XP (total 0)"
+        );
         assert_eq!(app.find_app("Windows Terminal").unwrap().total_xp, 0);
         assert_eq!(app.mode, Mode::Normal); // going down is no level-up
     }
@@ -1740,7 +1906,10 @@ mod tests {
         app.attach_tracker(tx);
         let list = rx.try_recv().unwrap();
         assert_eq!(list.len(), 4); // Explorateur has no watch_exe
-        assert!(list.contains(&Watched { app_id: steam_id(&app), exe: "steam.exe".into() }));
+        assert!(list.contains(&Watched {
+            app_id: steam_id(&app),
+            exe: "steam.exe".into()
+        }));
 
         run(&mut app, "add Paint mspaint.exe");
         let list = rx.try_iter().last().unwrap();
@@ -1757,13 +1926,30 @@ mod tests {
         app.message = None;
         app.on_update_finished(Action::Check, Err("offline".into()));
         assert_eq!(app.message, None); // the passive check stays silent
-        let available = Outcome::Available { version: "0.2.0".into(), managed: true };
+        let available = Outcome::Available {
+            version: "0.2.0".into(),
+            managed: true,
+        };
         app.on_update_finished(Action::Check, Ok(available.clone()));
-        assert_eq!((app.update_available.as_deref(), &app.message), (Some("0.2.0"), &None));
+        assert_eq!(
+            (app.update_available.as_deref(), &app.message),
+            (Some("0.2.0"), &None)
+        );
 
         app.on_update_finished(Action::Install, Ok(available));
-        assert!(app.message.as_ref().unwrap().0.contains("winget upgrade CmdBoard"));
-        app.on_update_finished(Action::Install, Ok(Outcome::Installed { version: "0.2.0".into() }));
+        assert!(
+            app.message
+                .as_ref()
+                .unwrap()
+                .0
+                .contains("winget upgrade CmdBoard")
+        );
+        app.on_update_finished(
+            Action::Install,
+            Ok(Outcome::Installed {
+                version: "0.2.0".into(),
+            }),
+        );
         assert_eq!(message_kind(&app), Some(MsgKind::Success));
         assert_eq!(app.update_available, None);
     }

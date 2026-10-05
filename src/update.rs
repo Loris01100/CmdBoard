@@ -59,7 +59,9 @@ fn run(action: Action) -> anyhow::Result<Outcome> {
         .show_download_progress(false)
         .no_confirm(true)
         .build()?;
-    let releases = updater.get_latest_release().context("impossible de joindre GitHub")?;
+    let releases = updater
+        .get_latest_release()
+        .context("impossible de joindre GitHub")?;
     if !releases.is_update_available()? {
         return Ok(Outcome::UpToDate);
     }
@@ -102,13 +104,19 @@ mod tests {
 
     #[test]
     fn program_files_installs_are_managed() {
-        let dirs = [PathBuf::from(r"C:\Program Files"), PathBuf::from(r"C:\Program Files (x86)\")];
+        let dirs = [
+            PathBuf::from(r"C:\Program Files"),
+            PathBuf::from(r"C:\Program Files (x86)\"),
+        ];
         let managed = |exe: &str| is_managed_install(Path::new(exe), &dirs);
         assert!(managed(r"C:\Program Files\cmdboard\bin\cmdboard.exe"));
         assert!(managed(r"c:\program files (x86)\CmdBoard\cmdboard.exe"));
         assert!(!managed(r"C:\Users\me\.cargo\bin\cmdboard.exe"));
         assert!(!managed(r"C:\Program Files Extra\cmdboard.exe"));
-        assert!(!is_managed_install(Path::new(r"C:\x\cmdboard.exe"), &[PathBuf::new()]));
+        assert!(!is_managed_install(
+            Path::new(r"C:\x\cmdboard.exe"),
+            &[PathBuf::new()]
+        ));
     }
 
     #[test]

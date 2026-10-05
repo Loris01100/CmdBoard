@@ -23,8 +23,12 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             ("Entrée", "aller à l'app"),
             ("Esc", "annuler"),
         ],
-        (Mode::Popup(Popup::Confirm { .. }), _) => &[("Entrée/o", "confirmer"), ("Esc/n", "annuler")],
-        (Mode::Popup(Popup::LevelUp(_) | Popup::RewardUnlocked(_)), _) => &[("Entrée/Esc", "continuer")],
+        (Mode::Popup(Popup::Confirm { .. }), _) => {
+            &[("Entrée/o", "confirmer"), ("Esc/n", "annuler")]
+        }
+        (Mode::Popup(Popup::LevelUp(_) | Popup::RewardUnlocked(_)), _) => {
+            &[("Entrée/Esc", "continuer")]
+        }
         (Mode::Popup(Popup::Form(_)), _) => &[
             ("Tab ↑↓", "champ"),
             ("Entrée", "suivant / valider"),
@@ -60,7 +64,10 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
 
     if let Some(version) = &app.update_available {
         let notice = Line::from(vec![
-            Span::styled(format!("v{version} disponible "), Style::new().fg(theme.info)),
+            Span::styled(
+                format!("v{version} disponible "),
+                Style::new().fg(theme.info),
+            ),
             Span::styled(":update ", theme.muted()),
         ]);
         frame.render_widget(Paragraph::new(notice).alignment(Alignment::Right), area);

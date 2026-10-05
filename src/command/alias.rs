@@ -50,7 +50,10 @@ impl Aliases {
         let mut skipped = Vec::new();
         for (name, body) in file.alias {
             let lower = name.to_lowercase();
-            if find_help(&lower).is_some() || lower.is_empty() || lower.contains(char::is_whitespace) {
+            if find_help(&lower).is_some()
+                || lower.is_empty()
+                || lower.contains(char::is_whitespace)
+            {
                 skipped.push(name);
             } else {
                 map.insert(lower, body);
@@ -96,7 +99,11 @@ impl Aliases {
 /// Replaces `$1`…`$9` and `$*`. Arguments holding spaces are quoted back.
 fn substitute(body: &str, args: &[String]) -> Result<String, String> {
     let quote = |a: &String| {
-        if a.contains(char::is_whitespace) { format!("\"{a}\"") } else { a.clone() }
+        if a.contains(char::is_whitespace) {
+            format!("\"{a}\"")
+        } else {
+            a.clone()
+        }
     };
     let mut out = String::new();
     let mut chars = body.chars().peekable();
@@ -113,7 +120,9 @@ fn substitute(body: &str, args: &[String]) -> Result<String, String> {
             Some(d @ '1'..='9') => {
                 chars.next();
                 let i = d.to_digit(10).unwrap_or(1) as usize;
-                let arg = args.get(i - 1).ok_or_else(|| format!("argument ${i} manquant"))?;
+                let arg = args
+                    .get(i - 1)
+                    .ok_or_else(|| format!("argument ${i} manquant"))?;
                 out.push_str(&quote(arg));
             }
             _ => out.push('$'),
@@ -142,12 +151,21 @@ mod tests {
     #[test]
     fn expands_sequences_and_arguments() {
         let a = aliases();
-        assert_eq!(a.expand("gaming"), Some(Ok(vec!["launch steam".into(), "launch discord".into()])));
+        assert_eq!(
+            a.expand("gaming"),
+            Some(Ok(vec!["launch steam".into(), "launch discord".into()]))
+        );
         assert_eq!(
             a.expand(r#"JOUER "Hollow Knight""#),
-            Some(Ok(vec![r#"launch "Hollow Knight""#.into(), r#"stats "Hollow Knight""#.into()]))
+            Some(Ok(vec![
+                r#"launch "Hollow Knight""#.into(),
+                r#"stats "Hollow Knight""#.into()
+            ]))
         );
-        assert_eq!(a.expand("tout Steam 50"), Some(Ok(vec!["xp Steam 50".into()])));
+        assert_eq!(
+            a.expand("tout Steam 50"),
+            Some(Ok(vec!["xp Steam 50".into()]))
+        );
         assert_eq!(a.expand("jouer"), Some(Err("argument $1 manquant".into())));
         assert_eq!(a.expand("launch steam"), None);
         assert_eq!(a.expand(""), None);
@@ -155,16 +173,21 @@ mod tests {
 
     #[test]
     fn builtin_names_are_reserved() {
-        let (a, warning) = Aliases::parse("[alias]\nhelp = \"quit\"\nq = \"quit\"\nok = \"help\"").unwrap();
+        let (a, warning) =
+            Aliases::parse("[alias]\nhelp = \"quit\"\nq = \"quit\"\nok = \"help\"").unwrap();
         assert_eq!(a.names().collect::<Vec<_>>(), ["ok"]);
-        assert_eq!(warning.as_deref(), Some("commands.toml : alias ignoré(s) : help, q"));
+        assert_eq!(
+            warning.as_deref(),
+            Some("commands.toml : alias ignoré(s) : help, q")
+        );
     }
 
     #[test]
     fn broken_or_missing_file() {
         assert!(Aliases::parse("[alias\n").is_err());
         assert_eq!(Aliases::parse("").unwrap().0, Aliases::default());
-        let (a, warning) = Aliases::load(&std::env::temp_dir().join("cmdboard-no-such-dir/commands.toml"));
+        let (a, warning) =
+            Aliases::load(&std::env::temp_dir().join("cmdboard-no-such-dir/commands.toml"));
         assert_eq!((a, warning), (Aliases::default(), None));
     }
 }

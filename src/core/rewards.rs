@@ -98,7 +98,10 @@ fn check(condition: &[Token], facts: &Facts) -> Result<bool, String> {
     };
     let actual = facts.get(name).ok_or_else(|| {
         let known: Vec<_> = VARIABLES.iter().map(|(name, _)| *name).collect();
-        format!("variable inconnue : {name} (connues : {})", known.join(", "))
+        format!(
+            "variable inconnue : {name} (connues : {})",
+            known.join(", ")
+        )
     })?;
     Ok(match op {
         Op::Ge => actual >= *value,
@@ -135,7 +138,9 @@ fn tokenize(rule: &str) -> Result<Vec<Token>, String> {
                 i += 1;
             }
             let text: String = chars[start..i].iter().collect();
-            let value = text.parse().map_err(|_| format!("nombre invalide : {text}"))?;
+            let value = text
+                .parse()
+                .map_err(|_| format!("nombre invalide : {text}"))?;
             tokens.push(Token::Num(value));
             continue;
         }
@@ -194,11 +199,23 @@ mod tests {
         let cases = [
             ("", "règle vide"),
             ("   ", "règle vide"),
-            ("hours >= 3", "variable inconnue : hours (connues : session_minutes,"),
+            (
+                "hours >= 3",
+                "variable inconnue : hours (connues : session_minutes,",
+            ),
             ("level >= 1 || hours >= 3", "variable inconnue : hours"), // checked even if true
-            ("level 3", "condition attendue : <variable> <opérateur> <nombre>"),
-            ("3 <= level", "condition attendue : <variable> <opérateur> <nombre>"),
-            ("level >= 1 &&", "condition attendue : <variable> <opérateur> <nombre>"),
+            (
+                "level 3",
+                "condition attendue : <variable> <opérateur> <nombre>",
+            ),
+            (
+                "3 <= level",
+                "condition attendue : <variable> <opérateur> <nombre>",
+            ),
+            (
+                "level >= 1 &&",
+                "condition attendue : <variable> <opérateur> <nombre>",
+            ),
             ("level = 3", "caractère inattendu : ="),
             ("level >= 1.2.3", "nombre invalide : 1.2.3"),
         ];

@@ -146,7 +146,10 @@ mod tests {
         app.mode = crate::app::Mode::Normal; // dismiss the popups
         let text = screen(&app);
         // "Premiers pas" (plus "Noctambule" when the test runs at night).
-        assert!(!text.contains(&format!("Récompenses (0/{total})")), "{text}");
+        assert!(
+            !text.contains(&format!("Récompenses (0/{total})")),
+            "{text}"
+        );
         assert!(!text.contains("verrouillée")); // "Premiers pas" is selected and unlocked
     }
 }

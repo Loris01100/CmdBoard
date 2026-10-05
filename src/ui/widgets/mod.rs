@@ -1,6 +1,6 @@
 pub mod app_table;
-pub mod command_line;
 pub mod category_list;
+pub mod command_line;
 pub mod popup;
 pub mod profile_panel;
 pub mod status_bar;
@@ -17,7 +17,11 @@ pub fn format_duration(secs: u64) -> String {
 /// Running timer: "4:05" below one hour, "1:02:03" above.
 pub fn format_clock(secs: u64) -> String {
     let (h, m, s) = (secs / 3600, secs / 60 % 60, secs % 60);
-    if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m}:{s:02}") }
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
 }
 
 /// How long ago something happened, given the elapsed seconds.

@@ -16,7 +16,11 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self { theme: None, update_check: true, last_update_check: None }
+        Self {
+            theme: None,
+            update_check: true,
+            last_update_check: None,
+        }
     }
 }
 
@@ -30,12 +34,28 @@ impl Config {
         };
         match text.parse::<toml::Table>() {
             Ok(table) => {
-                let theme = table.get("theme").and_then(|v| v.as_str()).map(String::from);
-                let update_check = table.get("update_check").and_then(|v| v.as_bool()).unwrap_or(true);
+                let theme = table
+                    .get("theme")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let update_check = table
+                    .get("update_check")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
                 let last_update_check = table.get("last_update_check").and_then(|v| v.as_integer());
-                (Self { theme, update_check, last_update_check }, None)
+                (
+                    Self {
+                        theme,
+                        update_check,
+                        last_update_check,
+                    },
+                    None,
+                )
             }
-            Err(e) => (Self::default(), Some(format!("config.toml : {}", e.message().trim()))),
+            Err(e) => (
+                Self::default(),
+                Some(format!("config.toml : {}", e.message().trim())),
+            ),
         }
     }
 }
@@ -65,13 +85,27 @@ mod tests {
         assert_eq!(Config::load(&path), (Config::default(), None)); // missing
 
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(&path, "other = 3\ntheme = \"terminal\"\nupdate_check = false\n").unwrap();
+        std::fs::write(
+            &path,
+            "other = 3\ntheme = \"terminal\"\nupdate_check = false\n",
+        )
+        .unwrap();
         save_value(&path, "theme", "catppuccin-latte").unwrap();
         save_value(&path, "last_update_check", 1234_i64).unwrap();
         let (config, warning) = Config::load(&path);
-        assert_eq!((config.theme.as_deref(), warning), (Some("catppuccin-latte"), None));
-        assert_eq!((config.update_check, config.last_update_check), (false, Some(1234)));
-        assert!(std::fs::read_to_string(&path).unwrap().contains("other = 3"));
+        assert_eq!(
+            (config.theme.as_deref(), warning),
+            (Some("catppuccin-latte"), None)
+        );
+        assert_eq!(
+            (config.update_check, config.last_update_check),
+            (false, Some(1234))
+        );
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .contains("other = 3")
+        );
 
         std::fs::write(&path, "theme = ").unwrap();
         let (config, warning) = Config::load(&path);

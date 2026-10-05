@@ -23,7 +23,11 @@ impl CommandLine {
             && self.input.text() == completion.line(*index)
         {
             let len = completion.candidates.len();
-            *index = if forward { (*index + 1) % len } else { (*index + len - 1) % len };
+            *index = if forward {
+                (*index + 1) % len
+            } else {
+                (*index + len - 1) % len
+            };
             let line = completion.line(*index);
             self.input.set(&line);
             return;

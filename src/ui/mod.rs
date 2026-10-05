@@ -28,7 +28,12 @@ mod tests {
     #[test]
     fn every_screen_renders_at_any_size() {
         let mut app = App::with_defaults();
-        for screen in [Screen::Dashboard, Screen::Stats, Screen::Rewards, Screen::Help] {
+        for screen in [
+            Screen::Dashboard,
+            Screen::Stats,
+            Screen::Rewards,
+            Screen::Help,
+        ] {
             app.screen = screen;
             for (w, h) in [(120, 30), (70, 20), (10, 3)] {
                 let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
@@ -45,10 +50,16 @@ mod tests {
             let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
             terminal.draw(|f| draw(f, app)).unwrap();
             let buffer = terminal.backend().buffer();
-            buffer.content().iter().map(|c| c.symbol()).collect::<String>()
+            buffer
+                .content()
+                .iter()
+                .map(|c| c.symbol())
+                .collect::<String>()
         };
         app.mode = Mode::Command;
-        "help add".chars().for_each(|c| app.command_line.input.insert(c));
+        "help add"
+            .chars()
+            .for_each(|c| app.command_line.input.insert(c));
         assert!(render(&app).contains(":help add"));
 
         let text = app.command_line.submit();
@@ -64,7 +75,11 @@ mod tests {
             let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
             terminal.draw(|f| draw(f, app)).unwrap();
             let buffer = terminal.backend().buffer();
-            buffer.content().iter().map(|c| c.symbol()).collect::<String>()
+            buffer
+                .content()
+                .iter()
+                .map(|c| c.symbol())
+                .collect::<String>()
         };
         assert!(render(&app).contains("aucune session en cours"));
         app.on_session_start(app.find_app("Steam").unwrap().id);
@@ -78,7 +93,11 @@ mod tests {
             let mut terminal = Terminal::new(TestBackend::new(w, 30)).unwrap();
             terminal.draw(|f| draw(f, &app)).unwrap();
             let buffer = terminal.backend().buffer();
-            buffer.content().iter().map(|c| c.symbol()).collect::<String>()
+            buffer
+                .content()
+                .iter()
+                .map(|c| c.symbol())
+                .collect::<String>()
         };
         assert!(render(120).contains("Détails"));
         assert!(!render(80).contains("Détails"));
@@ -89,7 +108,12 @@ mod tests {
         let mut app = App::with_defaults();
         for name in crate::ui::theme::available(None) {
             app.theme = crate::ui::theme::load(&name, None).unwrap();
-            for screen in [Screen::Dashboard, Screen::Stats, Screen::Rewards, Screen::Help] {
+            for screen in [
+                Screen::Dashboard,
+                Screen::Stats,
+                Screen::Rewards,
+                Screen::Help,
+            ] {
                 app.screen = screen;
                 for (w, h) in [(160, 50), (100, 30), (55, 22), (40, 12), (20, 6)] {
                     let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();

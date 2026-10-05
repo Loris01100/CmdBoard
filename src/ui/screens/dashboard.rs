@@ -13,8 +13,7 @@ use crate::ui::{
     layout,
     widgets::{
         app_table, category_list, command_line, format_ago, format_clock, format_duration,
-        profile_panel,
-        status_bar, xp_bar,
+        profile_panel, status_bar, xp_bar,
     },
 };
 
@@ -78,7 +77,10 @@ fn render_details(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(block, area);
 
     let Some(entry) = app.selected_app() else {
-        frame.render_widget(Paragraph::new("Aucune application").style(theme.muted()), inner);
+        frame.render_widget(
+            Paragraph::new("Aucune application").style(theme.muted()),
+            inner,
+        );
         return;
     };
 
@@ -91,8 +93,14 @@ fn render_details(frame: &mut Frame, area: Rect, app: &App) {
 
     let (level, xp) = app.shown_app_xp(entry);
     let head_text = vec![
-        Line::styled(entry.name.as_str(), theme.title.add_modifier(Modifier::BOLD)),
-        Line::from(format!("Niveau {level}  ·  {xp}/{} XP", xp::xp_to_next_level(level))),
+        Line::styled(
+            entry.name.as_str(),
+            theme.title.add_modifier(Modifier::BOLD),
+        ),
+        Line::from(format!(
+            "Niveau {level}  ·  {xp}/{} XP",
+            xp::xp_to_next_level(level)
+        )),
     ];
     frame.render_widget(Paragraph::new(head_text), head);
     frame.render_widget(xp_bar::gauge(xp::level_progress(level, xp), theme), gauge);
@@ -102,7 +110,10 @@ fn render_details(frame: &mut Frame, area: Rect, app: &App) {
         .map_or_else(|| "jamais".into(), |t| format_ago(unix_now() - t));
     let rest_text = vec![
         Line::from(""),
-        Line::from(format!("Temps total : {}", format_duration(entry.total_secs))),
+        Line::from(format!(
+            "Temps total : {}",
+            format_duration(entry.total_secs)
+        )),
         Line::from(format!("Dernière : {last}")),
         Line::from(format!("Récompenses : 🏆 {}", entry.rewards)),
         Line::from(""),

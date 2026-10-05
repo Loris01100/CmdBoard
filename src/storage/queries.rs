@@ -20,7 +20,9 @@ const STATS_SESSIONS: u32 = 200;
 
 impl Database {
     pub fn categories(&self) -> anyhow::Result<Vec<Category>> {
-        let mut stmt = self.conn.prepare("SELECT id, name FROM categories ORDER BY id")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name FROM categories ORDER BY id")?;
         let rows = stmt.query_map([], |r| {
             Ok(Category {
                 id: r.get(0)?,
@@ -99,7 +101,8 @@ impl Database {
 
     /// Also deletes the app's sessions and rewards (`ON DELETE CASCADE`).
     pub fn delete_app(&self, app_id: i64) -> anyhow::Result<()> {
-        self.conn.execute("DELETE FROM apps WHERE id = ?1", [app_id])?;
+        self.conn
+            .execute("DELETE FROM apps WHERE id = ?1", [app_id])?;
         Ok(())
     }
 
@@ -125,7 +128,8 @@ impl Database {
     /// Returns whether the session was kept.
     pub fn end_session(&self, id: i64, ended_at: i64, secs: u64) -> anyhow::Result<bool> {
         if secs < MIN_SESSION_SECS {
-            self.conn.execute("DELETE FROM sessions WHERE id = ?1", [id])?;
+            self.conn
+                .execute("DELETE FROM sessions WHERE id = ?1", [id])?;
             return Ok(false);
         }
         self.conn.execute(
@@ -193,7 +197,9 @@ impl Database {
     fn profile_at(&self, now: i64) -> anyhow::Result<Profile> {
         let total_xp: u32 =
             self.conn
-                .query_row("SELECT COALESCE(SUM(total_xp), 0) FROM apps", [], |r| r.get(0))?;
+                .query_row("SELECT COALESCE(SUM(total_xp), 0) FROM apps", [], |r| {
+                    r.get(0)
+                })?;
         let (level, xp) = xp::level_from_total(total_xp);
 
         let xp_today: u32 = self.conn.query_row(
@@ -205,7 +211,9 @@ impl Database {
         )?;
 
         let day = "CAST(julianday(date(?1, 'unixepoch', 'localtime')) AS INTEGER)";
-        let today: i64 = self.conn.query_row(&format!("SELECT {day}"), [now], |r| r.get(0))?;
+        let today: i64 = self
+            .conn
+            .query_row(&format!("SELECT {day}"), [now], |r| r.get(0))?;
         let mut stmt = self.conn.prepare(
             "SELECT DISTINCT CAST(julianday(date(ended_at, 'unixepoch', 'localtime')) AS INTEGER) AS d
              FROM sessions WHERE ended_at IS NOT NULL ORDER BY d DESC",
@@ -368,14 +376,18 @@ impl Database {
              GROUP BY c.id ORDER BY secs DESC, c.name",
         )?;
         let by_category = stmt
-            .query_map([app_id], |r| Ok((r.get(0)?, r.get::<_, i64>(1)?.max(0) as u64)))?
+            .query_map([app_id], |r| {
+                Ok((r.get(0)?, r.get::<_, i64>(1)?.max(0) as u64))
+            })?
             .collect::<Result<Vec<_>, _>>()?;
 
         // Local day numbers (Julian days), compared with today's.
         let day = |column: &str| {
             format!("CAST(julianday(date({column}, 'unixepoch', 'localtime')) AS INTEGER)")
         };
-        let today: i64 = self.conn.query_row(&format!("SELECT {}", day("?1")), [now], |r| r.get(0))?;
+        let today: i64 = self
+            .conn
+            .query_row(&format!("SELECT {}", day("?1")), [now], |r| r.get(0))?;
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {} AS d, SUM(duration_s) FROM sessions
              WHERE ended_at IS NOT NULL AND (?1 IS NULL OR app_id = ?1)
@@ -430,7 +442,13 @@ impl Database {
              ORDER BY u.unlocked_at, u.id",
         )?;
         let unlocks = stmt.query_map([], |r| {
-            Ok((r.get::<_, i64>(0)?, Unlock { app: r.get(1)?, date: r.get(2)? }))
+            Ok((
+                r.get::<_, i64>(0)?,
+                Unlock {
+                    app: r.get(1)?,
+                    date: r.get(2)?,
+                },
+            ))
         })?;
         for unlock in unlocks {
             let (reward_id, unlock) = unlock?;
@@ -554,12 +572,18 @@ mod tests {
 
     fn reward_id(db: &Database, code: &str) -> i64 {
         db.conn
-            .query_row("SELECT id FROM rewards WHERE code = ?1", [code], |r| r.get(0))
+            .query_row("SELECT id FROM rewards WHERE code = ?1", [code], |r| {
+                r.get(0)
+            })
             .unwrap()
     }
 
     fn pending_codes(db: &Database, app: i64) -> Vec<String> {
-        db.pending_rewards(app).unwrap().into_iter().map(|r| r.code).collect()
+        db.pending_rewards(app)
+            .unwrap()
+            .into_iter()
+            .map(|r| r.code)
+            .collect()
     }
 
     #[test]
@@ -576,11 +600,19 @@ mod tests {
         let pending = db.pending_rewards(hades).unwrap();
         let marathon = pending.iter().find(|r| r.code == "marathon").unwrap();
         assert!(marathon.per_app);
-        assert!(!pending.iter().find(|r| r.code == "premiers_pas").unwrap().per_app);
+        assert!(
+            !pending
+                .iter()
+                .find(|r| r.code == "premiers_pas")
+                .unwrap()
+                .per_app
+        );
 
         let s = db.start_session(hades, 1_000).unwrap();
-        db.unlock_reward(reward_id(&db, "premiers_pas"), None, s, 1_000).unwrap();
-        db.unlock_reward(reward_id(&db, "marathon"), Some(hades), s, 1_000).unwrap();
+        db.unlock_reward(reward_id(&db, "premiers_pas"), None, s, 1_000)
+            .unwrap();
+        db.unlock_reward(reward_id(&db, "marathon"), Some(hades), s, 1_000)
+            .unwrap();
         for app in [hades, celeste] {
             assert!(!pending_codes(&db, app).contains(&"premiers_pas".to_string()));
         }
@@ -588,8 +620,14 @@ mod tests {
         assert!(pending_codes(&db, celeste).contains(&"marathon".to_string()));
 
         // The same unlock twice is refused by the database.
-        assert!(db.unlock_reward(reward_id(&db, "premiers_pas"), None, s, 2_000).is_err());
-        assert!(db.unlock_reward(reward_id(&db, "marathon"), Some(hades), s, 2_000).is_err());
+        assert!(
+            db.unlock_reward(reward_id(&db, "premiers_pas"), None, s, 2_000)
+                .is_err()
+        );
+        assert!(
+            db.unlock_reward(reward_id(&db, "marathon"), Some(hades), s, 2_000)
+                .is_err()
+        );
 
         let views = db.reward_views().unwrap();
         let view = views.iter().find(|v| v.name == "Marathon").unwrap();
@@ -641,7 +679,10 @@ mod tests {
         let all = db.stats_at(None, now).unwrap();
         assert_eq!(all.session_count, 4);
         assert_eq!((all.total_secs, all.longest_secs), (6_600, 3_600));
-        assert_eq!(all.by_category, [("Jeux".to_string(), 5_400), ("Dev".to_string(), 1_200)]);
+        assert_eq!(
+            all.by_category,
+            [("Jeux".to_string(), 5_400), ("Dev".to_string(), 1_200)]
+        );
         assert_eq!(all.daily.len(), ACTIVITY_DAYS);
         assert_eq!(all.daily[ACTIVITY_DAYS - 1], 4_200); // today
         assert_eq!(all.daily[ACTIVITY_DAYS - 3], 1_800); // two days ago
@@ -721,7 +762,11 @@ mod tests {
 
         assert_eq!(
             db.close_orphan_sessions().unwrap(),
-            [ClosedSession { session_id: checkpointed, app_id: app, secs: 600 }]
+            [ClosedSession {
+                session_id: checkpointed,
+                app_id: app,
+                secs: 600
+            }]
         );
         assert_eq!(session_rows(&db), [(Some(1_600), 600), (Some(9_000), 120)]);
     }
@@ -737,7 +782,9 @@ mod tests {
         assert_eq!((hades.total_xp, hades.level, hades.xp), (120, 2, 20));
         let gained: u32 = db
             .conn
-            .query_row("SELECT xp_gained FROM sessions WHERE id = ?1", [id], |r| r.get(0))
+            .query_row("SELECT xp_gained FROM sessions WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(gained, 120);
 

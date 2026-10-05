@@ -33,7 +33,13 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         }
         Mode::Search => {
             let block = app.theme.panel("Recherche", true);
-            render_input(frame, area, app, block, ("/", &app.search, SEARCH_PLACEHOLDER));
+            render_input(
+                frame,
+                area,
+                app,
+                block,
+                ("/", &app.search, SEARCH_PLACEHOLDER),
+            );
         }
         Mode::Normal | Mode::Popup(_) => render_message(frame, area, app),
     }
@@ -48,7 +54,11 @@ fn completion_hint(app: &App) -> Option<Line<'static>> {
     let theme = &app.theme;
     let mut spans = vec![Span::raw(" ")];
     for (i, candidate) in completion.candidates.iter().enumerate().take(8) {
-        let style = if i == *index { theme.title } else { theme.muted() };
+        let style = if i == *index {
+            theme.title
+        } else {
+            theme.muted()
+        };
         spans.push(Span::styled(candidate.trim_end().to_string(), style));
         spans.push(Span::raw(" "));
     }
@@ -88,7 +98,9 @@ fn render_input(
 
 fn render_message(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let Some((text, kind)) = &app.message else { return };
+    let Some((text, kind)) = &app.message else {
+        return;
+    };
     let color = match kind {
         MsgKind::Info => theme.info,
         MsgKind::Success => theme.success,
@@ -107,9 +119,7 @@ mod tests {
 
     fn render_box(app: &App, width: u16) -> (Vec<String>, Position) {
         let mut terminal = Terminal::new(TestBackend::new(width, 3)).unwrap();
-        terminal
-            .draw(|f| render(f, f.area(), app))
-            .unwrap();
+        terminal.draw(|f| render(f, f.area(), app)).unwrap();
         let backend = terminal.backend_mut();
         let buffer = backend.buffer().clone();
         let rows = (0..3)
@@ -124,7 +134,9 @@ mod tests {
         app.mode = Mode::Command;
         assert!(render_box(&app, 40).0[1].contains(PLACEHOLDER));
 
-        "launch Steam".chars().for_each(|c| app.command_line.input.insert(c));
+        "launch Steam"
+            .chars()
+            .for_each(|c| app.command_line.input.insert(c));
         let (rows, cursor) = render_box(&app, 40);
         assert!(rows[0].contains("Commande"));
         assert!(rows[1].contains(":launch Steam"));

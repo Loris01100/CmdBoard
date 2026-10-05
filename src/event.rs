@@ -17,9 +17,14 @@ pub enum AppEvent {
     Key(KeyEvent),
     Tick,
     /// A watched process appeared (sent by the tracker).
-    SessionStarted { app_id: i64 },
+    SessionStarted {
+        app_id: i64,
+    },
     /// The watched process is gone after running `secs` seconds (sent by the tracker).
-    SessionEnded { app_id: i64, secs: u64 },
+    SessionEnded {
+        app_id: i64,
+        secs: u64,
+    },
     /// An update check or install finished (sent by a short-lived thread).
     UpdateFinished {
         action: update::Action,

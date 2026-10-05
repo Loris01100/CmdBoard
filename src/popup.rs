@@ -7,7 +7,10 @@ use crate::text_input::TextInput;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Popup {
     /// Asks before running a destructive `command`.
-    Confirm { message: String, command: Command },
+    Confirm {
+        message: String,
+        command: Command,
+    },
     Form(Form),
     LevelUp(LevelUp),
     RewardUnlocked(RewardUnlocked),
@@ -89,7 +92,9 @@ impl Form {
     /// Move form for `app`, pre-filled with its current category.
     pub fn move_app(app: &str, category: &str) -> Self {
         Self::new(
-            FormKind::MoveApp { app: app.to_string() },
+            FormKind::MoveApp {
+                app: app.to_string(),
+            },
             vec![Field::new("Catégorie", category, true)],
         )
     }
@@ -209,7 +214,10 @@ mod tests {
     fn process_placeholder_follows_target() {
         let mut form = Form::add_app("Jeux");
         fill(&mut form, TARGET, r"C:\Games\Hades\Hades.exe");
-        assert_eq!(form.placeholder(PROCESS).as_deref(), Some("auto : Hades.exe"));
+        assert_eq!(
+            form.placeholder(PROCESS).as_deref(),
+            Some("auto : Hades.exe")
+        );
     }
 
     #[test]

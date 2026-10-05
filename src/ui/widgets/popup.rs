@@ -39,15 +39,25 @@ fn render_reward(frame: &mut Frame, reward: &RewardUnlocked, app: &App) {
     text.push(Line::from(""));
     text.push(Line::styled("Entrée pour continuer", theme.muted()).centered());
 
-    let area = centered(frame.area(), popup_width(frame.area()).min(50), text.len() as u16 + 2);
-    let block = theme.panel("Récompense", true).border_style(Style::new().fg(accent));
+    let area = centered(
+        frame.area(),
+        popup_width(frame.area()).min(50),
+        text.len() as u16 + 2,
+    );
+    let block = theme
+        .panel("Récompense", true)
+        .border_style(Style::new().fg(accent));
     frame.render_widget(Clear, area);
     frame.render_widget(Paragraph::new(text).block(block), area);
 }
 
 /// Gold and green, alternating on each tick: the level-up and reward popups blink.
 fn blink(app: &App) -> ratatui::style::Color {
-    if app.frame_count % 2 == 0 { app.theme.warning } else { app.theme.success }
+    if app.frame_count % 2 == 0 {
+        app.theme.warning
+    } else {
+        app.theme.success
+    }
 }
 
 /// Level-up announcement. Its border and title alternate colors on each tick.
@@ -56,22 +66,40 @@ fn render_level_up(frame: &mut Frame, level_up: &LevelUp, app: &App) {
     let accent = blink(app);
     let accent_style = Style::new().fg(accent).add_modifier(Modifier::BOLD);
 
-    let mut text = vec![Line::styled("★  Niveau supérieur !  ★", accent_style).centered(), Line::from("")];
+    let mut text = vec![
+        Line::styled("★  Niveau supérieur !  ★", accent_style).centered(),
+        Line::from(""),
+    ];
     if let Some(level) = level_up.app_level {
-        text.push(Line::from(vec![
-            Span::styled(level_up.app.clone(), theme.title),
-            Span::raw(format!(" passe au niveau {level}")),
-        ]).centered());
+        text.push(
+            Line::from(vec![
+                Span::styled(level_up.app.clone(), theme.title),
+                Span::raw(format!(" passe au niveau {level}")),
+            ])
+            .centered(),
+        );
     }
     if let Some(level) = level_up.global_level {
         text.push(Line::from(format!("Profil : niveau {level}")).centered());
     }
-    text.push(Line::styled(format!("+{} XP", level_up.gained), Style::new().fg(theme.xp_fill)).centered());
+    text.push(
+        Line::styled(
+            format!("+{} XP", level_up.gained),
+            Style::new().fg(theme.xp_fill),
+        )
+        .centered(),
+    );
     text.push(Line::from(""));
     text.push(Line::styled("Entrée pour continuer", theme.muted()).centered());
 
-    let area = centered(frame.area(), popup_width(frame.area()).min(44), text.len() as u16 + 2);
-    let block = theme.panel("Level-up", true).border_style(Style::new().fg(accent));
+    let area = centered(
+        frame.area(),
+        popup_width(frame.area()).min(44),
+        text.len() as u16 + 2,
+    );
+    let block = theme
+        .panel("Level-up", true)
+        .border_style(Style::new().fg(accent));
     frame.render_widget(Clear, area);
     frame.render_widget(Paragraph::new(text).block(block), area);
 }
@@ -129,15 +157,20 @@ fn render_form(frame: &mut Frame, form: &Form, app: &App) {
         let focused = i == form.focused;
         let marker = if focused { "> " } else { "  " };
         let required = if field.required { "*" } else { " " };
-        let label = format!("{marker}{:<w$}", format!("{}{required}", field.label), w = label_width - 2);
+        let label = format!(
+            "{marker}{:<w$}",
+            format!("{}{required}", field.label),
+            w = label_width - 2
+        );
         let label_style = if focused { theme.title } else { theme.muted() };
 
         let room = (inner.width as usize).saturating_sub(label_width);
         let (visible, cursor) = field.input.view(room);
         let value = match form.placeholder(i) {
-            Some(placeholder) if field.input.is_empty() => {
-                Span::styled(placeholder.chars().take(room).collect::<String>(), theme.muted())
-            }
+            Some(placeholder) if field.input.is_empty() => Span::styled(
+                placeholder.chars().take(room).collect::<String>(),
+                theme.muted(),
+            ),
             _ => Span::raw(visible),
         };
         let row = Rect::new(inner.x, y, inner.width, 1);
@@ -154,16 +187,24 @@ fn render_form(frame: &mut Frame, form: &Form, app: &App) {
     // Last row: the error, or how to submit.
     let footer = match &form.error {
         Some(error) => Line::styled(format!("  {error}"), Style::new().fg(theme.error)),
-        None => Line::styled("  * requis · Entrée sur le dernier champ : valider", theme.muted()),
+        None => Line::styled(
+            "  * requis · Entrée sur le dernier champ : valider",
+            theme.muted(),
+        ),
     };
     if inner.height > rows + 1 {
         let y = inner.y + rows + 1;
-        frame.render_widget(Paragraph::new(footer), Rect::new(inner.x, y, inner.width, 1));
+        frame.render_widget(
+            Paragraph::new(footer),
+            Rect::new(inner.x, y, inner.width, 1),
+        );
     }
 }
 
 fn popup_width(area: Rect) -> u16 {
-    MAX_WIDTH.min(area.width.saturating_sub(4)).max(area.width.min(20))
+    MAX_WIDTH
+        .min(area.width.saturating_sub(4))
+        .max(area.width.min(20))
 }
 
 fn centered(area: Rect, width: u16, height: u16) -> Rect {
@@ -187,7 +228,11 @@ mod tests {
         terminal.draw(|f| crate::ui::draw(f, app)).unwrap();
         let buffer = terminal.backend().buffer();
         (0..height)
-            .map(|y| (0..width).map(|x| buffer[(x, y)].symbol()).collect::<String>())
+            .map(|y| {
+                (0..width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -199,7 +244,13 @@ mod tests {
         form.error = Some("Nom : champ requis".into());
         app.mode = Mode::Popup(Popup::Form(form));
         let text = screen(&app, 100, 30);
-        for expected in ["Ajouter une app", "> Nom*", "Catégorie*", "Jeux", "Nom : champ requis"] {
+        for expected in [
+            "Ajouter une app",
+            "> Nom*",
+            "Catégorie*",
+            "Jeux",
+            "Nom : champ requis",
+        ] {
             assert!(text.contains(expected), "missing {expected:?} in\n{text}");
         }
     }
@@ -226,7 +277,12 @@ mod tests {
             gained: 120,
         }));
         let text = screen(&app, 100, 30);
-        for expected in ["Niveau supérieur", "Steam passe au niveau 3", "Profil : niveau 2", "+120 XP"] {
+        for expected in [
+            "Niveau supérieur",
+            "Steam passe au niveau 3",
+            "Profil : niveau 2",
+            "+120 XP",
+        ] {
             assert!(text.contains(expected), "missing {expected:?} in\n{text}");
         }
     }
@@ -240,7 +296,12 @@ mod tests {
             app: Some("Steam".into()),
         }));
         let text = screen(&app, 100, 30);
-        for expected in ["Récompense débloquée", "Marathon", "Jouer 3 h d'affilée", "(Steam)"] {
+        for expected in [
+            "Récompense débloquée",
+            "Marathon",
+            "Jouer 3 h d'affilée",
+            "(Steam)",
+        ] {
             assert!(text.contains(expected), "missing {expected:?} in\n{text}");
         }
     }

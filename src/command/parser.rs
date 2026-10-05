@@ -13,7 +13,9 @@ pub fn parse(input: &str) -> Result<Command, String> {
 
     match (help.name, rest) {
         // Single-argument commands take the rest of the line, so names need no quotes.
-        ("launch", [_, ..]) => Ok(Command::Launch { app: rest.join(" ") }),
+        ("launch", [_, ..]) => Ok(Command::Launch {
+            app: rest.join(" "),
+        }),
         ("rm", [_, ..]) => Ok(Command::RemoveApp {
             app: rest.join(" "),
             confirmed: false,
@@ -42,16 +44,28 @@ pub fn parse(input: &str) -> Result<Command, String> {
         }),
         // The amount comes last, so the app name needs no quotes either.
         ("xp", [app @ .., amount]) if !app.is_empty() => match amount.parse() {
-            Ok(amount) => Ok(Command::Xp { app: app.join(" "), amount }),
-            Err(_) => Err(format!("Montant invalide : {amount} (usage : {})", help.usage)),
+            Ok(amount) => Ok(Command::Xp {
+                app: app.join(" "),
+                amount,
+            }),
+            Err(_) => Err(format!(
+                "Montant invalide : {amount} (usage : {})",
+                help.usage
+            )),
         },
         ("stats", []) => Ok(Command::Stats { app: None }),
-        ("stats", [_, ..]) => Ok(Command::Stats { app: Some(rest.join(" ")) }),
+        ("stats", [_, ..]) => Ok(Command::Stats {
+            app: Some(rest.join(" ")),
+        }),
         ("theme", []) => Ok(Command::Theme { name: None }),
-        ("theme", [name]) => Ok(Command::Theme { name: Some(name.clone()) }),
+        ("theme", [name]) => Ok(Command::Theme {
+            name: Some(name.clone()),
+        }),
         ("update", []) => Ok(Command::Update),
         ("help", []) => Ok(Command::Help { command: None }),
-        ("help", [command]) => Ok(Command::Help { command: Some(command.clone()) }),
+        ("help", [command]) => Ok(Command::Help {
+            command: Some(command.clone()),
+        }),
         ("quit", []) => Ok(Command::Quit),
         _ => Err(format!("Usage : {}", help.usage)),
     }
@@ -103,7 +117,12 @@ mod tests {
     fn parses_valid_commands() {
         let cases = [
             ("launch Hades", Command::Launch { app: s("Hades") }),
-            ("l windows terminal", Command::Launch { app: s("windows terminal") }),
+            (
+                "l windows terminal",
+                Command::Launch {
+                    app: s("windows terminal"),
+                },
+            ),
             ("LAUNCH  Hades ", Command::Launch { app: s("Hades") }),
             (
                 r#"add Code "C:\Program Files\VS Code\Code.exe""#,
@@ -125,28 +144,73 @@ mod tests {
             ),
             (
                 r#"mv "Bloc-notes" Dev"#,
-                Command::Move { app: s("Bloc-notes"), category: s("Dev") },
+                Command::Move {
+                    app: s("Bloc-notes"),
+                    category: s("Dev"),
+                },
             ),
             ("add", Command::OpenForm(FormKind::AddApp)),
-            ("move Hades", Command::OpenForm(FormKind::MoveApp { app: s("Hades") })),
+            (
+                "move Hades",
+                Command::OpenForm(FormKind::MoveApp { app: s("Hades") }),
+            ),
             (
                 "rm Windows Terminal",
-                Command::RemoveApp { app: s("Windows Terminal"), confirmed: false },
+                Command::RemoveApp {
+                    app: s("Windows Terminal"),
+                    confirmed: false,
+                },
             ),
             (
                 "rmcat Jeux",
-                Command::RemoveCategory { category: s("Jeux"), confirmed: false },
+                Command::RemoveCategory {
+                    category: s("Jeux"),
+                    confirmed: false,
+                },
             ),
-            ("xp Windows Terminal 250", Command::Xp { app: s("Windows Terminal"), amount: 250 }),
-            ("xp Steam -40", Command::Xp { app: s("Steam"), amount: -40 }),
-            ("xp Steam +40", Command::Xp { app: s("Steam"), amount: 40 }),
+            (
+                "xp Windows Terminal 250",
+                Command::Xp {
+                    app: s("Windows Terminal"),
+                    amount: 250,
+                },
+            ),
+            (
+                "xp Steam -40",
+                Command::Xp {
+                    app: s("Steam"),
+                    amount: -40,
+                },
+            ),
+            (
+                "xp Steam +40",
+                Command::Xp {
+                    app: s("Steam"),
+                    amount: 40,
+                },
+            ),
             ("stats", Command::Stats { app: None }),
-            ("stats Windows Terminal", Command::Stats { app: Some(s("Windows Terminal")) }),
+            (
+                "stats Windows Terminal",
+                Command::Stats {
+                    app: Some(s("Windows Terminal")),
+                },
+            ),
             ("theme", Command::Theme { name: None }),
-            ("theme catppuccin-latte", Command::Theme { name: Some(s("catppuccin-latte")) }),
+            (
+                "theme catppuccin-latte",
+                Command::Theme {
+                    name: Some(s("catppuccin-latte")),
+                },
+            ),
             ("update", Command::Update),
             ("help", Command::Help { command: None }),
-            ("? add", Command::Help { command: Some(s("add")) }),
+            (
+                "? add",
+                Command::Help {
+                    command: Some(s("add")),
+                },
+            ),
             ("q", Command::Quit),
         ];
         for (input, expected) in cases {
@@ -165,7 +229,10 @@ mod tests {
             ("move", "Usage : move <app> [catégorie]"),
             ("rm", "Usage : rm <app>"),
             ("xp 50", "Usage : xp <app> <montant>"),
-            ("xp Steam lots", "Montant invalide : lots (usage : xp <app> <montant>)"),
+            (
+                "xp Steam lots",
+                "Montant invalide : lots (usage : xp <app> <montant>)",
+            ),
             ("quit now", "Usage : quit"),
             ("update now", "Usage : update"),
             (r#"launch "Hades"#, "Guillemet non fermé"),
