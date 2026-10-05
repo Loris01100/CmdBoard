@@ -1262,7 +1262,7 @@ impl App {
     /// App on an in-memory database holding the starter content.
     pub fn with_defaults() -> Self {
         let db = Database::open_in_memory().unwrap();
-        db.seed_defaults().unwrap();
+        db.seed_defaults(|_| true).unwrap();
         App::new(db).unwrap()
     }
 }

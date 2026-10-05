@@ -4,6 +4,7 @@ use anyhow::{Context, bail};
 use rusqlite::Connection;
 
 use super::models::NewApp;
+use crate::launcher::launch;
 
 /// Schema migrations, applied in order. `PRAGMA user_version` holds how many have run.
 /// Never edit a migration that has shipped: append a new one instead.
@@ -96,7 +97,7 @@ impl Database {
             .with_context(|| format!("impossible d'ouvrir {}", path.display()))?;
         let (db, previous_version) = Self::init(conn)?;
         if previous_version == 0 {
-            db.seed_defaults()?;
+            db.seed_defaults(launch::is_available)?;
         }
         Ok(db)
     }
@@ -119,8 +120,9 @@ impl Database {
         Ok((Self { conn }, previous_version))
     }
 
-    /// Starter content so a fresh install has something to launch.
-    pub fn seed_defaults(&self) -> anyhow::Result<()> {
+    /// Starter content so a fresh install has something to launch. Only apps whose
+    /// target passes `available` are added; their categories are created regardless.
+    pub fn seed_defaults(&self, available: impl Fn(&str) -> bool) -> anyhow::Result<()> {
         let games = self.add_category("Jeux")?;
         let dev = self.add_category("Dev")?;
         let tools = self.add_category("Outils")?;
@@ -137,6 +139,9 @@ impl Database {
             ("Explorateur", "explorer.exe", None, tools),
         ];
         for (name, target, watch, category_id) in apps {
+            if !available(target) {
+                continue;
+            }
             self.add_app(&NewApp {
                 name: name.into(),
                 launch_target: target.into(),
