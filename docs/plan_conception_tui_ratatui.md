@@ -431,7 +431,7 @@ pub fn xp_to_next_level(level: u32) -> u32 {
 - À la fin d'une session gardée (≥ 60 s), `xp_gained` est enregistré dans `sessions` et ajouté à `apps.total_xp`, dans une même transaction. Les sessions fermées à la sortie et les orphelines fermées au démarrage reçoivent aussi leur XP.
 - Le niveau d'une app vient de son `total_xp`, le niveau global de la somme des `total_xp`. Un level-up est détecté en comparant les niveaux avant et après.
 
-Les récompenses sont définies **en données** (table `rewards`), pas en dur. La migration v2 insère un jeu de départ : Premiers pas, Marathon, Noctambule, Habitué, Passionné, Vétéran, Régulier, Assidu, Touche-à-tout, Centurion, Expert.
+Les récompenses sont définies **en données** (table `rewards`), pas en dur. La migration v2 insère un jeu de départ : Premiers pas, Marathon, Noctambule, Habitué, Passionné, Vétéran, Régulier, Assidu, Touche-à-tout, Centurion, Expert. La migration v3 ajoute Inarrêtable (30 jours de suite) et Légende (365 jours de suite).
 
 ```
 code = "marathon", scope = "app", rule = "session_minutes >= 180"

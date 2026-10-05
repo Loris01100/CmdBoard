@@ -76,6 +76,10 @@ const MIGRATIONS: &[&str] = &[
         ('touche_a_tout', 'Touche-à-tout', 'Lancer 5 apps différentes en 7 jours', 'apps_this_week >= 5', 'global'),
         ('centurion', 'Centurion', 'Cumuler 100 h au total', 'total_hours >= 100', 'global'),
         ('expert', 'Expert', 'Atteindre le niveau global 10', 'level >= 10', 'global');",
+    // v3: long streak rewards (7 days is `assidu`, from v2).
+    "INSERT INTO rewards (code, name, description, rule, scope) VALUES
+        ('inarretable', 'Inarrêtable', 'Jouer 30 jours de suite', 'streak_days >= 30', 'global'),
+        ('legende', 'Légende', 'Jouer 365 jours de suite', 'streak_days >= 365', 'global');",
 ];
 
 pub struct Database {
