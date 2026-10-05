@@ -80,6 +80,8 @@ pub struct Stats {
     pub longest_secs: u64,
     /// `(category, seconds)`, most played first.
     pub by_category: Vec<(String, u64)>,
+    /// `(app, seconds)`, most played first.
+    pub by_app: Vec<(String, u64)>,
     /// Seconds played per day over the last `ACTIVITY_DAYS` days, oldest first, today last.
     pub daily: Vec<u64>,
     /// Today's day of the week, 0 = Monday.

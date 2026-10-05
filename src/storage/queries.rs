@@ -371,17 +371,23 @@ impl Database {
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
 
-        let mut stmt = self.conn.prepare(
-            "SELECT c.name, SUM(s.duration_s) AS secs
-             FROM sessions s JOIN apps a ON a.id = s.app_id JOIN categories c ON c.id = a.category_id
-             WHERE s.ended_at IS NOT NULL AND (?1 IS NULL OR s.app_id = ?1)
-             GROUP BY c.id ORDER BY secs DESC, c.name",
-        )?;
-        let by_category = stmt
-            .query_map([app_id], |r| {
-                Ok((r.get(0)?, r.get::<_, i64>(1)?.max(0) as u64))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+        // Time per `name`, most played first.
+        let totals = |name: &str, group: &str| -> anyhow::Result<Vec<(String, u64)>> {
+            let mut stmt = self.conn.prepare(&format!(
+                "SELECT {name}, SUM(s.duration_s) AS secs
+                 FROM sessions s JOIN apps a ON a.id = s.app_id
+                 JOIN categories c ON c.id = a.category_id
+                 WHERE s.ended_at IS NOT NULL AND (?1 IS NULL OR s.app_id = ?1)
+                 GROUP BY {group} ORDER BY secs DESC, {name}"
+            ))?;
+            Ok(stmt
+                .query_map([app_id], |r| {
+                    Ok((r.get(0)?, r.get::<_, i64>(1)?.max(0) as u64))
+                })?
+                .collect::<Result<Vec<_>, _>>()?)
+        };
+        let by_category = totals("c.name", "c.id")?;
+        let by_app = totals("a.name", "a.id")?;
 
         // Local day numbers (Julian days), compared with today's.
         let day = |column: &str| {
@@ -411,6 +417,7 @@ impl Database {
             total_secs: total_secs.max(0) as u64,
             longest_secs: longest_secs.max(0) as u64,
             by_category,
+            by_app,
             daily,
             // `today` is the julian day number minus one (cast from N.5), and JDN % 7 == 0 on Mondays.
             today_weekday: ((today + 1) % 7) as u8,
@@ -687,6 +694,10 @@ mod tests {
         assert_eq!(
             all.by_category,
             [("Jeux".to_string(), 5_400), ("Dev".to_string(), 1_200)]
+        );
+        assert_eq!(
+            all.by_app,
+            [("Hades".to_string(), 5_400), ("Code".to_string(), 1_200)]
         );
         assert_eq!(all.daily.len(), ACTIVITY_DAYS);
         assert_eq!(all.daily[ACTIVITY_DAYS - 1], 4_200); // today

@@ -44,6 +44,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         count = stats.session_count,
         total = format_duration(stats.total_secs),
         longest = format_duration(stats.longest_secs),
+        today = format_duration(stats.daily.last().copied().unwrap_or(0)),
     );
     frame.render_widget(
         Paragraph::new(Line::from(vec![
@@ -54,17 +55,36 @@ pub fn draw(frame: &mut Frame, app: &App) {
     );
 
     if charts_height > 0 {
-        // Side by side, or only the activity chart when narrow.
-        let split = if charts_area.width >= 60 { 45 } else { 0 };
-        let [categories_area, activity_area] = Layout::horizontal([
-            Constraint::Percentage(split),
-            Constraint::Percentage(100 - split),
-        ])
-        .areas(charts_area);
-        if split > 0 {
-            render_categories(frame, categories_area, app);
+        // Pies on the left, the heatmap (2 cells per week) on the right; narrow: heatmap only.
+        // Filtered on one app, the per-app pie would be a single slice: skipped.
+        let pies: Vec<(String, &[(String, u64)])> = match charts_area.width {
+            0..60 => vec![],
+            60..90 => vec![(t!("stats.by_category"), &stats.by_category)],
+            _ => [
+                Some((t!("stats.by_category"), &stats.by_category[..])),
+                app.stats_app
+                    .is_none()
+                    .then(|| (t!("stats.by_app"), &stats.by_app[..])),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+        };
+        let heatmap_width = if pies.is_empty() {
+            Constraint::Fill(1)
+        } else {
+            Constraint::Length(2 + 2 * (ACTIVITY_DAYS / 7) as u16)
+        };
+        let areas = Layout::horizontal(
+            pies.iter()
+                .map(|_| Constraint::Fill(1))
+                .chain([heatmap_width]),
+        )
+        .split(charts_area);
+        for ((title, data), area) in pies.iter().zip(areas.iter()) {
+            render_pie(frame, *area, app, title, data);
         }
-        render_activity(frame, activity_area, app);
+        render_activity(frame, areas[pies.len()], app);
     }
     render_sessions(frame, sessions_area, app);
 
@@ -72,10 +92,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
     status_bar::render(frame, status, app);
 }
 
-fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
+/// Share of the play time per name, as a braille pie with its legend.
+fn render_pie(frame: &mut Frame, area: Rect, app: &App, title: &str, data: &[(String, u64)]) {
     let theme = &app.theme;
-    let block = theme.panel(&t!("stats.by_category"), false);
-    if app.stats.by_category.is_empty() {
+    let block = theme.panel(title, false);
+    if data.is_empty() {
         frame.render_widget(
             Paragraph::new(t!("stats.no_sessions"))
                 .style(theme.muted())
@@ -87,9 +108,9 @@ fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // Distinct theme colors; categories past them share the muted "others" slice.
+    // Distinct theme colors; names past them share the muted "others" slice.
     let colors = [theme.xp_fill, theme.info, theme.warning, theme.error];
-    let slices = pie_slices(&app.stats.by_category, colors.len());
+    let slices = pie_slices(data, colors.len());
     let color = |i: usize| colors.get(i).copied().unwrap_or(theme.muted);
     let total: u64 = slices.iter().map(|(_, secs)| secs).sum::<u64>().max(1);
 
@@ -141,7 +162,14 @@ fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
         .iter()
         .map(|(name, _)| name.clone().unwrap_or_else(|| t!("stats.others")))
         .collect();
-    let pad = names.iter().map(|n| n.chars().count()).max().unwrap_or(0);
+    // "● " + name + " 42m  58%": shorten names rather than lose the numbers.
+    let room = (legend_area.width as usize).saturating_sub(12).max(1);
+    let pad = names
+        .iter()
+        .map(|n| n.chars().count())
+        .max()
+        .unwrap_or(0)
+        .min(room);
     let legend: Vec<Line> = slices
         .iter()
         .zip(&names)
@@ -149,10 +177,10 @@ fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
         .map(|(i, ((_, secs), name))| {
             Line::from(vec![
                 Span::styled("● ", Style::new().fg(color(i))),
-                Span::raw(format!("{name:pad$}")),
+                Span::raw(format!("{:pad$}", ellipsis(name, pad))),
                 Span::styled(
                     format!(
-                        "  {:>6} · {:>3}%",
+                        " {:>4} {:>3}%",
                         format_duration(*secs),
                         (secs * 100 + total / 2) / total
                     ),
@@ -164,7 +192,17 @@ fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(legend), legend_area);
 }
 
-/// The `max - 1` most played categories, then the rest summed as `None` ("others").
+/// `text` cut to `width` characters, the last one an ellipsis when cut.
+fn ellipsis(text: &str, width: usize) -> String {
+    if text.chars().count() <= width {
+        return text.to_string();
+    }
+    let mut cut: String = text.chars().take(width.saturating_sub(1)).collect();
+    cut.push('…');
+    cut
+}
+
+/// The `max - 1` most played names, then the rest summed as `None` ("others").
 /// Fits in `max` slices as is.
 fn pie_slices(by_category: &[(String, u64)], max: usize) -> Vec<(Option<String>, u64)> {
     if by_category.len() <= max {
@@ -182,12 +220,7 @@ fn pie_slices(by_category: &[(String, u64)], max: usize) -> Vec<(Option<String>,
 fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
     let daily = &app.stats.daily;
-    let today = daily.last().copied().unwrap_or(0);
-    let title = t!(
-        "stats.activity",
-        weeks = ACTIVITY_DAYS / 7,
-        today = format_duration(today)
-    );
+    let title = t!("stats.activity", weeks = ACTIVITY_DAYS / 7);
     // GitHub-style: one column per week (2 cells wide), Monday on top, today bottom right.
     // Too narrow: keep the most recent weeks.
     let weeks = (area.width.saturating_sub(2) as usize / 2).min(ACTIVITY_DAYS / 7);
@@ -296,6 +329,7 @@ mod tests {
             "Toutes les apps",
             "Temps par catégorie",
             "Jeux",
+            "Temps par app",
             "Activité",
             "Sessions (1)",
             "Steam",
@@ -322,6 +356,12 @@ mod tests {
             super::pie_slices(&cats, 2),
             [(Some("a".to_string()), 5), (None, 7)]
         );
+    }
+
+    #[test]
+    fn ellipsis_cuts_long_names() {
+        assert_eq!(super::ellipsis("Steam", 8), "Steam");
+        assert_eq!(super::ellipsis("Windows Terminal", 8), "Windows…");
     }
 
     #[test]
