@@ -1,6 +1,7 @@
 //! Text typed after `:` -> `Command`.
 
 use super::{Command, find_help};
+use crate::app::AppSort;
 use crate::popup::FormKind;
 
 pub fn parse(input: &str) -> Result<Command, String> {
@@ -61,6 +62,11 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("theme", [name]) => Ok(Command::Theme {
             name: Some(name.clone()),
         }),
+        ("sort", []) => Ok(Command::Sort { by: None }),
+        ("sort", [name]) => match AppSort::parse(name) {
+            Some(sort) => Ok(Command::Sort { by: Some(sort) }),
+            None => Err(format!("Tri inconnu : {name} (usage : {})", help.usage)),
+        },
         ("update", []) => Ok(Command::Update),
         ("help", []) => Ok(Command::Help { command: None }),
         ("help", [command]) => Ok(Command::Help {
@@ -203,6 +209,13 @@ mod tests {
                     name: Some(s("catppuccin-latte")),
                 },
             ),
+            ("sort", Command::Sort { by: None }),
+            (
+                "sort XP",
+                Command::Sort {
+                    by: Some(AppSort::Xp),
+                },
+            ),
             ("update", Command::Update),
             ("help", Command::Help { command: None }),
             (
@@ -235,6 +248,10 @@ mod tests {
             ),
             ("quit now", "Usage : quit"),
             ("update now", "Usage : update"),
+            (
+                "sort size",
+                "Tri inconnu : size (usage : sort [name|xp|recent|time])",
+            ),
             (r#"launch "Hades"#, "Guillemet non fermé"),
         ];
         for (input, expected) in cases {

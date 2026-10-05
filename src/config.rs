@@ -8,6 +8,8 @@ use anyhow::Context;
 pub struct Config {
     /// Theme name chosen with `:theme`; `None` picks one from the terminal's colors.
     pub theme: Option<String>,
+    /// App order chosen with `:sort`.
+    pub sort: Option<String>,
     /// `update_check = false` turns off the daily check for a new version.
     pub update_check: bool,
     /// Unix seconds of the last passive update check.
@@ -18,6 +20,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             theme: None,
+            sort: None,
             update_check: true,
             last_update_check: None,
         }
@@ -38,6 +41,10 @@ impl Config {
                     .get("theme")
                     .and_then(toml::Value::as_str)
                     .map(String::from);
+                let sort = table
+                    .get("sort")
+                    .and_then(toml::Value::as_str)
+                    .map(String::from);
                 let update_check = table
                     .get("update_check")
                     .and_then(toml::Value::as_bool)
@@ -48,6 +55,7 @@ impl Config {
                 (
                     Self {
                         theme,
+                        sort,
                         update_check,
                         last_update_check,
                     },

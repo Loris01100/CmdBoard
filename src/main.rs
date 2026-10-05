@@ -31,6 +31,7 @@ fn main() -> anyhow::Result<()> {
     let (config, warning) = Config::load(&dir.join("config.toml"));
     warnings.extend(warning);
     warnings.extend(app.init_theme(&dir, config.theme.clone()));
+    warnings.extend(app.init_sort(config.sort.as_deref()));
     let (aliases, warning) = Aliases::load(&dir.join("commands.toml"));
     app.aliases = aliases;
     warnings.extend(warning);

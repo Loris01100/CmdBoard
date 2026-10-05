@@ -3,7 +3,7 @@ pub mod complete;
 pub mod line;
 pub mod parser;
 
-use crate::app::{Focus, Screen};
+use crate::app::{AppSort, Focus, Screen};
 use crate::popup::FormKind;
 
 /// Every user action. Keys, the `:` command line and aliases are translated
@@ -54,6 +54,10 @@ pub enum Command {
     /// Switches theme and remembers it; `None` lists the themes.
     Theme {
         name: Option<String>,
+    },
+    /// Orders the apps panel and remembers it; `None` lists the orders.
+    Sort {
+        by: Option<AppSort>,
     },
     /// Adds (or removes, if negative) XP to an app by hand, outside of any session.
     Xp {
@@ -118,6 +122,12 @@ pub const COMMANDS: &[CommandHelp] = &[
         aliases: &[],
         usage: "theme [nom]",
         summary: "Change de thème (mémorisé). Sans nom : liste les thèmes",
+    },
+    CommandHelp {
+        name: "sort",
+        aliases: &[],
+        usage: "sort [name|xp|recent|time]",
+        summary: "Trie les apps (mémorisé). Sans argument : tri actuel",
     },
     CommandHelp {
         name: "xp",

@@ -247,6 +247,7 @@ Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le pa
 | Normal | `?` | Aide |
 | Normal | `a` / `m` | Formulaire d'ajout / de déplacement de l'app sélectionnée |
 | Normal | `d` | Supprimer l'app sélectionnée, ou la catégorie si le focus y est (vide uniquement) |
+| Normal | `s` | Tri suivant des apps (`Command::Sort`) : nom, XP, récent, temps |
 | Command | `Enter` / `Esc` | Valider / annuler |
 | Command | `↑↓` / `Tab` `Shift-Tab` | Historique / autocomplétion |
 | Search | saisie | Filtre le panneau Applications (toutes catégories, meilleur résultat en tête et sélectionné) |
@@ -399,6 +400,7 @@ pub struct Theme {
 - **Intégrés** : les 4 saveurs Catppuccin et `terminal`, embarqués via `include_str!`. Pas de dépendance au crate `catppuccin` : thèmes intégrés et thèmes utilisateur passent par le même parseur.
 - **Utilisateur** : `%APPDATA%\CmdBoard\themes\*.toml`. Le nom d'un thème est celui du fichier sans extension, en minuscules (`name` dans le fichier est le nom affiché). À nom égal, le fichier utilisateur remplace le thème intégré.
 - **Erreurs** : un slot manquant ou une référence inconnue affiche une erreur claire dans la ligne de message, et le thème courant est conservé.
+- `:sort [name|xp|recent|time]` trie le panneau Applications (nom croissant, sinon le plus grand ou le plus récent d'abord, égalités par nom). Mémorisé dans `config.toml` (`sort = "..."`), affiché dans le titre du panneau. La recherche `/` garde son propre ordre (meilleur résultat d'abord).
 - `:theme` liste les thèmes, `:theme catppuccin-latte` en change. Le choix est mémorisé dans `%APPDATA%\CmdBoard\config.toml` (`theme = "..."`, les autres clés du fichier sont conservées). Au démarrage, un thème configuré introuvable ou cassé affiche l'erreur et bascule sur le thème par défaut. Les erreurs de `config.toml`, du thème et de `commands.toml` sont réunies dans la ligne de message.
 
 ### Truecolor et repli

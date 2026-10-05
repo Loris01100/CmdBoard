@@ -18,7 +18,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
 
     let title = match app.mode {
         Mode::Search => format!("Recherche ({})", app.visible_apps().len()),
-        _ => "Applications".into(),
+        _ => format!("Applications · {}", app.sort.label()),
     };
     let header = Row::new(["Nom", "Niv", "XP", "Temps"]).style(theme.title);
     let rows = app.visible_apps().into_iter().map(|entry| {

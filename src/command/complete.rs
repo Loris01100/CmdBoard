@@ -2,6 +2,7 @@
 //! depending on the command and the argument being typed. Candidates are fuzzy-ranked.
 
 use super::{COMMANDS, find_help};
+use crate::app::AppSort;
 use crate::fuzzy;
 
 /// Names that can be completed, besides the built-in commands.
@@ -32,6 +33,7 @@ enum Kind {
     App,
     Category,
     Theme,
+    Sort,
 }
 
 /// Completes the last word of `line`. `None` when nothing applies or nothing matches.
@@ -52,6 +54,7 @@ pub fn complete(line: &str, sources: &Sources) -> Option<Completion> {
         "rmcat" => whole(line, rest_start, Kind::Category, sources),
         "help" => whole(line, rest_start, Kind::Command, sources),
         "theme" => whole(line, rest_start, Kind::Theme, sources),
+        "sort" => whole(line, rest_start, Kind::Sort, sources),
         "move" => argument(
             line,
             rest_start,
@@ -134,6 +137,7 @@ fn build(
         Kind::App => sources.apps.clone(),
         Kind::Category => sources.categories.clone(),
         Kind::Theme => sources.themes.clone(),
+        Kind::Sort => AppSort::ALL.iter().map(|s| s.name()).collect(),
     };
     items.sort_by_key(|item| item.to_lowercase());
     let candidates: Vec<String> = fuzzy::rank(partial, items.iter().copied())
@@ -174,6 +178,7 @@ mod tests {
             ("rmcat ou", Some("rmcat Outils")),
             ("help mo", Some("help move")),
             ("theme moc", Some("theme catppuccin-mocha")),
+            ("sort rec", Some("sort recent")),
             ("move wind", Some(r#"move "Windows Terminal""#)),
             (
                 r#"move "Windows Terminal" d"#,

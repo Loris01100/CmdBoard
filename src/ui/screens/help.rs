@@ -20,6 +20,7 @@ const KEYS: &[(&str, &str)] = &[
         "a / m / d",
         "ajouter / déplacer / supprimer (app ou catégorie vide)",
     ),
+    ("s", "changer le tri des apps (nom, XP, récent, temps)"),
     (
         "/",
         "chercher une app dans toutes les catégories (Entrée : y aller)",

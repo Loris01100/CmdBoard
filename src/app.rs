@@ -65,6 +65,59 @@ impl Screen {
     }
 }
 
+/// Order of the apps panel, chosen with `:sort` or `s`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AppSort {
+    #[default]
+    Name,
+    Xp,
+    Recent,
+    Time,
+}
+
+impl AppSort {
+    pub const ALL: [AppSort; 4] = [AppSort::Name, AppSort::Xp, AppSort::Recent, AppSort::Time];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            AppSort::Name => "name",
+            AppSort::Xp => "xp",
+            AppSort::Recent => "recent",
+            AppSort::Time => "time",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<Self> {
+        let name = name.to_lowercase();
+        Self::ALL.into_iter().find(|s| s.name() == name)
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            AppSort::Name => "nom",
+            AppSort::Xp => "XP",
+            AppSort::Recent => "récent",
+            AppSort::Time => "temps",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        let i = Self::ALL.iter().position(|&s| s == self).unwrap_or(0);
+        Self::ALL[(i + 1) % Self::ALL.len()]
+    }
+
+    /// Name ascending; the others biggest or latest first, ties by name.
+    pub fn apply(self, apps: &mut [AppEntry]) {
+        apps.sort_by_cached_key(|a| a.name.to_lowercase());
+        match self {
+            AppSort::Name => {}
+            AppSort::Xp => apps.sort_by_key(|a| std::cmp::Reverse(a.total_xp)),
+            AppSort::Recent => apps.sort_by_key(|a| std::cmp::Reverse(a.last_played)),
+            AppSort::Time => apps.sort_by_key(|a| std::cmp::Reverse(a.total_secs)),
+        }
+    }
+}
+
 /// How keys are interpreted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
@@ -141,6 +194,7 @@ pub struct App {
     pub focus: Focus,
     pub cat_state: ListState,
     pub app_state: TableState,
+    pub sort: AppSort,
 
     // cached data, reloaded from the database after each write
     pub categories: Vec<Category>,
@@ -205,6 +259,7 @@ impl App {
             focus: Focus::Categories,
             cat_state: ListState::default(),
             app_state: TableState::default(),
+            sort: AppSort::default(),
             categories: Vec::new(),
             apps: Vec::new(),
             profile: Profile::default(),
@@ -245,6 +300,7 @@ impl App {
     pub fn reload(&mut self) -> anyhow::Result<()> {
         self.categories = self.db.categories()?;
         self.apps = self.db.apps()?;
+        self.sort.apply(&mut self.apps);
         self.profile = self.db.profile()?;
         self.recent_rewards = self.db.recent_rewards(3)?;
         if self
@@ -291,6 +347,17 @@ impl App {
                 Some(e)
             }
         }
+    }
+
+    /// At startup: the order saved in `config.toml`. Returns an error to show if unknown.
+    pub fn init_sort(&mut self, configured: Option<&str>) -> Option<String> {
+        let name = configured?;
+        let Some(sort) = AppSort::parse(name) else {
+            return Some(format!("config.toml : tri inconnu : {name}"));
+        };
+        self.sort = sort;
+        self.sort.apply(&mut self.apps);
+        None
     }
 
     /// Connects the session tracker and sends it the current watch list.
@@ -748,6 +815,9 @@ impl App {
                 },
             },
             KeyCode::Char('a') => Command::OpenForm(FormKind::AddApp),
+            KeyCode::Char('s') => Command::Sort {
+                by: Some(self.sort.next()),
+            },
             KeyCode::Char('m') => Command::OpenForm(FormKind::MoveApp {
                 app: self.selected_app()?.name.clone(),
             }),
@@ -1170,6 +1240,28 @@ impl App {
                 }
                 return success(format!("Thème : {}", self.theme.name));
             }
+            Command::Sort { by: None } => {
+                let names: Vec<_> = AppSort::ALL.iter().map(|s| s.name()).collect();
+                let text = format!(
+                    "Tris : {} (actuel : {})",
+                    names.join(", "),
+                    self.sort.name()
+                );
+                return Ok(Some((text, MsgKind::Info)));
+            }
+            Command::Sort { by: Some(sort) } => {
+                let selected = self.selected_app().map(|a| a.id);
+                self.sort = sort;
+                self.sort.apply(&mut self.apps);
+                if let Some(id) = selected {
+                    self.select_app(id);
+                }
+                if let Some(path) = &self.config_path {
+                    config::save_value(path, "sort", sort.name())
+                        .context("tri appliqué mais non mémorisé")?;
+                }
+                return success(format!("Tri : {}", sort.label()));
+            }
             Command::Update => {
                 if self.update_running {
                     bail!("vérification de mise à jour déjà en cours");
@@ -1399,6 +1491,39 @@ mod tests {
         let app = App::with_defaults();
         assert_eq!(app.selected_category().unwrap().name, "Jeux");
         assert_eq!(app.selected_app().unwrap().name, "Steam");
+    }
+
+    #[test]
+    fn sort_orders_apps_and_keeps_selection() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char('k')); // "Outils"
+        press(&mut app, KeyCode::Char('l'));
+        let names = |app: &App| -> Vec<String> {
+            app.visible_apps().iter().map(|a| a.name.clone()).collect()
+        };
+        assert_eq!(names(&app), ["Bloc-notes", "Calculatrice", "Explorateur"]);
+
+        let set_xp = |app: &mut App, name: &str, xp: u32| {
+            let id = app.find_app(name).unwrap().id;
+            app.db.set_app_xp(id, xp).unwrap();
+            app.reload().unwrap();
+        };
+        set_xp(&mut app, "Explorateur", 100);
+        set_xp(&mut app, "Calculatrice", 50);
+        run(&mut app, "sort xp");
+        assert_eq!(names(&app), ["Explorateur", "Calculatrice", "Bloc-notes"]);
+        assert_eq!(app.selected_app().unwrap().name, "Bloc-notes"); // followed it
+        set_xp(&mut app, "Bloc-notes", 500); // reload keeps the order
+        assert_eq!(names(&app)[0], "Bloc-notes");
+
+        press(&mut app, KeyCode::Char('s'));
+        assert_eq!(app.sort, AppSort::Recent);
+        run(&mut app, "sort name");
+        assert_eq!(names(&app), ["Bloc-notes", "Calculatrice", "Explorateur"]);
+        assert_eq!(
+            app.init_sort(Some("size")).unwrap(),
+            "config.toml : tri inconnu : size"
+        );
     }
 
     #[test]
