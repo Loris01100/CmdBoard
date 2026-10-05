@@ -12,6 +12,11 @@ path-guid = "B90453B5-11E9-4F80-A6FE-22518863279D"
 license = false
 eula = false
 
+[package.metadata.sonar]
+project-key = "Loris01100_CmdBoard"
+organization = "loris01100"
+exclusions = ["target/**"]
+
 [dependencies]
 anyhow = "1.0.104"
 crossterm = "0.29.0"
