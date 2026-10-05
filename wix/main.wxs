@@ -62,7 +62,7 @@
         Id='*'
         Name='cmdboard'
         UpgradeCode='94256D30-D74C-400B-8D07-B858839C666B'
-        Manufacturer='LorisOptim'
+        Manufacturer='Loris01100'
         Language='1033'
         Codepage='1252'
         Version='$(var.Version)'>
@@ -70,7 +70,7 @@
         <Package Id='*'
             Keywords='Installer'
             Description='Terminal dashboard to launch apps and track play time, with XP and rewards'
-            Manufacturer='LorisOptim'
+            Manufacturer='Loris01100'
             InstallerVersion='450'
             Languages='1033'
             Compressed='yes'
