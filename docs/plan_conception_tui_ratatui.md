@@ -20,6 +20,7 @@ src/
 ├── main.rs              // init terminal, lance App::run()
 ├── app.rs               // struct App, boucle principale, update()
 ├── event.rs             // thread d'événements (clavier, tick, tracker)
+├── i18n.rs              // textes de l'interface : t!(), langue courante
 ├── command/
 │   ├── mod.rs           // enum Command
 │   ├── parser.rs        // texte -> Command
@@ -61,6 +62,9 @@ themes/                  // thèmes intégrés au binaire (include_str!)
 ├── catppuccin-macchiato.toml
 ├── catppuccin-mocha.toml
 └── terminal.toml        // 16 couleurs ANSI, repli sans truecolor
+locales/                 // textes de l'interface, intégrés au binaire (include_str!)
+├── en.toml              // référence : toute autre langue a exactement ces clés
+└── fr.toml
 .github/workflows/release.yml   // généré par `dist init`
 wix/main.wxs                    // installeur MSI, généré par `dist init`
 ```
@@ -403,6 +407,14 @@ pub struct Theme {
 - `:sort [name|xp|recent|time]` trie le panneau Applications (nom croissant, sinon le plus grand ou le plus récent d'abord, égalités par nom). Mémorisé dans `config.toml` (`sort = "..."`), affiché dans le titre du panneau. La recherche `/` garde son propre ordre (meilleur résultat d'abord).
 - `:theme` liste les thèmes, `:theme catppuccin-latte` en change. Le choix est mémorisé dans `%APPDATA%\CmdBoard\config.toml` (`theme = "..."`, les autres clés du fichier sont conservées). Au démarrage, un thème configuré introuvable ou cassé affiche l'erreur et bascule sur le thème par défaut. Les erreurs de `config.toml`, du thème et de `commands.toml` sont réunies dans la ligne de message.
 
+### Langues
+
+- Aucun texte d'interface en dur : `t!("clé")` ou `t!("clé", nom = valeur)` lit `locales/<langue>.toml` (tables imbriquées = clés pointées, `{nom}` remplacé). Une clé absente retombe sur l'anglais, puis sur la clé elle-même. Des tests vérifient que chaque langue a toutes les clés et les mêmes `{…}` que `en.toml`, et que chaque `t!("…")` du code existe.
+- Langue courante globale (`i18n::set`), pas dans `App` : erreurs du parser, du stockage et du thread de mise à jour sont traduites aussi. Exception assumée à l'état unique.
+- `:lang` liste les langues, `:lang en` en change ; mémorisé dans `config.toml` (`lang = "..."`). Sans `lang`, la langue d'affichage de Windows si elle existe, sinon l'anglais. Choisie avant d'ouvrir la base : le contenu de départ (catégories, apps) est créé dans cette langue.
+- Les récompenses de départ sont stockées en français (migrations publiées) ; `starter_rewards.<code>` les affiche dans la langue courante. Une récompense ajoutée à la main garde son texte.
+- Ajouter une langue : un fichier dans `locales/` et une ligne dans `i18n::LANGS`.
+
 ### Truecolor et repli
 
 Les couleurs `#rrggbb` exigent un terminal truecolor. Windows Terminal le gère (variable `WT_SESSION` présente), l'ancienne console `conhost` non. Sans truecolor détecté (`WT_SESSION` absent et `COLORTERM` différent de `truecolor`/`24bit`), le thème par défaut est `terminal` : il n'utilise que les 16 couleurs ANSI et suit donc le schéma du terminal. Sinon, le défaut est `catppuccin-mocha`.
@@ -539,6 +551,7 @@ anyhow = "1"
 directories = "6"
 fuzzy-matcher = "0.3"
 self_update = { version = "1.3", default-features = false, features = ["github", "ureq", "rustls", "archive-zip", "compression-zip-deflate"] }
+windows-sys = { version = "0.61", features = ["Win32_Globalization"] }  # langue d'affichage de Windows
 ```
 
 À vérifier avec `cargo add` au moment de créer le projet, pour obtenir les dernières versions. Pour lire les `.lnk`, ajouter `lnk` ou `parselnk`.

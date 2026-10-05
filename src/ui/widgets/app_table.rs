@@ -17,10 +17,16 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focus == Focus::Apps;
 
     let title = match app.mode {
-        Mode::Search => format!("Recherche ({})", app.visible_apps().len()),
-        _ => format!("Applications · {}", app.sort.label()),
+        Mode::Search => t!("apps.search_title", count = app.visible_apps().len()),
+        _ => t!("apps.title", sort = app.sort.label()),
     };
-    let header = Row::new(["Nom", "Niv", "XP", "Temps"]).style(theme.title);
+    let header = Row::new([
+        t!("apps.name"),
+        t!("apps.level"),
+        t!("apps.xp"),
+        t!("apps.time"),
+    ])
+    .style(theme.title);
     let rows = app.visible_apps().into_iter().map(|entry| {
         let (level, xp) = app.shown_app_xp(entry);
         let progress = xp::level_progress(level, xp);

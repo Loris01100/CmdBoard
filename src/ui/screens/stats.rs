@@ -32,14 +32,14 @@ pub fn draw(frame: &mut Frame, app: &App) {
         .stats_app
         .and_then(|id| app.apps.iter().find(|a| a.id == id))
     {
-        Some(entry) => format!(" {} (:stats pour tout voir)", entry.name),
-        None => " Toutes les apps".into(),
+        Some(entry) => t!("stats.one_app", name = entry.name),
+        None => t!("stats.all_apps"),
     };
-    let summary = format!(
-        "  ·  {} session(s)  ·  {} au total  ·  plus longue : {}",
-        stats.session_count,
-        format_duration(stats.total_secs),
-        format_duration(stats.longest_secs),
+    let summary = t!(
+        "stats.summary",
+        count = stats.session_count,
+        total = format_duration(stats.total_secs),
+        longest = format_duration(stats.longest_secs),
     );
     frame.render_widget(
         Paragraph::new(Line::from(vec![
@@ -70,10 +70,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
 fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let block = theme.panel("Temps par catégorie", false);
+    let block = theme.panel(&t!("stats.by_category"), false);
     if app.stats.by_category.is_empty() {
         frame.render_widget(
-            Paragraph::new("Aucune session")
+            Paragraph::new(t!("stats.no_sessions"))
                 .style(theme.muted())
                 .block(block),
             area,
@@ -105,9 +105,10 @@ fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
 fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
     let today = app.stats.daily.last().copied().unwrap_or(0);
-    let title = format!(
-        "Activité ({ACTIVITY_DAYS} jours) · aujourd'hui : {}",
-        format_duration(today)
+    let title = t!(
+        "stats.activity",
+        days = ACTIVITY_DAYS,
+        today = format_duration(today)
     );
     // One column per day, today on the right: keep the most recent days if too narrow.
     let width = area.width.saturating_sub(2) as usize;
@@ -122,8 +123,14 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
 
 fn render_sessions(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let title = format!("Sessions ({})", app.stats.session_count);
-    let header = Row::new(["Début", "App", "Durée", "XP"]).style(theme.title);
+    let title = t!("stats.sessions", count = app.stats.session_count);
+    let header = Row::new([
+        t!("stats.started"),
+        t!("stats.app"),
+        t!("stats.duration"),
+        t!("stats.xp"),
+    ])
+    .style(theme.title);
     let rows = app.stats.sessions.iter().map(|s| {
         Row::new([
             Cell::from(s.started.as_str()),

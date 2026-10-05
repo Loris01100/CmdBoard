@@ -1,3 +1,6 @@
+#[macro_use]
+mod i18n;
+
 mod app;
 mod command;
 mod config;
@@ -20,16 +23,19 @@ use config::Config;
 use storage::{Database, db::data_dir};
 
 fn main() -> anyhow::Result<()> {
-    // Open the database before taking over the terminal, so errors print normally.
-    let db = Database::open_default()?;
-    let mut app = App::new(db)?;
-    app.close_orphan_sessions()?; // left open by a previous crash
-
     // Broken user files are reported, never fatal.
     let dir = data_dir()?;
     let mut warnings = Vec::new();
     let (config, warning) = Config::load(&dir.join("config.toml"));
     warnings.extend(warning);
+    // Before the database, so a new one gets its starter content in this language.
+    warnings.extend(i18n::init(config.lang.as_deref()));
+
+    // Open the database before taking over the terminal, so errors print normally.
+    let db = Database::open_default()?;
+    let mut app = App::new(db)?;
+    app.close_orphan_sessions()?; // left open by a previous crash
+
     warnings.extend(app.init_theme(&dir, config.theme.clone()));
     warnings.extend(app.init_sort(config.sort.as_deref()));
     let (aliases, warning) = Aliases::load(&dir.join("commands.toml"));

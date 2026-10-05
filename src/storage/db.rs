@@ -92,13 +92,13 @@ impl Database {
     pub fn open_default() -> anyhow::Result<Self> {
         let dir = data_dir()?;
         std::fs::create_dir_all(&dir)
-            .with_context(|| format!("impossible de créer {}", dir.display()))?;
+            .with_context(|| t!("error.cannot_create", path = dir.display()))?;
         Self::open(&dir.join("cmdboard.db"))
     }
 
     pub fn open(path: &Path) -> anyhow::Result<Self> {
         let conn = Connection::open(path)
-            .with_context(|| format!("impossible d'ouvrir {}", path.display()))?;
+            .with_context(|| t!("error.cannot_open", path = path.display()))?;
         let (db, previous_version) = Self::init(conn)?;
         if previous_version == 0 {
             db.seed_defaults(launch::is_available)?;
@@ -127,27 +127,42 @@ impl Database {
     /// Starter content so a fresh install has something to launch. Only apps whose
     /// target passes `available` are added; their categories are created regardless.
     pub fn seed_defaults(&self, available: impl Fn(&str) -> bool) -> anyhow::Result<()> {
-        let games = self.add_category("Jeux")?;
+        let games = self.add_category(&t!("seed.games"))?;
         let dev = self.add_category("Dev")?;
-        let tools = self.add_category("Outils")?;
+        let tools = self.add_category(&t!("seed.tools"))?;
         let apps = [
-            ("Steam", "steam://open/main", Some("steam.exe"), games),
             (
-                "Windows Terminal",
+                "Steam".into(),
+                "steam://open/main",
+                Some("steam.exe"),
+                games,
+            ),
+            (
+                "Windows Terminal".into(),
                 "wt.exe",
                 Some("WindowsTerminal.exe"),
                 dev,
             ),
-            ("Bloc-notes", "notepad.exe", Some("Notepad.exe"), tools),
-            ("Calculatrice", "calc.exe", Some("CalculatorApp.exe"), tools),
-            ("Explorateur", "explorer.exe", None, tools),
+            (
+                t!("seed.notepad"),
+                "notepad.exe",
+                Some("Notepad.exe"),
+                tools,
+            ),
+            (
+                t!("seed.calculator"),
+                "calc.exe",
+                Some("CalculatorApp.exe"),
+                tools,
+            ),
+            (t!("seed.explorer"), "explorer.exe", None, tools),
         ];
         for (name, target, watch, category_id) in apps {
             if !available(target) {
                 continue;
             }
             self.add_app(&NewApp {
-                name: name.into(),
+                name,
                 launch_target: target.into(),
                 watch_exe: watch.map(Into::into),
                 category_id,
@@ -159,7 +174,7 @@ impl Database {
 
 /// `%APPDATA%\CmdBoard`: database, `config.toml` and user themes.
 pub fn data_dir() -> anyhow::Result<PathBuf> {
-    let base = directories::BaseDirs::new().context("dossier %APPDATA% introuvable")?;
+    let base = directories::BaseDirs::new().with_context(|| t!("error.no_appdata"))?;
     Ok(base.config_dir().join("CmdBoard"))
 }
 
@@ -168,16 +183,16 @@ pub fn data_dir() -> anyhow::Result<PathBuf> {
 fn migrate(conn: &mut Connection) -> anyhow::Result<usize> {
     let current = user_version(conn)?;
     if current > MIGRATIONS.len() {
-        bail!(
-            "base de données en version {current}, créée par une version plus récente de CmdBoard \
-             (cette version connaît {})",
-            MIGRATIONS.len()
-        );
+        bail!(t!(
+            "error.db_too_new",
+            version = current,
+            known = MIGRATIONS.len()
+        ));
     }
     for (i, sql) in MIGRATIONS.iter().enumerate().skip(current) {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)
-            .with_context(|| format!("migration {} échouée", i + 1))?;
+            .with_context(|| t!("error.migration_failed", number = i + 1))?;
         set_user_version(&tx, i + 1)?;
         tx.commit()?;
     }

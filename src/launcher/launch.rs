@@ -7,7 +7,7 @@ use anyhow::{Context, bail};
 pub fn launch(target: &str) -> anyhow::Result<()> {
     check_target(target)?;
     let target = target.trim();
-    opener::open(target).with_context(|| format!("impossible de lancer {target}"))
+    opener::open(target).with_context(|| t!("error.cannot_launch", target))
 }
 
 /// Rejects empty targets and absolute paths that do not exist.
@@ -15,11 +15,11 @@ pub fn launch(target: &str) -> anyhow::Result<()> {
 pub fn check_target(target: &str) -> anyhow::Result<()> {
     let target = target.trim();
     if target.is_empty() {
-        bail!("aucune cible de lancement");
+        bail!(t!("error.no_target"));
     }
     let path = Path::new(target);
     if path.is_absolute() && !path.exists() {
-        bail!("fichier introuvable : {target}");
+        bail!(t!("error.file_not_found", target));
     }
     Ok(())
 }

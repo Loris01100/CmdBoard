@@ -24,9 +24,15 @@ pub fn draw(frame: &mut Frame, app: &App) {
         Layout::vertical([Constraint::Min(3), Constraint::Length(detail_height)]).areas(body);
 
     let unlocked = app.rewards.iter().filter(|r| !r.unlocks.is_empty()).count();
-    let title = format!("Récompenses ({unlocked}/{})", app.rewards.len());
+    let title = t!("rewards.title", unlocked, total = app.rewards.len());
 
-    let header = Row::new(["", "Nom", "Description", "Débloquée"]).style(theme.title);
+    let header = Row::new([
+        String::new(),
+        t!("rewards.name"),
+        t!("rewards.description"),
+        t!("rewards.unlocked"),
+    ])
+    .style(theme.title);
     let rows = app.rewards.iter().map(|reward| {
         let (icon, style) = if reward.unlocks.is_empty() {
             ("🔒", theme.muted())
@@ -60,12 +66,12 @@ pub fn draw(frame: &mut Frame, app: &App) {
         let selected = app.reward_state.selected().and_then(|i| app.rewards.get(i));
         let detail = match selected {
             Some(reward) => detail_lines(reward, app),
-            None => vec![Line::styled("Aucune récompense définie", theme.muted())],
+            None => vec![Line::styled(t!("rewards.none"), theme.muted())],
         };
         frame.render_widget(
             Paragraph::new(detail)
                 .wrap(Wrap { trim: true })
-                .block(theme.panel("Détail", false)),
+                .block(theme.panel(&t!("rewards.detail"), false)),
             detail_area,
         );
     }
@@ -79,19 +85,19 @@ fn unlocked_summary(reward: &RewardView) -> String {
     match reward.unlocks.as_slice() {
         [] => "—".into(),
         [only] if !reward.per_app || reward.app.is_some() => only.date.clone(),
-        unlocks => format!("{} app(s)", unlocks.len()),
+        unlocks => t!("app_count", count = unlocks.len()),
     }
 }
 
 fn detail_lines(reward: &RewardView, app: &App) -> Vec<Line<'static>> {
     let theme = &app.theme;
     let scope = match (&reward.app, reward.per_app) {
-        (Some(app), _) => format!("pour {app}"),
-        (None, true) => "une fois par app".into(),
-        (None, false) => "globale".into(),
+        (Some(app), _) => t!("rewards.for_app", app),
+        (None, true) => t!("rewards.per_app"),
+        (None, false) => t!("rewards.global"),
     };
     let unlocks = if reward.unlocks.is_empty() {
-        Span::styled("verrouillée", theme.muted())
+        Span::styled(t!("rewards.locked"), theme.muted())
     } else {
         let list = reward
             .unlocks
@@ -110,10 +116,13 @@ fn detail_lines(reward: &RewardView, app: &App) -> Vec<Line<'static>> {
             Span::styled(format!("  ·  {scope}"), theme.muted()),
         ]),
         Line::from(vec![
-            Span::styled("Condition : ", theme.muted()),
+            Span::styled(t!("rewards.condition"), theme.muted()),
             Span::raw(reward.rule.clone()),
         ]),
-        Line::from(vec![Span::styled("Débloquée : ", theme.muted()), unlocks]),
+        Line::from(vec![
+            Span::styled(t!("rewards.unlocked_on"), theme.muted()),
+            unlocks,
+        ]),
     ]
 }
 

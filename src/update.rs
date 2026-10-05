@@ -61,7 +61,7 @@ fn run(action: Action) -> anyhow::Result<Outcome> {
         .build()?;
     let releases = updater
         .get_latest_release()
-        .context("impossible de joindre GitHub")?;
+        .with_context(|| t!("update.unreachable"))?;
     if !releases.is_update_available()? {
         return Ok(Outcome::UpToDate);
     }
@@ -71,7 +71,9 @@ fn run(action: Action) -> anyhow::Result<Outcome> {
         return Ok(Outcome::Available { version, managed });
     }
     // `self_update` gets past Windows' lock on the running exe (via `self_replace`).
-    updater.update().context("échec de la mise à jour")?;
+    updater
+        .update()
+        .with_context(|| t!("update.install_failed"))?;
     Ok(Outcome::Installed { version })
 }
 

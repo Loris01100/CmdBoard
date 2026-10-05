@@ -11,69 +11,74 @@ use crate::popup::Popup;
 
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let hints: &[(&str, &str)] = match (&app.mode, app.screen) {
-        (Mode::Command, _) => &[
-            ("Entrée", "valider"),
-            ("Esc", "annuler"),
-            ("↑↓", "historique"),
-            ("Tab", "compléter"),
+    let enter = t!("keys.enter");
+    // `(key, i18n key of what it does)`.
+    let hints: Vec<(String, &str)> = match (&app.mode, app.screen) {
+        (Mode::Command, _) => vec![
+            (enter, "hint.confirm"),
+            ("Esc".into(), "hint.cancel"),
+            ("↑↓".into(), "hint.history"),
+            ("Tab".into(), "hint.complete"),
         ],
-        (Mode::Search, _) => &[
-            ("↑↓", "choisir"),
-            ("Entrée", "aller à l'app"),
-            ("Esc", "annuler"),
+        (Mode::Search, _) => vec![
+            ("↑↓".into(), "hint.choose"),
+            (enter, "hint.go_to_app"),
+            ("Esc".into(), "hint.cancel"),
         ],
-        (Mode::Popup(Popup::Confirm { .. }), _) => {
-            &[("Entrée/o", "confirmer"), ("Esc/n", "annuler")]
-        }
+        (Mode::Popup(Popup::Confirm { .. }), _) => vec![
+            (t!("keys.confirm_keys"), "hint.yes"),
+            ("Esc/n".into(), "hint.cancel"),
+        ],
         (Mode::Popup(Popup::LevelUp(_) | Popup::RewardUnlocked(_)), _) => {
-            &[("Entrée/Esc", "continuer")]
+            vec![(format!("{enter}/Esc"), "hint.continue")]
         }
-        (Mode::Popup(Popup::Picker(_)), _) => &[
-            ("↑↓", "choisir"),
-            ("Entrée", "remplir"),
-            ("Tab", "saisie manuelle"),
-            ("Esc", "annuler"),
+        (Mode::Popup(Popup::Picker(_)), _) => vec![
+            ("↑↓".into(), "hint.choose"),
+            (enter, "hint.fill"),
+            ("Tab".into(), "hint.manual"),
+            ("Esc".into(), "hint.cancel"),
         ],
-        (Mode::Popup(Popup::Form(_)), _) => &[
-            ("Tab ↑↓", "champ"),
-            ("Entrée", "suivant / valider"),
-            ("Esc", "annuler"),
+        (Mode::Popup(Popup::Form(_)), _) => vec![
+            ("Tab ↑↓".into(), "hint.field"),
+            (enter, "hint.next_or_submit"),
+            ("Esc".into(), "hint.cancel"),
         ],
-        (Mode::Normal, Screen::Dashboard) => &[
-            ("j/k", "naviguer"),
-            ("Tab", "panneau"),
-            ("Entrée", "lancer"),
-            ("a/m/d", "ajouter/déplacer/suppr."),
-            ("/", "chercher"),
-            (":", "commande"),
-            ("q", "quitter"),
+        (Mode::Normal, Screen::Dashboard) => vec![
+            ("j/k".into(), "hint.navigate"),
+            ("Tab".into(), "hint.panel"),
+            (enter, "hint.launch"),
+            ("a/m/d".into(), "hint.edit"),
+            ("/".into(), "hint.search"),
+            (":".into(), "hint.command"),
+            ("q".into(), "hint.quit"),
         ],
-        (Mode::Normal, Screen::Rewards | Screen::Stats) => &[
-            ("j/k", "naviguer"),
-            (":", "commande"),
-            ("1-4", "écrans"),
-            ("q", "quitter"),
+        (Mode::Normal, Screen::Rewards | Screen::Stats) => vec![
+            ("j/k".into(), "hint.navigate"),
+            (":".into(), "hint.command"),
+            ("1-4".into(), "hint.screens"),
+            ("q".into(), "hint.quit"),
         ],
-        (Mode::Normal, _) => &[(":", "commande"), ("1-4", "écrans"), ("q", "quitter")],
+        (Mode::Normal, _) => vec![
+            (":".into(), "hint.command"),
+            ("1-4".into(), "hint.screens"),
+            ("q".into(), "hint.quit"),
+        ],
     };
 
     let mut spans = vec![Span::raw(" ")];
-    for (i, (key, label)) in hints.iter().enumerate() {
+    for (i, (key, label)) in hints.into_iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw("   "));
         }
-        spans.push(Span::styled(*key, theme.title));
+        spans.push(Span::styled(key, theme.title));
+        let label = crate::i18n::tr(label, &[]);
         spans.push(Span::styled(format!(" {label}"), theme.muted()));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 
     if let Some(version) = &app.update_available {
         let notice = Line::from(vec![
-            Span::styled(
-                format!("v{version} disponible "),
-                Style::new().fg(theme.info),
-            ),
+            Span::styled(t!("update.available", version), Style::new().fg(theme.info)),
             Span::styled(":update ", theme.muted()),
         ]);
         frame.render_widget(Paragraph::new(notice).alignment(Alignment::Right), area);

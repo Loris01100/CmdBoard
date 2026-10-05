@@ -9,7 +9,6 @@ use ratatui::{
 use crate::app::{App, Mode, MsgKind};
 
 const PLACEHOLDER: &str = "launch <app>, stats, help… (Tab)";
-const SEARCH_PLACEHOLDER: &str = "nom d'une app, même approximatif";
 
 /// Rows the command area needs: a bordered box while typing, one line otherwise.
 pub fn height(app: &App) -> u16 {
@@ -24,22 +23,17 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     match &app.mode {
         Mode::Command => {
             let input = &app.command_line.input;
-            let block = app.theme.panel("Commande", true);
+            let block = app.theme.panel(&t!("command_line.title"), true);
             let block = match completion_hint(app) {
                 Some(hint) => block.title_bottom(hint),
                 None => block,
             };
-            render_input(frame, area, app, block, (":", input, PLACEHOLDER));
+            render_input(frame, area, app, block, (":", input, PLACEHOLDER.into()));
         }
         Mode::Search => {
-            let block = app.theme.panel("Recherche", true);
-            render_input(
-                frame,
-                area,
-                app,
-                block,
-                ("/", &app.search, SEARCH_PLACEHOLDER),
-            );
+            let block = app.theme.panel(&t!("command_line.search"), true);
+            let placeholder = t!("command_line.search_placeholder");
+            render_input(frame, area, app, block, ("/", &app.search, placeholder));
         }
         Mode::Normal | Mode::Popup(_) => render_message(frame, area, app),
     }
@@ -73,7 +67,7 @@ fn render_input(
     area: Rect,
     app: &App,
     block: ratatui::widgets::Block<'static>,
-    (prompt, input, placeholder): (&str, &crate::text_input::TextInput, &str),
+    (prompt, input, placeholder): (&str, &crate::text_input::TextInput, String),
 ) {
     let theme = &app.theme;
     let inner = block.inner(area);
@@ -85,7 +79,7 @@ fn render_input(
     // Room left after the prompt.
     let (visible, cursor) = input.view((inner.width - 1) as usize);
     let text = if input.is_empty() {
-        Span::styled(placeholder.to_string(), theme.muted())
+        Span::styled(placeholder, theme.muted())
     } else {
         Span::raw(visible)
     };

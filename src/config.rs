@@ -10,6 +10,8 @@ pub struct Config {
     pub theme: Option<String>,
     /// App order chosen with `:sort`.
     pub sort: Option<String>,
+    /// Language chosen with `:lang`; `None` follows Windows.
+    pub lang: Option<String>,
     /// `update_check = false` turns off the daily check for a new version.
     pub update_check: bool,
     /// Unix seconds of the last passive update check.
@@ -21,6 +23,7 @@ impl Default for Config {
         Self {
             theme: None,
             sort: None,
+            lang: None,
             update_check: true,
             last_update_check: None,
         }
@@ -33,18 +36,21 @@ impl Config {
         let text = match std::fs::read_to_string(path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (Self::default(), None),
-            Err(e) => return (Self::default(), Some(format!("config.toml : {e}"))),
+            Err(e) => {
+                return (
+                    Self::default(),
+                    Some(t!("pair", label = "config.toml", value = e)),
+                );
+            }
         };
         match text.parse::<toml::Table>() {
             Ok(table) => {
-                let theme = table
-                    .get("theme")
-                    .and_then(toml::Value::as_str)
-                    .map(String::from);
-                let sort = table
-                    .get("sort")
-                    .and_then(toml::Value::as_str)
-                    .map(String::from);
+                let text = |key: &str| {
+                    table
+                        .get(key)
+                        .and_then(toml::Value::as_str)
+                        .map(String::from)
+                };
                 let update_check = table
                     .get("update_check")
                     .and_then(toml::Value::as_bool)
@@ -54,8 +60,9 @@ impl Config {
                     .and_then(toml::Value::as_integer);
                 (
                     Self {
-                        theme,
-                        sort,
+                        theme: text("theme"),
+                        sort: text("sort"),
+                        lang: text("lang"),
                         update_check,
                         last_update_check,
                     },
@@ -64,7 +71,11 @@ impl Config {
             }
             Err(e) => (
                 Self::default(),
-                Some(format!("config.toml : {}", e.message().trim())),
+                Some(t!(
+                    "pair",
+                    label = "config.toml",
+                    value = e.message().trim()
+                )),
             ),
         }
     }
@@ -81,7 +92,7 @@ pub fn save_value(path: &Path, key: &str, value: impl Into<toml::Value>) -> anyh
         std::fs::create_dir_all(dir)?;
     }
     std::fs::write(path, toml::to_string(&table)?)
-        .with_context(|| format!("impossible d'écrire {}", path.display()))
+        .with_context(|| t!("error.cannot_write", path = path.display()))
 }
 
 #[cfg(test)]

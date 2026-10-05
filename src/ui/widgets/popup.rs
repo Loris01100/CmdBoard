@@ -29,7 +29,7 @@ fn render_reward(frame: &mut Frame, reward: &RewardUnlocked, app: &App) {
     let accent_style = Style::new().fg(accent).add_modifier(Modifier::BOLD);
 
     let mut text = vec![
-        Line::styled("Récompense débloquée !", accent_style).centered(),
+        Line::styled(t!("popup.reward_unlocked"), accent_style).centered(),
         Line::from(""),
         Line::styled(format!("🏆 {}", reward.name), theme.title).centered(),
         Line::from(reward.description.clone()).centered(),
@@ -38,7 +38,7 @@ fn render_reward(frame: &mut Frame, reward: &RewardUnlocked, app: &App) {
         text.push(Line::styled(format!("({app_name})"), theme.muted()).centered());
     }
     text.push(Line::from(""));
-    text.push(Line::styled("Entrée pour continuer", theme.muted()).centered());
+    text.push(Line::styled(t!("popup.continue"), theme.muted()).centered());
 
     let area = centered(
         frame.area(),
@@ -46,7 +46,7 @@ fn render_reward(frame: &mut Frame, reward: &RewardUnlocked, app: &App) {
         text.len() as u16 + 2,
     );
     let block = theme
-        .panel("Récompense", true)
+        .panel(&t!("popup.reward_title"), true)
         .border_style(Style::new().fg(accent));
     frame.render_widget(Clear, area);
     frame.render_widget(Paragraph::new(text).block(block), area);
@@ -68,20 +68,20 @@ fn render_level_up(frame: &mut Frame, level_up: &LevelUp, app: &App) {
     let accent_style = Style::new().fg(accent).add_modifier(Modifier::BOLD);
 
     let mut text = vec![
-        Line::styled("★  Niveau supérieur !  ★", accent_style).centered(),
+        Line::styled(t!("popup.level_up"), accent_style).centered(),
         Line::from(""),
     ];
     if let Some(level) = level_up.app_level {
         text.push(
             Line::from(vec![
                 Span::styled(level_up.app.clone(), theme.title),
-                Span::raw(format!(" passe au niveau {level}")),
+                Span::raw(t!("popup.app_level", level)),
             ])
             .centered(),
         );
     }
     if let Some(level) = level_up.global_level {
-        text.push(Line::from(format!("Profil : niveau {level}")).centered());
+        text.push(Line::from(t!("popup.profile_level", level)).centered());
     }
     text.push(
         Line::styled(
@@ -91,7 +91,7 @@ fn render_level_up(frame: &mut Frame, level_up: &LevelUp, app: &App) {
         .centered(),
     );
     text.push(Line::from(""));
-    text.push(Line::styled("Entrée pour continuer", theme.muted()).centered());
+    text.push(Line::styled(t!("popup.continue"), theme.muted()).centered());
 
     let area = centered(
         frame.area(),
@@ -99,7 +99,7 @@ fn render_level_up(frame: &mut Frame, level_up: &LevelUp, app: &App) {
         text.len() as u16 + 2,
     );
     let block = theme
-        .panel("Level-up", true)
+        .panel(&t!("popup.level_up_title"), true)
         .border_style(Style::new().fg(accent));
     frame.render_widget(Clear, area);
     frame.render_widget(Paragraph::new(text).block(block), area);
@@ -114,16 +114,16 @@ fn render_confirm(frame: &mut Frame, message: &str, app: &App) {
     let area = centered(frame.area(), width, message_lines + 4);
 
     let block = theme
-        .panel("Confirmer", true)
+        .panel(&t!("popup.confirm_title"), true)
         .border_style(Style::new().fg(theme.error));
     let text = vec![
         Line::from(message.to_string()),
         Line::from(""),
         Line::from(vec![
-            Span::styled("Entrée/o", theme.title),
-            Span::raw(" oui   "),
+            Span::styled(t!("keys.confirm_keys"), theme.title),
+            Span::raw(t!("popup.yes")),
             Span::styled("Esc/n", theme.title),
-            Span::raw(" non"),
+            Span::raw(t!("popup.no")),
         ]),
     ];
     frame.render_widget(Clear, area);
@@ -140,7 +140,7 @@ const PICKER_ROWS: u16 = 10;
 fn render_picker(frame: &mut Frame, picker: &Picker, app: &App) {
     let theme = &app.theme;
     let area = centered(frame.area(), popup_width(frame.area()), PICKER_ROWS + 6);
-    let block = theme.panel("Ajouter une app", true);
+    let block = theme.panel(&t!("form.add_title"), true);
     let inner = block.inner(area);
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
@@ -148,10 +148,13 @@ fn render_picker(frame: &mut Frame, picker: &Picker, app: &App) {
         return;
     }
 
-    let prompt = "Chercher : ";
-    let room = (inner.width as usize).saturating_sub(prompt.len() + 1);
+    let prompt = t!("picker.search");
+    let room = (inner.width as usize).saturating_sub(prompt.chars().count() + 1);
     let (visible, cursor) = picker.query.view(room);
-    let search = Line::from(vec![Span::styled(prompt, theme.title), Span::raw(visible)]);
+    let search = Line::from(vec![
+        Span::styled(prompt.clone(), theme.title),
+        Span::raw(visible),
+    ]);
     frame.render_widget(Paragraph::new(search), Rect { height: 1, ..inner });
     frame.set_cursor_position(Position::new(
         inner.x + (prompt.chars().count() + cursor) as u16,
@@ -163,11 +166,11 @@ fn render_picker(frame: &mut Frame, picker: &Picker, app: &App) {
     let mut lines = Vec::new();
     if matches.is_empty() {
         let text = if app.scan_running {
-            "Recherche des apps installées…"
+            t!("picker.scanning")
         } else if picker.query.is_empty() {
-            "Aucune app trouvée dans le menu Démarrer"
+            t!("picker.none_installed")
         } else {
-            "Aucune app ne correspond : Tab pour la saisir à la main"
+            t!("picker.no_match")
         };
         lines.push(Line::styled(format!("  {text}"), theme.muted()));
     }
@@ -190,13 +193,7 @@ fn render_picker(frame: &mut Frame, picker: &Picker, app: &App) {
     frame.render_widget(Paragraph::new(lines), list.intersection(inner));
 
     if inner.height > 1 {
-        let footer = Line::styled(
-            format!(
-                "  {} app(s) · Entrée : remplir · Tab : saisie manuelle",
-                matches.len()
-            ),
-            theme.muted(),
-        );
+        let footer = Line::styled(t!("picker.footer", count = matches.len()), theme.muted());
         let y = inner.bottom() - 1;
         frame.render_widget(
             Paragraph::new(footer),
@@ -261,10 +258,7 @@ fn render_form(frame: &mut Frame, form: &Form, app: &App) {
     // Last row: the error, or how to submit.
     let footer = match &form.error {
         Some(error) => Line::styled(format!("  {error}"), Style::new().fg(theme.error)),
-        None => Line::styled(
-            "  * requis · Entrée sur le dernier champ : valider",
-            theme.muted(),
-        ),
+        None => Line::styled(t!("form.footer"), theme.muted()),
     };
     if let Some(help) = form.help() {
         let rect = Rect::new(

@@ -68,13 +68,13 @@ pub enum FormKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Field {
-    pub label: &'static str,
+    pub label: String,
     pub input: TextInput,
     pub required: bool,
 }
 
 impl Field {
-    fn new(label: &'static str, value: &str, required: bool) -> Self {
+    fn new(label: String, value: &str, required: bool) -> Self {
         Self {
             label,
             input: TextInput::new(value),
@@ -104,10 +104,10 @@ impl Form {
         Self::new(
             FormKind::AddApp,
             vec![
-                Field::new("Nom", "", true),
-                Field::new("Cible", "", true),
-                Field::new("Catégorie", category, true),
-                Field::new("Process", "", false),
+                Field::new(t!("form.name"), "", true),
+                Field::new(t!("form.target"), "", true),
+                Field::new(t!("form.category"), category, true),
+                Field::new(t!("form.process"), "", false),
             ],
         )
     }
@@ -132,7 +132,7 @@ impl Form {
             FormKind::MoveApp {
                 app: app.to_string(),
             },
-            vec![Field::new("Catégorie", category, true)],
+            vec![Field::new(t!("form.category"), category, true)],
         )
     }
 
@@ -147,20 +147,20 @@ impl Form {
 
     pub fn title(&self) -> String {
         match &self.kind {
-            FormKind::AddApp => "Ajouter une app".into(),
-            FormKind::MoveApp { app } => format!("Déplacer « {app} »"),
+            FormKind::AddApp => t!("form.add_title"),
+            FormKind::MoveApp { app } => t!("form.move_title", app),
         }
     }
 
     /// Greyed text shown in an empty field.
     pub fn placeholder(&self, index: usize) -> Option<String> {
         match (&self.kind, index) {
-            (FormKind::AddApp, TARGET) => Some(r"C:\…\jeu.exe, notepad.exe ou steam://…".into()),
+            (FormKind::AddApp, TARGET) => Some(t!("form.target_placeholder")),
             (FormKind::AddApp, PROCESS) => {
                 let target = self.fields[TARGET].input.text();
                 Some(match launch::watch_exe_for(target) {
-                    Some(exe) => format!("auto : {exe}"),
-                    None => "exe à surveiller, ex. Hades.exe".into(),
+                    Some(exe) => t!("form.process_auto", exe),
+                    None => t!("form.process_placeholder"),
                 })
             }
             _ => None,
@@ -168,20 +168,16 @@ impl Form {
     }
 
     /// What the focused field is for, shown under the fields.
-    pub fn help(&self) -> Option<&'static str> {
-        match (&self.kind, self.focused) {
-            (FormKind::AddApp, NAME) => Some("Nom affiché dans CmdBoard."),
-            (FormKind::AddApp, TARGET) => Some(
-                "Ce qui est lancé : un .exe ou un raccourci .lnk, un nom sur le PATH, ou un lien steam://…",
-            ),
+    pub fn help(&self) -> Option<String> {
+        Some(match (&self.kind, self.focused) {
+            (FormKind::AddApp, NAME) => t!("form.help_name"),
+            (FormKind::AddApp, TARGET) => t!("form.help_target"),
             (FormKind::AddApp, CATEGORY) | (FormKind::MoveApp { .. }, _) => {
-                Some("Une catégorie existante, ou une nouvelle qui sera créée.")
+                t!("form.help_category")
             }
-            (FormKind::AddApp, PROCESS) => Some(
-                "Exe surveillé pour compter le temps de jeu (XP). Vide : déduit de la cible. Pour un lien steam://…, l'exe du jeu (ex. Hades.exe).",
-            ),
-            _ => None,
-        }
+            (FormKind::AddApp, PROCESS) => t!("form.help_process"),
+            _ => return None,
+        })
     }
 
     pub fn focused_input(&mut self) -> &mut TextInput {
@@ -208,7 +204,7 @@ impl Form {
             .position(|f| f.required && f.input.text().trim().is_empty())
         {
             self.focused = i;
-            return Err(format!("{} : champ requis", self.fields[i].label));
+            return Err(t!("form.required", label = self.fields[i].label));
         }
         let value = |i: usize| self.fields[i].input.text().trim().to_string();
         Ok(match &self.kind {

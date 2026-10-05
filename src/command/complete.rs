@@ -34,6 +34,7 @@ enum Kind {
     Category,
     Theme,
     Sort,
+    Lang,
 }
 
 /// Completes the last word of `line`. `None` when nothing applies or nothing matches.
@@ -55,6 +56,7 @@ pub fn complete(line: &str, sources: &Sources) -> Option<Completion> {
         "help" => whole(line, rest_start, Kind::Command, sources),
         "theme" => whole(line, rest_start, Kind::Theme, sources),
         "sort" => whole(line, rest_start, Kind::Sort, sources),
+        "lang" => whole(line, rest_start, Kind::Lang, sources),
         "move" => argument(
             line,
             rest_start,
@@ -138,6 +140,7 @@ fn build(
         Kind::Category => sources.categories.clone(),
         Kind::Theme => sources.themes.clone(),
         Kind::Sort => AppSort::ALL.iter().map(|s| s.name()).collect(),
+        Kind::Lang => crate::i18n::LANGS.iter().map(|(code, _)| *code).collect(),
     };
     items.sort_by_key(|item| item.to_lowercase());
     let candidates: Vec<String> = fuzzy::rank(partial, items.iter().copied())
@@ -171,7 +174,9 @@ mod tests {
     #[test]
     fn completes_by_position() {
         let cases = [
-            ("la", Some("launch ")),
+            ("lau", Some("launch ")),
+            ("lan", Some("lang ")),
+            ("lang f", Some("lang fr")),
             ("gam", Some("gaming ")),
             ("launch ste", Some("launch Steam")),
             ("l wterm", Some("l Windows Terminal")), // alias of launch, fuzzy match

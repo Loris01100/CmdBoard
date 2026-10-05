@@ -1,0 +1,375 @@
+# Textes de l'interface en français. Les clés sont les mêmes que dans en.toml, qui
+# fait référence ; `{nom}` est remplacé par une valeur.
+
+language = "Français"
+pair = "{label} : {value}"
+cancelled = "Annulé"
+never = "jamais"
+new_category = " (nouvelle catégorie)"
+app_count = "{count} app(s)"
+
+[screen]
+dashboard = "Dashboard"
+stats = "Stats"
+rewards = "Récompenses"
+help = "Aide"
+
+[sort]
+name = "nom"
+xp = "XP"
+recent = "récent"
+time = "temps"
+list = "Tris : {list} (actuel : {current})"
+set = "Tri : {label}"
+not_saved = "tri appliqué mais non mémorisé"
+unknown_config = "config.toml : tri inconnu : {name}"
+
+[theme]
+list = "Thèmes : {list} (actuel : {current})"
+set = "Thème : {name}"
+not_saved = "thème appliqué mais non mémorisé"
+file_error = "thème {name}.toml : {error}"
+error = "thème {name} : {error}"
+unknown = "thème inconnu (:theme pour la liste)"
+missing_name = "name manquant"
+missing_slots = "section [slots] manquante"
+unknown_slot = "slot inconnu : {name}"
+missing_slot = "slot manquant : {name}"
+slot_error = "slot {name} : {error}"
+color_expected = "couleur attendue"
+section_expected = "[{name}] : section attendue"
+palette_color_expected = "palette {name} : couleur attendue"
+palette_invalid = "palette {name} : couleur invalide « {raw} »"
+unknown_color = "couleur inconnue « {name} »"
+style_expected = "couleur ou { fg, bg, bold… } attendu"
+invalid_key = "clé invalide : {name}"
+
+[lang]
+list = "Langues : {list} (actuelle : {current})"
+set = "Langue : {name}"
+not_saved = "langue appliquée mais non mémorisée"
+unknown = "langue inconnue : {code} (:lang pour la liste)"
+unknown_config = "config.toml : langue inconnue : {code}"
+
+[update]
+failed = "Mise à jour : {error}"
+up_to_date = "CmdBoard est à jour (v{version})"
+use_winget = "v{version} disponible. Installé via MSI/winget : lancez « winget upgrade CmdBoard »"
+installed = "Mis à jour en v{version} : relancez CmdBoard"
+running = "vérification de mise à jour déjà en cours"
+unavailable = "mise à jour indisponible"
+searching = "Recherche d'une mise à jour…"
+unreachable = "impossible de joindre GitHub"
+install_failed = "échec de la mise à jour"
+available = "v{version} disponible "
+
+[session]
+started = "Session démarrée : {name}"
+ended = "Session terminée : {name} ({minutes} min, +{xp} XP)"
+too_short = "Session trop courte, non enregistrée : {name}"
+recovered = "{count} session(s) interrompue(s) récupérée(s)"
+rule_error = "règle « {code} » : {error}"
+none_running = "aucune session en cours "
+
+[action]
+launched = "Lancé : {name}"
+added = "Ajouté : {name}{note}"
+removed = "Supprimé : {name}"
+category_removed = "Catégorie supprimée : {name}"
+xp = "{name} : {change} XP (total {total})"
+confirm_remove_app = "Supprimer « {name} » ? Son temps de jeu, son XP et ses récompenses seront perdus."
+confirm_remove_category = "Supprimer la catégorie « {name} » ?"
+
+[error]
+app_exists = "« {name} » existe déjà"
+no_category = "aucune catégorie sélectionnée : précisez-en une"
+category_not_empty = "« {name} » contient encore {count} app(s) : déplacez-les ou supprimez-les d'abord"
+unknown_app = "app inconnue : {name}"
+unknown_category = "catégorie inconnue : {name}"
+unknown_command = "commande inconnue : {name}"
+cannot_write = "impossible d'écrire {path}"
+cannot_create = "impossible de créer {path}"
+cannot_open = "impossible d'ouvrir {path}"
+no_appdata = "dossier %APPDATA% introuvable"
+db_too_new = "base de données en version {version}, créée par une version plus récente de CmdBoard (cette version connaît {known})"
+migration_failed = "migration {number} échouée"
+cannot_add_category = "impossible d'ajouter la catégorie « {name} »"
+category_has_apps = "la catégorie contient encore des apps"
+cannot_add_app = "impossible d'ajouter « {name} »"
+cannot_move_app = "impossible de déplacer l'app"
+cannot_launch = "impossible de lancer {target}"
+no_target = "aucune cible de lancement"
+file_not_found = "fichier introuvable : {target}"
+
+[parse]
+empty = "Commande vide"
+unknown = "Commande inconnue : {name} (:help pour la liste)"
+bad_amount = "Montant invalide : {amount} (usage : {usage})"
+bad_sort = "Tri inconnu : {name} (usage : {usage})"
+usage = "Usage : {usage}"
+unclosed_quote = "Guillemet non fermé"
+
+[alias]
+skipped = "commands.toml : alias ignoré(s) : {list}"
+missing_argument = "argument ${number} manquant"
+
+[rule]
+empty = "règle vide"
+condition_expected = "condition attendue : <variable> <opérateur> <nombre>"
+unknown_variable = "variable inconnue : {name} (connues : {list})"
+bad_number = "nombre invalide : {text}"
+unexpected_char = "caractère inattendu : {char}"
+
+[seed]
+games = "Jeux"
+tools = "Outils"
+notepad = "Bloc-notes"
+calculator = "Calculatrice"
+explorer = "Explorateur"
+
+[form]
+add_title = "Ajouter une app"
+move_title = "Déplacer « {app} »"
+name = "Nom"
+target = "Cible"
+category = "Catégorie"
+process = "Process"
+target_placeholder = 'C:\…\jeu.exe, notepad.exe ou steam://…'
+process_auto = "auto : {exe}"
+process_placeholder = "exe à surveiller, ex. Hades.exe"
+help_name = "Nom affiché dans CmdBoard."
+help_target = "Ce qui est lancé : un .exe ou un raccourci .lnk, un nom sur le PATH, ou un lien steam://…"
+help_category = "Une catégorie existante, ou une nouvelle qui sera créée."
+help_process = "Exe surveillé pour compter le temps de jeu (XP). Vide : déduit de la cible. Pour un lien steam://…, l'exe du jeu (ex. Hades.exe)."
+required = "{label} : champ requis"
+footer = "  * requis · Entrée sur le dernier champ : valider"
+
+[picker]
+search = "Chercher : "
+scanning = "Recherche des apps installées…"
+none_installed = "Aucune app trouvée dans le menu Démarrer"
+no_match = "Aucune app ne correspond : Tab pour la saisir à la main"
+footer = "  {count} app(s) · Entrée : remplir · Tab : saisie manuelle"
+
+[popup]
+continue = "Entrée pour continuer"
+reward_title = "Récompense"
+reward_unlocked = "Récompense débloquée !"
+level_up_title = "Level-up"
+level_up = "★  Niveau supérieur !  ★"
+app_level = " passe au niveau {level}"
+profile_level = "Profil : niveau {level}"
+confirm_title = "Confirmer"
+yes = " oui   "
+no = " non"
+
+[dashboard]
+details = "Détails"
+no_app = "Aucune application"
+level = "Niveau {level}"
+total_time = "Temps total : {time}"
+last = "Dernière : {last}"
+rewards = "Récompenses : 🏆 {count}"
+target = "Cible : {target}"
+process = "Process : {exe}"
+no_rewards = "Aucune récompense pour le moment"
+recent_rewards = "Dernières récompenses"
+
+[apps]
+title = "Applications · {sort}"
+search_title = "Recherche ({count})"
+name = "Nom"
+level = "Niv"
+xp = "XP"
+time = "Temps"
+categories = "Catégories"
+
+[profile]
+title = "Profil"
+level = "Niv {level} "
+stats = " │ Streak {days}j │ XP du jour : +{xp}"
+
+[ago]
+now = "à l'instant"
+minutes = "il y a {count} min"
+hours = "il y a {count} h"
+yesterday = "hier"
+days = "il y a {count} j"
+
+[command_line]
+title = "Commande"
+search = "Recherche"
+search_placeholder = "nom d'une app, même approximatif"
+
+[rewards]
+title = "Récompenses ({unlocked}/{total})"
+name = "Nom"
+description = "Description"
+unlocked = "Débloquée"
+none = "Aucune récompense définie"
+detail = "Détail"
+for_app = "pour {app}"
+per_app = "une fois par app"
+global = "globale"
+locked = "verrouillée"
+condition = "Condition : "
+unlocked_on = "Débloquée : "
+
+[stats]
+one_app = " {name} (:stats pour tout voir)"
+all_apps = " Toutes les apps"
+summary = "  ·  {count} session(s)  ·  {total} au total  ·  plus longue : {longest}"
+by_category = "Temps par catégorie"
+no_sessions = "Aucune session"
+activity = "Activité ({days} jours) · aujourd'hui : {today}"
+sessions = "Sessions ({count})"
+started = "Début"
+app = "App"
+duration = "Durée"
+xp = "XP"
+
+[keys]
+enter = "Entrée"
+confirm_keys = "Entrée/o"
+
+[hint]
+confirm = "valider"
+cancel = "annuler"
+history = "historique"
+complete = "compléter"
+choose = "choisir"
+go_to_app = "aller à l'app"
+yes = "confirmer"
+continue = "continuer"
+fill = "remplir"
+manual = "saisie manuelle"
+field = "champ"
+next_or_submit = "suivant / valider"
+navigate = "naviguer"
+panel = "panneau"
+launch = "lancer"
+edit = "ajouter/déplacer/suppr."
+search = "chercher"
+command = "commande"
+screens = "écrans"
+quit = "quitter"
+
+[help]
+keys = "Touches"
+commands = "Commandes"
+alias = " alias"
+navigate = "naviguer"
+panel = "changer de panneau"
+launch = "lancer l'app sélectionnée"
+edit = "ajouter / déplacer / supprimer (app ou catégorie vide)"
+sort = "changer le tri des apps (nom, XP, récent, temps)"
+search = "chercher une app dans toutes les catégories (Entrée : y aller)"
+command = "ligne de commande (↑↓ historique, Tab compléter, Esc annuler)"
+screens = "Dashboard, Stats, Récompenses, Aide"
+quit = "quitter"
+
+[cmd.launch]
+usage = "launch <app>"
+summary = "Lance une app"
+
+[cmd.add]
+usage = "add [<nom> <cible> [catégorie]]"
+summary = "Ajoute une app (exe ou URI). Sans argument : ouvre le formulaire"
+
+[cmd.move]
+usage = "move <app> [catégorie]"
+summary = "Déplace une app. Sans catégorie : ouvre le formulaire"
+
+[cmd.rm]
+usage = "rm <app>"
+summary = "Supprime une app et son historique, après confirmation"
+
+[cmd.rmcat]
+usage = "rmcat <catégorie>"
+summary = "Supprime une catégorie vide, après confirmation"
+
+[cmd.stats]
+usage = "stats [app]"
+summary = "Statistiques de toutes les apps, ou d'une seule"
+
+[cmd.theme]
+usage = "theme [nom]"
+summary = "Change de thème (mémorisé). Sans nom : liste les thèmes"
+
+[cmd.sort]
+usage = "sort [name|xp|recent|time]"
+summary = "Trie les apps (mémorisé). Sans argument : tri actuel"
+
+[cmd.lang]
+usage = "lang [en|fr]"
+summary = "Change de langue (mémorisée). Sans argument : liste les langues"
+
+[cmd.xp]
+usage = "xp <app> <montant>"
+summary = "Ajoute (ou retire, si négatif) de l'XP à une app"
+
+[cmd.update]
+usage = "update"
+summary = "Installe la dernière version (MSI/winget : winget upgrade CmdBoard)"
+
+[cmd.help]
+usage = "help [commande]"
+summary = "Affiche l'aide, ou l'usage d'une commande"
+
+[cmd.quit]
+usage = "quit"
+summary = "Quitte CmdBoard"
+
+# Récompenses de départ (migrations v2 et v3), par `rewards.code`. La base garde le
+# texte français ; celui-ci est affiché à la place.
+[starter_rewards.premiers_pas]
+name = "Premiers pas"
+description = "Terminer une première session"
+
+[starter_rewards.marathon]
+name = "Marathon"
+description = "Jouer 3 h d'affilée"
+
+[starter_rewards.noctambule]
+name = "Noctambule"
+description = "Commencer une session entre minuit et 5 h"
+
+[starter_rewards.habitue]
+name = "Habitué"
+description = "Cumuler 10 h sur une app"
+
+[starter_rewards.passionne]
+name = "Passionné"
+description = "Cumuler 50 h sur une app"
+
+[starter_rewards.veteran]
+name = "Vétéran"
+description = "Atteindre le niveau 5 sur une app"
+
+[starter_rewards.regulier]
+name = "Régulier"
+description = "Jouer 3 jours de suite"
+
+[starter_rewards.assidu]
+name = "Assidu"
+description = "Jouer 7 jours de suite"
+
+[starter_rewards.touche_a_tout]
+name = "Touche-à-tout"
+description = "Lancer 5 apps différentes en 7 jours"
+
+[starter_rewards.centurion]
+name = "Centurion"
+description = "Cumuler 100 h au total"
+
+[starter_rewards.expert]
+name = "Expert"
+description = "Atteindre le niveau global 10"
+
+[starter_rewards.inarretable]
+name = "Inarrêtable"
+description = "Jouer 30 jours de suite"
+
+[starter_rewards.legende]
+name = "Légende"
+description = "Jouer 365 jours de suite"

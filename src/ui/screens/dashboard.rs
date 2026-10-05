@@ -54,7 +54,7 @@ fn session_line(app: &App) -> Line<'static> {
         .filter_map(|(id, s)| Some((app.apps.iter().find(|a| a.id == *id)?, s.started)))
         .collect();
     if sessions.is_empty() {
-        return Line::styled("aucune session en cours ", theme.muted());
+        return Line::styled(t!("session.none_running"), theme.muted());
     }
     sessions.sort_by_key(|(_, started)| *started);
     let mut spans = Vec::new();
@@ -71,13 +71,13 @@ fn session_line(app: &App) -> Line<'static> {
 
 fn render_details(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let block = theme.panel("Détails", false);
+    let block = theme.panel(&t!("dashboard.details"), false);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     let Some(entry) = app.selected_app() else {
         frame.render_widget(
-            Paragraph::new("Aucune application").style(theme.muted()),
+            Paragraph::new(t!("dashboard.no_app")).style(theme.muted()),
             inner,
         );
         return;
@@ -96,26 +96,32 @@ fn render_details(frame: &mut Frame, area: Rect, app: &App) {
             entry.name.as_str(),
             theme.title.add_modifier(Modifier::BOLD),
         ),
-        Line::from(format!("Niveau {level}")),
+        Line::from(t!("dashboard.level", level)),
     ];
     frame.render_widget(Paragraph::new(head_text), head);
     frame.render_widget(xp_bar::gauge(level, xp, theme), gauge);
 
     let last = entry
         .last_played
-        .map_or_else(|| "jamais".into(), |t| format_ago(unix_now() - t));
+        .map_or_else(|| t!("never"), |t| format_ago(unix_now() - t));
     let rest_text = vec![
         Line::from(""),
-        Line::from(format!(
-            "Temps total : {}",
-            format_duration(entry.total_secs)
+        Line::from(t!(
+            "dashboard.total_time",
+            time = format_duration(entry.total_secs)
         )),
-        Line::from(format!("Dernière : {last}")),
-        Line::from(format!("Récompenses : 🏆 {}", entry.rewards)),
+        Line::from(t!("dashboard.last", last)),
+        Line::from(t!("dashboard.rewards", count = entry.rewards)),
         Line::from(""),
-        Line::styled(format!("Cible : {}", entry.launch_target), theme.muted()),
         Line::styled(
-            format!("Process : {}", entry.watch_exe.as_deref().unwrap_or("—")),
+            t!("dashboard.target", target = entry.launch_target),
+            theme.muted(),
+        ),
+        Line::styled(
+            t!(
+                "dashboard.process",
+                exe = entry.watch_exe.as_deref().unwrap_or("—")
+            ),
             theme.muted(),
         ),
     ];
@@ -125,7 +131,7 @@ fn render_details(frame: &mut Frame, area: Rect, app: &App) {
 fn render_recent_rewards(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
     let text = if app.recent_rewards.is_empty() {
-        Line::styled("Aucune récompense pour le moment", theme.muted())
+        Line::styled(t!("dashboard.no_rewards"), theme.muted())
     } else {
         Line::from(
             app.recent_rewards
@@ -136,7 +142,7 @@ fn render_recent_rewards(frame: &mut Frame, area: Rect, app: &App) {
         )
     };
     frame.render_widget(
-        Paragraph::new(text).block(theme.panel("Dernières récompenses", false)),
+        Paragraph::new(text).block(theme.panel(&t!("dashboard.recent_rewards"), false)),
         area,
     );
 }

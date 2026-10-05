@@ -1,0 +1,375 @@
+# English UI text: the reference file. Every other language has exactly these keys
+# (a test checks it). `{name}` is replaced by a value.
+
+language = "English"
+pair = "{label}: {value}"
+cancelled = "Cancelled"
+never = "never"
+new_category = " (new category)"
+app_count = "{count} app(s)"
+
+[screen]
+dashboard = "Dashboard"
+stats = "Stats"
+rewards = "Rewards"
+help = "Help"
+
+[sort]
+name = "name"
+xp = "XP"
+recent = "recent"
+time = "time"
+list = "Sorts: {list} (current: {current})"
+set = "Sort: {label}"
+not_saved = "sort applied but not saved"
+unknown_config = "config.toml: unknown sort: {name}"
+
+[theme]
+list = "Themes: {list} (current: {current})"
+set = "Theme: {name}"
+not_saved = "theme applied but not saved"
+file_error = "theme {name}.toml: {error}"
+error = "theme {name}: {error}"
+unknown = "unknown theme (:theme for the list)"
+missing_name = "missing name"
+missing_slots = "missing [slots] section"
+unknown_slot = "unknown slot: {name}"
+missing_slot = "missing slot: {name}"
+slot_error = "slot {name}: {error}"
+color_expected = "color expected"
+section_expected = "[{name}]: section expected"
+palette_color_expected = "palette {name}: color expected"
+palette_invalid = "palette {name}: invalid color “{raw}”"
+unknown_color = "unknown color “{name}”"
+style_expected = "color or { fg, bg, bold… } expected"
+invalid_key = "invalid key: {name}"
+
+[lang]
+list = "Languages: {list} (current: {current})"
+set = "Language: {name}"
+not_saved = "language applied but not saved"
+unknown = "unknown language: {code} (:lang for the list)"
+unknown_config = "config.toml: unknown language: {code}"
+
+[update]
+failed = "Update: {error}"
+up_to_date = "CmdBoard is up to date (v{version})"
+use_winget = "v{version} available. Installed with MSI/winget: run “winget upgrade CmdBoard”"
+installed = "Updated to v{version}: restart CmdBoard"
+running = "update check already running"
+unavailable = "update unavailable"
+searching = "Looking for an update…"
+unreachable = "cannot reach GitHub"
+install_failed = "update failed"
+available = "v{version} available "
+
+[session]
+started = "Session started: {name}"
+ended = "Session ended: {name} ({minutes} min, +{xp} XP)"
+too_short = "Session too short, not recorded: {name}"
+recovered = "{count} interrupted session(s) recovered"
+rule_error = "rule “{code}”: {error}"
+none_running = "no session running "
+
+[action]
+launched = "Launched: {name}"
+added = "Added: {name}{note}"
+removed = "Removed: {name}"
+category_removed = "Category removed: {name}"
+xp = "{name}: {change} XP (total {total})"
+confirm_remove_app = "Remove “{name}”? Its play time, XP and rewards will be lost."
+confirm_remove_category = "Remove the category “{name}”?"
+
+[error]
+app_exists = "“{name}” already exists"
+no_category = "no category selected: give one"
+category_not_empty = "“{name}” still holds {count} app(s): move or remove them first"
+unknown_app = "unknown app: {name}"
+unknown_category = "unknown category: {name}"
+unknown_command = "unknown command: {name}"
+cannot_write = "cannot write {path}"
+cannot_create = "cannot create {path}"
+cannot_open = "cannot open {path}"
+no_appdata = "%APPDATA% folder not found"
+db_too_new = "database at version {version}, created by a newer CmdBoard (this version knows {known})"
+migration_failed = "migration {number} failed"
+cannot_add_category = "cannot add the category “{name}”"
+category_has_apps = "the category still holds apps"
+cannot_add_app = "cannot add “{name}”"
+cannot_move_app = "cannot move the app"
+cannot_launch = "cannot launch {target}"
+no_target = "no launch target"
+file_not_found = "file not found: {target}"
+
+[parse]
+empty = "Empty command"
+unknown = "Unknown command: {name} (:help for the list)"
+bad_amount = "Invalid amount: {amount} (usage: {usage})"
+bad_sort = "Unknown sort: {name} (usage: {usage})"
+usage = "Usage: {usage}"
+unclosed_quote = "Unclosed quote"
+
+[alias]
+skipped = "commands.toml: alias(es) skipped: {list}"
+missing_argument = "missing argument ${number}"
+
+[rule]
+empty = "empty rule"
+condition_expected = "expected condition: <variable> <operator> <number>"
+unknown_variable = "unknown variable: {name} (known: {list})"
+bad_number = "invalid number: {text}"
+unexpected_char = "unexpected character: {char}"
+
+[seed]
+games = "Games"
+tools = "Tools"
+notepad = "Notepad"
+calculator = "Calculator"
+explorer = "File Explorer"
+
+[form]
+add_title = "Add an app"
+move_title = "Move “{app}”"
+name = "Name"
+target = "Target"
+category = "Category"
+process = "Process"
+target_placeholder = 'C:\…\game.exe, notepad.exe or steam://…'
+process_auto = "auto: {exe}"
+process_placeholder = "exe to watch, e.g. Hades.exe"
+help_name = "Name shown in CmdBoard."
+help_target = "What gets launched: an .exe or .lnk shortcut, a name on the PATH, or a steam://… link"
+help_category = "An existing category, or a new one that will be created."
+help_process = "Exe watched to count play time (XP). Empty: taken from the target. For a steam://… link, the game's exe (e.g. Hades.exe)."
+required = "{label}: required field"
+footer = "  * required · Enter on the last field: submit"
+
+[picker]
+search = "Search: "
+scanning = "Looking for installed apps…"
+none_installed = "No app found in the Start Menu"
+no_match = "No matching app: Tab to type it in"
+footer = "  {count} app(s) · Enter: fill in · Tab: type it in"
+
+[popup]
+continue = "Enter to continue"
+reward_title = "Reward"
+reward_unlocked = "Reward unlocked!"
+level_up_title = "Level-up"
+level_up = "★  Level up!  ★"
+app_level = " reaches level {level}"
+profile_level = "Profile: level {level}"
+confirm_title = "Confirm"
+yes = " yes   "
+no = " no"
+
+[dashboard]
+details = "Details"
+no_app = "No application"
+level = "Level {level}"
+total_time = "Total time: {time}"
+last = "Last played: {last}"
+rewards = "Rewards: 🏆 {count}"
+target = "Target: {target}"
+process = "Process: {exe}"
+no_rewards = "No rewards yet"
+recent_rewards = "Recent rewards"
+
+[apps]
+title = "Applications · {sort}"
+search_title = "Search ({count})"
+name = "Name"
+level = "Lvl"
+xp = "XP"
+time = "Time"
+categories = "Categories"
+
+[profile]
+title = "Profile"
+level = "Lvl {level} "
+stats = " │ Streak {days}d │ XP today: +{xp}"
+
+[ago]
+now = "just now"
+minutes = "{count} min ago"
+hours = "{count} h ago"
+yesterday = "yesterday"
+days = "{count} d ago"
+
+[command_line]
+title = "Command"
+search = "Search"
+search_placeholder = "an app's name, even roughly"
+
+[rewards]
+title = "Rewards ({unlocked}/{total})"
+name = "Name"
+description = "Description"
+unlocked = "Unlocked"
+none = "No rewards defined"
+detail = "Detail"
+for_app = "for {app}"
+per_app = "once per app"
+global = "global"
+locked = "locked"
+condition = "Condition: "
+unlocked_on = "Unlocked: "
+
+[stats]
+one_app = " {name} (:stats to see all)"
+all_apps = " All apps"
+summary = "  ·  {count} session(s)  ·  {total} in total  ·  longest: {longest}"
+by_category = "Time per category"
+no_sessions = "No sessions"
+activity = "Activity ({days} days) · today: {today}"
+sessions = "Sessions ({count})"
+started = "Start"
+app = "App"
+duration = "Length"
+xp = "XP"
+
+[keys]
+enter = "Enter"
+confirm_keys = "Enter/y"
+
+[hint]
+confirm = "submit"
+cancel = "cancel"
+history = "history"
+complete = "complete"
+choose = "choose"
+go_to_app = "go to app"
+yes = "confirm"
+continue = "continue"
+fill = "fill in"
+manual = "type it in"
+field = "field"
+next_or_submit = "next / submit"
+navigate = "navigate"
+panel = "panel"
+launch = "launch"
+edit = "add/move/del."
+search = "search"
+command = "command"
+screens = "screens"
+quit = "quit"
+
+[help]
+keys = "Keys"
+commands = "Commands"
+alias = " alias"
+navigate = "navigate"
+panel = "switch panel"
+launch = "launch the selected app"
+edit = "add / move / remove (app or empty category)"
+sort = "change the app order (name, XP, recent, time)"
+search = "search an app in every category (Enter: go there)"
+command = "command line (↑↓ history, Tab complete, Esc cancel)"
+screens = "Dashboard, Stats, Rewards, Help"
+quit = "quit"
+
+[cmd.launch]
+usage = "launch <app>"
+summary = "Launches an app"
+
+[cmd.add]
+usage = "add [<name> <target> [category]]"
+summary = "Adds an app (exe or URI). Without arguments: opens the form"
+
+[cmd.move]
+usage = "move <app> [category]"
+summary = "Moves an app. Without a category: opens the form"
+
+[cmd.rm]
+usage = "rm <app>"
+summary = "Removes an app and its history, after confirmation"
+
+[cmd.rmcat]
+usage = "rmcat <category>"
+summary = "Removes an empty category, after confirmation"
+
+[cmd.stats]
+usage = "stats [app]"
+summary = "Statistics of every app, or of one"
+
+[cmd.theme]
+usage = "theme [name]"
+summary = "Switches theme (saved). Without a name: lists the themes"
+
+[cmd.sort]
+usage = "sort [name|xp|recent|time]"
+summary = "Orders the apps (saved). Without arguments: current order"
+
+[cmd.lang]
+usage = "lang [en|fr]"
+summary = "Switches language (saved). Without arguments: lists the languages"
+
+[cmd.xp]
+usage = "xp <app> <amount>"
+summary = "Adds (or removes, if negative) XP to an app"
+
+[cmd.update]
+usage = "update"
+summary = "Installs the latest version (MSI/winget: winget upgrade CmdBoard)"
+
+[cmd.help]
+usage = "help [command]"
+summary = "Shows the help, or a command's usage"
+
+[cmd.quit]
+usage = "quit"
+summary = "Quits CmdBoard"
+
+# Starter rewards (migrations v2 and v3), by `rewards.code`. The database holds the
+# French text; this is shown instead.
+[starter_rewards.premiers_pas]
+name = "First steps"
+description = "Finish a first session"
+
+[starter_rewards.marathon]
+name = "Marathon"
+description = "Play 3 h in a row"
+
+[starter_rewards.noctambule]
+name = "Night owl"
+description = "Start a session between midnight and 5 am"
+
+[starter_rewards.habitue]
+name = "Regular"
+description = "Spend 10 h on an app"
+
+[starter_rewards.passionne]
+name = "Enthusiast"
+description = "Spend 50 h on an app"
+
+[starter_rewards.veteran]
+name = "Veteran"
+description = "Reach level 5 on an app"
+
+[starter_rewards.regulier]
+name = "Steady"
+description = "Play 3 days in a row"
+
+[starter_rewards.assidu]
+name = "Dedicated"
+description = "Play 7 days in a row"
+
+[starter_rewards.touche_a_tout]
+name = "Jack of all trades"
+description = "Launch 5 different apps in 7 days"
+
+[starter_rewards.centurion]
+name = "Centurion"
+description = "Spend 100 h in total"
+
+[starter_rewards.expert]
+name = "Expert"
+description = "Reach global level 10"
+
+[starter_rewards.inarretable]
+name = "Unstoppable"
+description = "Play 30 days in a row"
+
+[starter_rewards.legende]
+name = "Legend"
+description = "Play 365 days in a row"

@@ -79,7 +79,7 @@ enum Token {
 pub fn evaluate(rule: &str, facts: &Facts) -> Result<bool, String> {
     let tokens = tokenize(rule)?;
     if tokens.is_empty() {
-        return Err("règle vide".into());
+        return Err(t!("rule.empty"));
     }
     let mut any = false;
     for group in tokens.split(|t| *t == Token::Or) {
@@ -94,14 +94,11 @@ pub fn evaluate(rule: &str, facts: &Facts) -> Result<bool, String> {
 
 fn check(condition: &[Token], facts: &Facts) -> Result<bool, String> {
     let [Token::Var(name), Token::Cmp(op), Token::Num(value)] = condition else {
-        return Err("condition attendue : <variable> <opérateur> <nombre>".into());
+        return Err(t!("rule.condition_expected"));
     };
     let actual = facts.get(name).ok_or_else(|| {
         let known: Vec<_> = VARIABLES.iter().map(|(name, _)| *name).collect();
-        format!(
-            "variable inconnue : {name} (connues : {})",
-            known.join(", ")
-        )
+        t!("rule.unknown_variable", name, list = known.join(", "))
     })?;
     Ok(match op {
         Op::Ge => actual >= *value,
@@ -138,9 +135,7 @@ fn tokenize(rule: &str) -> Result<Vec<Token>, String> {
                 i += 1;
             }
             let text: String = chars[start..i].iter().collect();
-            let value = text
-                .parse()
-                .map_err(|_| format!("nombre invalide : {text}"))?;
+            let value = text.parse().map_err(|_| t!("rule.bad_number", text))?;
             tokens.push(Token::Num(value));
             continue;
         }
@@ -153,7 +148,7 @@ fn tokenize(rule: &str) -> Result<Vec<Token>, String> {
             ('|', Some('|')) => (Token::Or, 2),
             ('>', _) => (Token::Cmp(Op::Gt), 1),
             ('<', _) => (Token::Cmp(Op::Lt), 1),
-            _ => return Err(format!("caractère inattendu : {c}")),
+            _ => return Err(t!("rule.unexpected_char", char = c)),
         };
         tokens.push(token);
         i += len;

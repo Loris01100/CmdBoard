@@ -11,6 +11,7 @@ use super::models::{
     SessionRow, Stats, Unlock,
 };
 use crate::core::{rewards::Facts, xp};
+use crate::i18n;
 
 /// Shorter sessions (a quick launch and close) are not recorded.
 pub const MIN_SESSION_SECS: u64 = 60;
@@ -35,7 +36,7 @@ impl Database {
     pub fn add_category(&self, name: &str) -> anyhow::Result<i64> {
         self.conn
             .execute("INSERT INTO categories (name) VALUES (?1)", [name])
-            .with_context(|| format!("impossible d'ajouter la catégorie « {name} »"))?;
+            .with_context(|| t!("error.cannot_add_category", name))?;
         Ok(self.conn.last_insert_rowid())
     }
 
@@ -43,7 +44,7 @@ impl Database {
     pub fn delete_category(&self, id: i64) -> anyhow::Result<()> {
         self.conn
             .execute("DELETE FROM categories WHERE id = ?1", [id])
-            .context("la catégorie contient encore des apps")?;
+            .with_context(|| t!("error.category_has_apps"))?;
         Ok(())
     }
 
@@ -85,7 +86,7 @@ impl Database {
                  VALUES (?1, ?2, ?3, ?4)",
                 params![app.name, app.launch_target, app.watch_exe, app.category_id],
             )
-            .with_context(|| format!("impossible d'ajouter « {} »", app.name))?;
+            .with_context(|| t!("error.cannot_add_app", name = app.name))?;
         Ok(self.conn.last_insert_rowid())
     }
 
@@ -95,7 +96,7 @@ impl Database {
                 "UPDATE apps SET category_id = ?2 WHERE id = ?1",
                 [app_id, category_id],
             )
-            .context("impossible de déplacer l'app")?;
+            .with_context(|| t!("error.cannot_move_app"))?;
         Ok(())
     }
 
@@ -234,14 +235,14 @@ impl Database {
     /// Latest unlocked rewards, newest first, as "Name (App)" or "Name" for global ones.
     pub fn recent_rewards(&self, limit: u32) -> anyhow::Result<Vec<String>> {
         let mut stmt = self.conn.prepare(
-            "SELECT r.name, a.name FROM unlocked_rewards u
+            "SELECT r.code, r.name, a.name FROM unlocked_rewards u
              JOIN rewards r ON r.id = u.reward_id
              LEFT JOIN apps a ON a.id = u.app_id
              ORDER BY u.unlocked_at DESC, u.id DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit], |r| {
-            let reward: String = r.get(0)?;
-            let app: Option<String> = r.get(1)?;
+            let reward = i18n::reward_text(&r.get::<_, String>(0)?, "name", r.get(1)?);
+            let app: Option<String> = r.get(2)?;
             Ok(match app {
                 Some(app) => format!("{reward} ({app})"),
                 None => reward,
@@ -310,13 +311,14 @@ impl Database {
              ORDER BY r.id",
         )?;
         let rows = stmt.query_map([app_id], |r| {
+            let code: String = r.get(1)?;
             Ok(Reward {
                 id: r.get(0)?,
-                code: r.get(1)?,
-                name: r.get(2)?,
-                description: r.get(3)?,
+                name: i18n::reward_text(&code, "name", r.get(2)?),
+                description: i18n::reward_text(&code, "description", r.get(3)?),
                 rule: r.get(4)?,
                 per_app: r.get(5)?,
+                code,
             })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)
@@ -417,16 +419,17 @@ impl Database {
     pub fn reward_views(&self) -> anyhow::Result<Vec<RewardView>> {
         let mut stmt = self.conn.prepare(
             "SELECT r.id, r.name, r.description, r.rule,
-                r.scope = 'app' OR r.app_id IS NOT NULL, a.name
+                r.scope = 'app' OR r.app_id IS NOT NULL, a.name, r.code
              FROM rewards r LEFT JOIN apps a ON a.id = r.app_id
              ORDER BY r.id",
         )?;
         let mut views = stmt
             .query_map([], |r| {
+                let code: String = r.get(6)?;
                 Ok(RewardView {
                     id: r.get(0)?,
-                    name: r.get(1)?,
-                    description: r.get(2)?,
+                    name: i18n::reward_text(&code, "name", r.get(1)?),
+                    description: i18n::reward_text(&code, "description", r.get(2)?),
                     rule: r.get(3)?,
                     per_app: r.get(4)?,
                     app: r.get(5)?,

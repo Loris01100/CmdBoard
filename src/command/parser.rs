@@ -7,10 +7,9 @@ use crate::popup::FormKind;
 pub fn parse(input: &str) -> Result<Command, String> {
     let args = split_args(input)?;
     let Some((name, rest)) = args.split_first() else {
-        return Err("Commande vide".into());
+        return Err(t!("parse.empty"));
     };
-    let help = find_help(name)
-        .ok_or_else(|| format!("Commande inconnue : {name} (:help pour la liste)"))?;
+    let help = find_help(name).ok_or_else(|| t!("parse.unknown", name))?;
 
     match (help.name, rest) {
         // Single-argument commands take the rest of the line, so names need no quotes.
@@ -49,10 +48,7 @@ pub fn parse(input: &str) -> Result<Command, String> {
                 app: app.join(" "),
                 amount,
             }),
-            Err(_) => Err(format!(
-                "Montant invalide : {amount} (usage : {})",
-                help.usage
-            )),
+            Err(_) => Err(t!("parse.bad_amount", amount, usage = help.usage())),
         },
         ("stats", []) => Ok(Command::Stats { app: None }),
         ("stats", [_, ..]) => Ok(Command::Stats {
@@ -65,15 +61,19 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("sort", []) => Ok(Command::Sort { by: None }),
         ("sort", [name]) => match AppSort::parse(name) {
             Some(sort) => Ok(Command::Sort { by: Some(sort) }),
-            None => Err(format!("Tri inconnu : {name} (usage : {})", help.usage)),
+            None => Err(t!("parse.bad_sort", name, usage = help.usage())),
         },
+        ("lang", []) => Ok(Command::Lang { code: None }),
+        ("lang", [code]) => Ok(Command::Lang {
+            code: Some(code.clone()),
+        }),
         ("update", []) => Ok(Command::Update),
         ("help", []) => Ok(Command::Help { command: None }),
         ("help", [command]) => Ok(Command::Help {
             command: Some(command.clone()),
         }),
         ("quit", []) => Ok(Command::Quit),
-        _ => Err(format!("Usage : {}", help.usage)),
+        _ => Err(t!("parse.usage", usage = help.usage())),
     }
 }
 
@@ -103,7 +103,7 @@ pub(super) fn split_args(input: &str) -> Result<Vec<String>, String> {
         }
     }
     if quoted {
-        return Err("Guillemet non fermé".into());
+        return Err(t!("parse.unclosed_quote"));
     }
     if in_arg {
         args.push(current);
@@ -214,6 +214,13 @@ mod tests {
                 "sort XP",
                 Command::Sort {
                     by: Some(AppSort::Xp),
+                },
+            ),
+            ("lang", Command::Lang { code: None }),
+            (
+                "lang EN",
+                Command::Lang {
+                    code: Some(s("EN")),
                 },
             ),
             ("update", Command::Update),

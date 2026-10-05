@@ -59,6 +59,10 @@ pub enum Command {
     Sort {
         by: Option<AppSort>,
     },
+    /// Switches the UI language and remembers it; `None` lists the languages.
+    Lang {
+        code: Option<String>,
+    },
     /// Adds (or removes, if negative) XP to an app by hand, outside of any session.
     Xp {
         app: String,
@@ -72,86 +76,75 @@ pub enum Command {
     Quit,
 }
 
-/// Command line reference, used by `:help` and the Help screen.
+/// Command line reference, used by `:help` and the Help screen. Usage and summary are
+/// `cmd.<name>.usage` and `cmd.<name>.summary` in the locale files.
 pub struct CommandHelp {
     pub name: &'static str,
     pub aliases: &'static [&'static str],
-    pub usage: &'static str,
-    pub summary: &'static str,
+}
+
+impl CommandHelp {
+    pub fn usage(&self) -> String {
+        crate::i18n::tr(&format!("cmd.{}.usage", self.name), &[])
+    }
+
+    pub fn summary(&self) -> String {
+        crate::i18n::tr(&format!("cmd.{}.summary", self.name), &[])
+    }
 }
 
 pub const COMMANDS: &[CommandHelp] = &[
     CommandHelp {
         name: "launch",
         aliases: &["l"],
-        usage: "launch <app>",
-        summary: "Lance une app",
     },
     CommandHelp {
         name: "add",
         aliases: &[],
-        usage: "add [<nom> <cible> [catégorie]]",
-        summary: "Ajoute une app (exe ou URI). Sans argument : ouvre le formulaire",
     },
     CommandHelp {
         name: "move",
         aliases: &["mv"],
-        usage: "move <app> [catégorie]",
-        summary: "Déplace une app. Sans catégorie : ouvre le formulaire",
     },
     CommandHelp {
         name: "rm",
         aliases: &["delete"],
-        usage: "rm <app>",
-        summary: "Supprime une app et son historique, après confirmation",
     },
     CommandHelp {
         name: "rmcat",
         aliases: &[],
-        usage: "rmcat <catégorie>",
-        summary: "Supprime une catégorie vide, après confirmation",
     },
     CommandHelp {
         name: "stats",
         aliases: &[],
-        usage: "stats [app]",
-        summary: "Statistiques de toutes les apps, ou d'une seule",
     },
     CommandHelp {
         name: "theme",
         aliases: &[],
-        usage: "theme [nom]",
-        summary: "Change de thème (mémorisé). Sans nom : liste les thèmes",
     },
     CommandHelp {
         name: "sort",
         aliases: &[],
-        usage: "sort [name|xp|recent|time]",
-        summary: "Trie les apps (mémorisé). Sans argument : tri actuel",
+    },
+    CommandHelp {
+        name: "lang",
+        aliases: &[],
     },
     CommandHelp {
         name: "xp",
         aliases: &[],
-        usage: "xp <app> <montant>",
-        summary: "Ajoute (ou retire, si négatif) de l'XP à une app",
     },
     CommandHelp {
         name: "update",
         aliases: &[],
-        usage: "update",
-        summary: "Installe la dernière version (MSI/winget : winget upgrade CmdBoard)",
     },
     CommandHelp {
         name: "help",
         aliases: &["h", "?"],
-        usage: "help [commande]",
-        summary: "Affiche l'aide, ou l'usage d'une commande",
     },
     CommandHelp {
         name: "quit",
         aliases: &["q"],
-        usage: "quit",
-        summary: "Quitte CmdBoard",
     },
 ];
 
@@ -161,4 +154,26 @@ pub fn find_help(name: &str) -> Option<&'static CommandHelp> {
     COMMANDS
         .iter()
         .find(|c| c.name == name || c.aliases.contains(&name.as_str()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_command_has_help_in_every_language() {
+        for (code, _) in crate::i18n::LANGS {
+            let text = crate::i18n::LANGS
+                .iter()
+                .find(|(c, _)| c == code)
+                .unwrap()
+                .1;
+            let table: toml::Table = text.parse().unwrap();
+            for command in COMMANDS {
+                let entry = &table["cmd"][command.name];
+                assert!(entry.get("usage").is_some(), "{code}: {}", command.name);
+                assert!(entry.get("summary").is_some(), "{code}: {}", command.name);
+            }
+        }
+    }
 }

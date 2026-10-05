@@ -35,10 +35,16 @@ impl Aliases {
         match std::fs::read_to_string(path) {
             Ok(text) => match Self::parse(&text) {
                 Ok(result) => result,
-                Err(e) => (Self::default(), Some(format!("commands.toml : {e}"))),
+                Err(e) => (
+                    Self::default(),
+                    Some(t!("pair", label = "commands.toml", value = e)),
+                ),
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Self::default(), None),
-            Err(e) => (Self::default(), Some(format!("commands.toml : {e}"))),
+            Err(e) => (
+                Self::default(),
+                Some(t!("pair", label = "commands.toml", value = e)),
+            ),
         }
     }
 
@@ -59,8 +65,7 @@ impl Aliases {
                 map.insert(lower, body);
             }
         }
-        let warning = (!skipped.is_empty())
-            .then(|| format!("commands.toml : alias ignoré(s) : {}", skipped.join(", ")));
+        let warning = (!skipped.is_empty()).then(|| t!("alias.skipped", list = skipped.join(", ")));
         Ok((Self { map }, warning))
     }
 
@@ -122,7 +127,7 @@ fn substitute(body: &str, args: &[String]) -> Result<String, String> {
                 let i = d.to_digit(10).unwrap_or(1) as usize;
                 let arg = args
                     .get(i - 1)
-                    .ok_or_else(|| format!("argument ${i} manquant"))?;
+                    .ok_or_else(|| t!("alias.missing_argument", number = i))?;
                 out.push_str(&quote(arg));
             }
             _ => out.push('$'),

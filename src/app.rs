@@ -22,6 +22,7 @@ use crate::config;
 use crate::core::{rewards, xp};
 use crate::event::AppEvent;
 use crate::fuzzy;
+use crate::i18n;
 use crate::launcher::{
     launch,
     scan::{self, Shortcut},
@@ -55,12 +56,12 @@ pub enum Screen {
 }
 
 impl Screen {
-    pub fn title(self) -> &'static str {
+    pub fn title(self) -> String {
         match self {
-            Screen::Dashboard => "Dashboard",
-            Screen::Stats => "Stats",
-            Screen::Rewards => "Récompenses",
-            Screen::Help => "Aide",
+            Screen::Dashboard => t!("screen.dashboard"),
+            Screen::Stats => t!("screen.stats"),
+            Screen::Rewards => t!("screen.rewards"),
+            Screen::Help => t!("screen.help"),
         }
     }
 }
@@ -92,12 +93,12 @@ impl AppSort {
         Self::ALL.into_iter().find(|s| s.name() == name)
     }
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            AppSort::Name => "nom",
-            AppSort::Xp => "XP",
-            AppSort::Recent => "récent",
-            AppSort::Time => "temps",
+            AppSort::Name => t!("sort.name"),
+            AppSort::Xp => t!("sort.xp"),
+            AppSort::Recent => t!("sort.recent"),
+            AppSort::Time => t!("sort.time"),
         }
     }
 
@@ -353,7 +354,7 @@ impl App {
     pub fn init_sort(&mut self, configured: Option<&str>) -> Option<String> {
         let name = configured?;
         let Some(sort) = AppSort::parse(name) else {
-            return Some(format!("config.toml : tri inconnu : {name}"));
+            return Some(t!("sort.unknown_config", name));
         };
         self.sort = sort;
         self.sort.apply(&mut self.apps);
@@ -441,27 +442,22 @@ impl App {
                 return;
             }
             (Action::Check, _) => return,
-            (Action::Install, Err(e)) => (format!("Mise à jour : {e}"), MsgKind::Error),
+            (Action::Install, Err(error)) => (t!("update.failed", error), MsgKind::Error),
             (Action::Install, Ok(Outcome::UpToDate)) => {
                 self.update_available = None;
                 (
-                    format!("CmdBoard est à jour (v{})", update::CURRENT),
+                    t!("update.up_to_date", version = update::CURRENT),
                     MsgKind::Info,
                 )
             }
             (Action::Install, Ok(Outcome::Available { version, .. })) => {
-                let text = format!(
-                    "v{version} disponible. Installé via MSI/winget : lancez « winget upgrade CmdBoard »"
-                );
+                let text = t!("update.use_winget", version);
                 self.update_available = Some(version);
                 (text, MsgKind::Info)
             }
             (Action::Install, Ok(Outcome::Installed { version })) => {
                 self.update_available = None;
-                (
-                    format!("Mis à jour en v{version} : relancez CmdBoard"),
-                    MsgKind::Success,
-                )
+                (t!("update.installed", version), MsgKind::Success)
             }
         };
         self.message = Some(message);
@@ -508,7 +504,7 @@ impl App {
                         last_checkpoint: now,
                     },
                 );
-                self.message = Some((format!("Session démarrée : {name}"), MsgKind::Info));
+                self.message = Some((t!("session.started", name), MsgKind::Info));
             }
             Err(e) => self.message = Some((format!("{e:#}"), MsgKind::Error)),
         }
@@ -531,11 +527,7 @@ impl App {
         };
         let message = match result {
             Ok(Some(outcome)) => {
-                let text = format!(
-                    "Session terminée : {name} ({} min, +{} XP)",
-                    secs / 60,
-                    outcome.xp
-                );
+                let text = t!("session.ended", name, minutes = secs / 60, xp = outcome.xp);
                 let message = match outcome.rule_errors.first() {
                     Some(error) => (format!("{text} · {error}"), MsgKind::Error),
                     None => (text, MsgKind::Success),
@@ -544,10 +536,7 @@ impl App {
                 self.queue_rewards(outcome.rewards);
                 message
             }
-            Ok(None) => (
-                format!("Session trop courte, non enregistrée : {name}"),
-                MsgKind::Info,
-            ),
+            Ok(None) => (t!("session.too_short", name), MsgKind::Info),
             Err(e) => (format!("{e:#}"), MsgKind::Error),
         };
         self.message = Some(message);
@@ -610,7 +599,7 @@ impl App {
                     });
                 }
                 Ok(false) => {}
-                Err(e) => errors.push(format!("règle « {} » : {e}", reward.code)),
+                Err(error) => errors.push(t!("session.rule_error", code = reward.code, error)),
             }
         }
         Ok((unlocked, errors))
@@ -631,7 +620,7 @@ impl App {
         }
         self.reload()?;
         self.queue_rewards(unlocked);
-        let text = format!("{} session(s) interrompue(s) récupérée(s)", closed.len());
+        let text = t!("session.recovered", count = closed.len());
         self.message = Some(match errors.first() {
             Some(error) => (format!("{text} · {error}"), MsgKind::Error),
             None => (text, MsgKind::Info),
@@ -998,7 +987,7 @@ impl App {
 
     fn cancel_popup(&mut self) {
         self.mode = Mode::Normal;
-        self.message = Some(("Annulé".into(), MsgKind::Info));
+        self.message = Some((t!("cancelled"), MsgKind::Info));
     }
 
     /// Tab in the command line: completes commands, apps and categories.
@@ -1025,7 +1014,7 @@ impl App {
                 return;
             }
             Some(Err(e)) => {
-                self.message = Some((format!("alias : {e}"), MsgKind::Error));
+                self.message = Some((t!("pair", label = "alias", value = e), MsgKind::Error));
                 return;
             }
             Some(Ok(lines)) => lines,
@@ -1038,7 +1027,8 @@ impl App {
                 Ok(Some(message)) => self.message = Some(message),
                 Ok(None) => {}
                 Err(e) => {
-                    self.message = Some((format!("{sub} : {e:#}"), MsgKind::Error));
+                    let value = format!("{e:#}");
+                    self.message = Some((t!("pair", label = sub, value), MsgKind::Error));
                     return;
                 }
             }
@@ -1076,7 +1066,7 @@ impl App {
             Command::Launch { app } => {
                 let entry = self.app_named(&app)?;
                 launch::launch(&entry.launch_target)?;
-                return success(format!("Lancé : {}", entry.name));
+                return success(t!("action.launched", name = entry.name));
             }
             Command::Add {
                 name,
@@ -1085,7 +1075,7 @@ impl App {
                 watch_exe,
             } => {
                 if self.find_app(&name).is_some() {
-                    bail!("« {name} » existe déjà");
+                    bail!(t!("error.app_exists", name));
                 }
                 launch::check_target(&target)?;
                 let (category_id, created) = match category {
@@ -1093,7 +1083,7 @@ impl App {
                     None => {
                         let selected = self
                             .selected_category()
-                            .context("aucune catégorie sélectionnée : précisez-en une")?;
+                            .with_context(|| t!("error.no_category"))?;
                         (selected.id, false)
                     }
                 };
@@ -1105,7 +1095,7 @@ impl App {
                 })?;
                 self.reload()?;
                 self.select_app(id);
-                return success(format!("Ajouté : {name}{}", created_note(created)));
+                return success(t!("action.added", name, note = created_note(created)));
             }
             Command::Move { app, category } => {
                 let (id, name) = {
@@ -1128,10 +1118,7 @@ impl App {
                 };
                 if !confirmed {
                     self.mode = Mode::Popup(Popup::Confirm {
-                        message: format!(
-                            "Supprimer « {name} » ? Son temps de jeu, son XP et ses \
-                             récompenses seront perdus."
-                        ),
+                        message: t!("action.confirm_remove_app", name),
                         command: Command::RemoveApp {
                             app: name,
                             confirmed: true,
@@ -1141,7 +1128,7 @@ impl App {
                 }
                 self.db.delete_app(id)?;
                 self.reload()?;
-                return success(format!("Supprimé : {name}"));
+                return success(t!("action.removed", name));
             }
             Command::RemoveCategory {
                 category,
@@ -1153,13 +1140,11 @@ impl App {
                 };
                 let count = self.app_count(id);
                 if count > 0 {
-                    bail!(
-                        "« {name} » contient encore {count} app(s) : déplacez-les ou supprimez-les d'abord"
-                    );
+                    bail!(t!("error.category_not_empty", name, count));
                 }
                 if !confirmed {
                     self.mode = Mode::Popup(Popup::Confirm {
-                        message: format!("Supprimer la catégorie « {name} » ?"),
+                        message: t!("action.confirm_remove_category", name),
                         command: Command::RemoveCategory {
                             category: name,
                             confirmed: true,
@@ -1169,7 +1154,7 @@ impl App {
                 }
                 self.db.delete_category(id)?;
                 self.reload()?;
-                return success(format!("Catégorie supprimée : {name}"));
+                return success(t!("action.category_removed", name));
             }
             Command::OpenForm(kind) => {
                 let form = match kind {
@@ -1203,7 +1188,12 @@ impl App {
                 self.reload()?;
                 self.on_xp_changed(id, before, profile_before, after.saturating_sub(before));
                 let change = after as i64 - before as i64;
-                return success(format!("{name} : {change:+} XP (total {after})"));
+                return success(t!(
+                    "action.xp",
+                    name,
+                    change = format!("{change:+}"),
+                    total = after
+                ));
             }
             Command::Select { app } => {
                 let id = self.app_named(&app)?.id;
@@ -1222,10 +1212,10 @@ impl App {
             }
             Command::Theme { name: None } => {
                 let names = theme::available(self.themes_dir.as_deref());
-                let text = format!(
-                    "Thèmes : {} (actuel : {})",
-                    names.join(", "),
-                    self.theme_name
+                let text = t!(
+                    "theme.list",
+                    list = names.join(", "),
+                    current = self.theme_name
                 );
                 return Ok(Some((text, MsgKind::Info)));
             }
@@ -1236,16 +1226,16 @@ impl App {
                 self.theme_name = name.trim().to_lowercase();
                 if let Some(path) = &self.config_path {
                     config::save_value(path, "theme", self.theme_name.as_str())
-                        .context("thème appliqué mais non mémorisé")?;
+                        .with_context(|| t!("theme.not_saved"))?;
                 }
-                return success(format!("Thème : {}", self.theme.name));
+                return success(t!("theme.set", name = self.theme.name));
             }
             Command::Sort { by: None } => {
                 let names: Vec<_> = AppSort::ALL.iter().map(|s| s.name()).collect();
-                let text = format!(
-                    "Tris : {} (actuel : {})",
-                    names.join(", "),
-                    self.sort.name()
+                let text = t!(
+                    "sort.list",
+                    list = names.join(", "),
+                    current = self.sort.name()
                 );
                 return Ok(Some((text, MsgKind::Info)));
             }
@@ -1258,30 +1248,52 @@ impl App {
                 }
                 if let Some(path) = &self.config_path {
                     config::save_value(path, "sort", sort.name())
-                        .context("tri appliqué mais non mémorisé")?;
+                        .with_context(|| t!("sort.not_saved"))?;
                 }
-                return success(format!("Tri : {}", sort.label()));
+                return success(t!("sort.set", label = sort.label()));
+            }
+            Command::Lang { code: None } => {
+                let codes: Vec<_> = i18n::LANGS.iter().map(|(code, _)| *code).collect();
+                let text = t!(
+                    "lang.list",
+                    list = codes.join(", "),
+                    current = i18n::current()
+                );
+                return Ok(Some((text, MsgKind::Info)));
+            }
+            Command::Lang { code: Some(code) } => {
+                if !i18n::set(&code) {
+                    bail!(t!("lang.unknown", code));
+                }
+                if let Some(path) = &self.config_path {
+                    config::save_value(path, "lang", i18n::current())
+                        .with_context(|| t!("lang.not_saved"))?;
+                }
+                return success(t!("lang.set", name = t!("language")));
             }
             Command::Update => {
                 if self.update_running {
-                    bail!("vérification de mise à jour déjà en cours");
+                    bail!(t!("update.running"));
                 }
-                let events = self.events.clone().context("mise à jour indisponible")?;
+                let events = self
+                    .events
+                    .clone()
+                    .with_context(|| t!("update.unavailable"))?;
                 self.update_running = true;
                 update::spawn(events, update::Action::Install);
-                return Ok(Some(("Recherche d'une mise à jour…".into(), MsgKind::Info)));
+                return Ok(Some((t!("update.searching"), MsgKind::Info)));
             }
             Command::Help { command: None } => self.screen = Screen::Help,
             Command::Help {
                 command: Some(name),
             } => {
                 if let Some(body) = self.aliases.get(&name) {
-                    return Ok(Some((format!("alias {name} : {body}"), MsgKind::Info)));
+                    let label = format!("alias {name}");
+                    return Ok(Some((t!("pair", label, value = body), MsgKind::Info)));
                 }
-                let help =
-                    find_help(&name).with_context(|| format!("commande inconnue : {name}"))?;
+                let help = find_help(&name).with_context(|| t!("error.unknown_command", name))?;
                 return Ok(Some((
-                    format!("{} : {}", help.usage, help.summary),
+                    t!("pair", label = help.usage(), value = help.summary()),
                     MsgKind::Info,
                 )));
             }
@@ -1305,7 +1317,7 @@ impl App {
 
     fn app_named(&self, name: &str) -> anyhow::Result<&AppEntry> {
         self.find_app(name)
-            .with_context(|| format!("app inconnue : {name}"))
+            .with_context(|| t!("error.unknown_app", name))
     }
 
     fn category_named(&self, name: &str) -> anyhow::Result<&Category> {
@@ -1313,7 +1325,7 @@ impl App {
         self.categories
             .iter()
             .find(|c| c.name.to_lowercase() == lower)
-            .with_context(|| format!("catégorie inconnue : {name}"))
+            .with_context(|| t!("error.unknown_category", name))
     }
 
     /// Id of the category with this name (ignoring case), created if missing.
@@ -1417,11 +1429,11 @@ impl App {
     }
 }
 
-fn created_note(created: bool) -> &'static str {
+fn created_note(created: bool) -> String {
     if created {
-        " (nouvelle catégorie)"
+        t!("new_category")
     } else {
-        ""
+        String::new()
     }
 }
 
@@ -2055,7 +2067,7 @@ mod tests {
     fn tab_completes_in_the_command_line() {
         let mut app = App::with_defaults();
         press(&mut app, KeyCode::Char(':'));
-        type_text(&mut app, "la");
+        type_text(&mut app, "lau");
         press(&mut app, KeyCode::Tab);
         assert_eq!(app.command_line.input.text(), "launch ");
         type_text(&mut app, "calc");
@@ -2104,6 +2116,24 @@ mod tests {
         run(&mut app, "theme nope");
         assert_eq!(message_kind(&app), Some(MsgKind::Error));
         assert_eq!(app.theme.name, "Catppuccin Latte");
+    }
+
+    /// Stays in French: the language is global and tests run in parallel.
+    #[test]
+    fn lang_command_lists_and_rejects_unknown() {
+        let mut app = App::with_defaults();
+        run(&mut app, "lang");
+        assert_eq!(
+            app.message.as_ref().unwrap().0,
+            "Langues : en, fr (actuelle : fr)"
+        );
+        run(&mut app, "lang FR");
+        assert_eq!(app.message.as_ref().unwrap().0, "Langue : Français");
+        run(&mut app, "lang xx");
+        assert_eq!(
+            app.message.as_ref().unwrap().0,
+            "langue inconnue : xx (:lang pour la liste)"
+        );
     }
 
     #[test]

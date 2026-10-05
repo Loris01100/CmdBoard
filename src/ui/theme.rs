@@ -77,30 +77,35 @@ impl Theme {
         let name = match file.get("name") {
             Some(toml::Value::String(name)) => name.clone(),
             Some(_) => return Err("name : texte attendu".into()),
-            None => return Err("name manquant".into()),
+            None => return Err(t!("theme.missing_name")),
         };
         let empty = toml::Table::new();
         let palette = table(&file, "palette")?.unwrap_or(&empty);
-        let slots = table(&file, "slots")?.ok_or("section [slots] manquante")?;
+        let slots = table(&file, "slots")?.ok_or_else(|| t!("theme.missing_slots"))?;
         if let Some(unknown) = slots
             .keys()
             .find(|k| !STYLE_SLOTS.contains(&k.as_str()) && !COLOR_SLOTS.contains(&k.as_str()))
         {
-            return Err(format!("slot inconnu : {unknown}"));
+            return Err(t!("theme.unknown_slot", name = unknown));
         }
 
         let slot = |key: &str| {
             slots
                 .get(key)
-                .ok_or_else(|| format!("slot manquant : {key}"))
+                .ok_or_else(|| t!("theme.missing_slot", name = key))
         };
-        let style =
-            |key: &str| resolve_style(slot(key)?, palette).map_err(|e| format!("slot {key} : {e}"));
+        let style = |key: &str| {
+            resolve_style(slot(key)?, palette)
+                .map_err(|error| t!("theme.slot_error", name = key, error))
+        };
         let color = |key: &str| match slot(key)? {
-            toml::Value::String(value) => {
-                resolve_color(value, palette).map_err(|e| format!("slot {key} : {e}"))
-            }
-            _ => Err(format!("slot {key} : couleur attendue")),
+            toml::Value::String(value) => resolve_color(value, palette)
+                .map_err(|error| t!("theme.slot_error", name = key, error)),
+            _ => Err(t!(
+                "theme.slot_error",
+                name = key,
+                error = t!("theme.color_expected")
+            )),
         };
         Ok(Self {
             name,
@@ -169,19 +174,21 @@ pub fn load(name: &str, user_dir: Option<&Path>) -> Result<Theme, String> {
     if let Some(dir) = user_dir {
         let path = dir.join(format!("{name}.toml"));
         match std::fs::read_to_string(&path) {
-            Ok(text) => return Theme::parse(&text).map_err(|e| format!("thème {name}.toml : {e}")),
+            Ok(text) => {
+                return Theme::parse(&text).map_err(|error| t!("theme.file_error", name, error));
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(format!("thème {name}.toml : {e}")),
+            Err(error) => return Err(t!("theme.file_error", name, error)),
         }
     }
-    builtin(&name).map_err(|e| format!("thème {name} : {e}"))
+    builtin(&name).map_err(|error| t!("theme.error", name, error))
 }
 
 fn builtin(name: &str) -> Result<Theme, String> {
     let (_, text) = BUILTIN
         .iter()
         .find(|(builtin, _)| *builtin == name)
-        .ok_or("thème inconnu (:theme pour la liste)")?;
+        .ok_or_else(|| t!("theme.unknown"))?;
     Theme::parse(text)
 }
 
@@ -206,7 +213,7 @@ fn default_name_for(wt_session: bool, colorterm: Option<&str>) -> &'static str {
 fn table<'a>(file: &'a toml::Table, key: &str) -> Result<Option<&'a toml::Table>, String> {
     match file.get(key) {
         Some(toml::Value::Table(table)) => Ok(Some(table)),
-        Some(_) => Err(format!("[{key}] : section attendue")),
+        Some(_) => Err(t!("theme.section_expected", name = key)),
         None => Ok(None),
     }
 }
@@ -215,12 +222,11 @@ fn table<'a>(file: &'a toml::Table, key: &str) -> Result<Option<&'a toml::Table>
 fn resolve_color(value: &str, palette: &toml::Table) -> Result<Color, String> {
     if let Some(entry) = palette.get(value) {
         let toml::Value::String(raw) = entry else {
-            return Err(format!("palette {value} : couleur attendue"));
+            return Err(t!("theme.palette_color_expected", name = value));
         };
-        return Color::from_str(raw)
-            .map_err(|_| format!("palette {value} : couleur invalide « {raw} »"));
+        return Color::from_str(raw).map_err(|_| t!("theme.palette_invalid", name = value, raw));
     }
-    Color::from_str(value).map_err(|_| format!("couleur inconnue « {value} »"))
+    Color::from_str(value).map_err(|_| t!("theme.unknown_color", name = value))
 }
 
 /// A color (foreground only), or `{ fg, bg, bold, italic, underlined, dim }`.
@@ -228,7 +234,7 @@ fn resolve_style(value: &toml::Value, palette: &toml::Table) -> Result<Style, St
     let table = match value {
         toml::Value::String(color) => return Ok(Style::new().fg(resolve_color(color, palette)?)),
         toml::Value::Table(table) => table,
-        _ => return Err("couleur ou { fg, bg, bold… } attendu".into()),
+        _ => return Err(t!("theme.style_expected")),
     };
     let mut style = Style::new();
     for (key, value) in table {
@@ -239,7 +245,7 @@ fn resolve_style(value: &toml::Value, palette: &toml::Table) -> Result<Style, St
             ("italic", toml::Value::Boolean(on)) => modifier(style, Modifier::ITALIC, *on),
             ("underlined", toml::Value::Boolean(on)) => modifier(style, Modifier::UNDERLINED, *on),
             ("dim", toml::Value::Boolean(on)) => modifier(style, Modifier::DIM, *on),
-            _ => return Err(format!("clé invalide : {key}")),
+            _ => return Err(t!("theme.invalid_key", name = key)),
         };
     }
     Ok(style)

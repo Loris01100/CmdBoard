@@ -27,11 +27,11 @@ pub fn format_clock(secs: u64) -> String {
 /// How long ago something happened, given the elapsed seconds.
 pub fn format_ago(secs: i64) -> String {
     match secs.max(0) {
-        s if s < 60 => "à l'instant".into(),
-        s if s < 3600 => format!("il y a {} min", s / 60),
-        s if s < 86_400 => format!("il y a {} h", s / 3600),
-        s if s < 2 * 86_400 => "hier".into(),
-        s => format!("il y a {} j", s / 86_400),
+        s if s < 60 => t!("ago.now"),
+        s if s < 3600 => t!("ago.minutes", count = s / 60),
+        s if s < 86_400 => t!("ago.hours", count = s / 3600),
+        s if s < 2 * 86_400 => t!("ago.yesterday"),
+        s => t!("ago.days", count = s / 86_400),
     }
 }
 

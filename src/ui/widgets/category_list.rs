@@ -15,7 +15,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         .collect();
 
     let list = List::new(items)
-        .block(app.theme.panel("Catégories", focused))
+        .block(app.theme.panel(&t!("apps.categories"), focused))
         .highlight_style(app.theme.highlight(focused))
         .highlight_symbol("> ");
 

@@ -11,15 +11,16 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
     let profile = &app.profile;
 
-    let block = theme.panel("Profil", false);
+    let block = theme.panel(&t!("profile.title"), false);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     let (shown_level, shown_xp) = app.shown_profile_xp();
-    let level = format!("Niv {shown_level} ");
-    let stats = format!(
-        " │ Streak {}j │ XP du jour : +{}",
-        profile.streak_days, profile.xp_today
+    let level = t!("profile.level", level = shown_level);
+    let stats = t!(
+        "profile.stats",
+        days = profile.streak_days,
+        xp = profile.xp_today
     );
     let [level_area, gauge_area, stats_area] = Layout::horizontal([
         Constraint::Length(level.chars().count() as u16),

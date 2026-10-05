@@ -12,48 +12,41 @@ use crate::ui::{
     widgets::{command_line, status_bar},
 };
 
-const KEYS: &[(&str, &str)] = &[
-    ("j/k ↑↓", "naviguer"),
-    ("Tab ←→ h/l", "changer de panneau"),
-    ("Entrée", "lancer l'app sélectionnée"),
-    (
-        "a / m / d",
-        "ajouter / déplacer / supprimer (app ou catégorie vide)",
-    ),
-    ("s", "changer le tri des apps (nom, XP, récent, temps)"),
-    (
-        "/",
-        "chercher une app dans toutes les catégories (Entrée : y aller)",
-    ),
-    (
-        ":",
-        "ligne de commande (↑↓ historique, Tab compléter, Esc annuler)",
-    ),
-    ("1 2 3 4", "Dashboard, Stats, Récompenses, Aide"),
-    ("q  Ctrl-C", "quitter"),
-];
+fn keys() -> [(String, String); 9] {
+    [
+        ("j/k ↑↓".into(), t!("help.navigate")),
+        ("Tab ←→ h/l".into(), t!("help.panel")),
+        (t!("keys.enter"), t!("help.launch")),
+        ("a / m / d".into(), t!("help.edit")),
+        ("s".into(), t!("help.sort")),
+        ("/".into(), t!("help.search")),
+        (":".into(), t!("help.command")),
+        ("1 2 3 4".into(), t!("help.screens")),
+        ("q  Ctrl-C".into(), t!("help.quit")),
+    ]
+}
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let theme = &app.theme;
     let (body, command, status) = layout::screen(frame.area(), command_line::height(app));
-    let block = theme.panel("Aide", true);
+    let block = theme.panel(&t!("screen.help"), true);
     let inner = block.inner(body);
     frame.render_widget(block, body);
 
     let [keys_area, commands_area] = ratatui::layout::Layout::vertical([
-        Constraint::Length(KEYS.len() as u16 + 2),
+        Constraint::Length(keys().len() as u16 + 2),
         Constraint::Min(0),
     ])
     .areas(inner);
 
-    let mut keys = vec![Line::styled("Touches", theme.title)];
-    keys.extend(KEYS.iter().map(|(key, what)| {
+    let mut lines = vec![Line::styled(t!("help.keys"), theme.title)];
+    lines.extend(keys().into_iter().map(|(key, what)| {
         Line::from(vec![
             Span::styled(format!("  {key:<12}"), theme.title),
-            Span::raw(*what),
+            Span::raw(what),
         ])
     }));
-    frame.render_widget(Paragraph::new(keys), keys_area);
+    frame.render_widget(Paragraph::new(lines), keys_area);
 
     let commands = COMMANDS.iter().map(|c| {
         let aliases = if c.aliases.is_empty() {
@@ -62,16 +55,16 @@ pub fn draw(frame: &mut Frame, app: &App) {
             format!(" ({})", c.aliases.join(", "))
         };
         Row::new([
-            Cell::from(Span::styled(format!("  :{}", c.usage), theme.title)),
+            Cell::from(Span::styled(format!("  :{}", c.usage()), theme.title)),
             Cell::from(Span::styled(aliases, theme.muted())),
-            Cell::from(c.summary),
+            Cell::from(c.summary()),
         ])
     });
     // User aliases from commands.toml, after the built-in commands.
     let user_aliases = app.aliases.iter().map(|(name, body)| {
         Row::new([
             Cell::from(Span::styled(format!("  :{name}"), theme.title)),
-            Cell::from(Span::styled(" alias", theme.muted())),
+            Cell::from(Span::styled(t!("help.alias"), theme.muted())),
             Cell::from(body.to_string()),
         ])
     });
@@ -84,7 +77,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
             Constraint::Min(10),
         ],
     )
-    .header(Row::new([Line::styled("Commandes", theme.title)]));
+    .header(Row::new([Line::styled(t!("help.commands"), theme.title)]));
     frame.render_widget(table, commands_area);
 
     command_line::render(frame, command, app);
