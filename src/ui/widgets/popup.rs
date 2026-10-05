@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::popup::{Form, LevelUp, Popup, RewardUnlocked};
+use crate::popup::{Form, LevelUp, Picker, Popup, RewardUnlocked};
 
 const MAX_WIDTH: u16 = 64;
 
@@ -15,6 +15,7 @@ const MAX_WIDTH: u16 = 64;
 pub fn render(frame: &mut Frame, popup: &Popup, app: &App) {
     match popup {
         Popup::Confirm { message, .. } => render_confirm(frame, message, app),
+        Popup::Picker(picker) => render_picker(frame, picker, app),
         Popup::Form(form) => render_form(frame, form, app),
         Popup::LevelUp(level_up) => render_level_up(frame, level_up, app),
         Popup::RewardUnlocked(reward) => render_reward(frame, reward, app),
@@ -132,10 +133,83 @@ fn render_confirm(frame: &mut Frame, message: &str, app: &App) {
     );
 }
 
+/// Rows of installed apps shown at once.
+const PICKER_ROWS: u16 = 10;
+
+/// Search box over the installed apps; the list scrolls to keep the selection visible.
+fn render_picker(frame: &mut Frame, picker: &Picker, app: &App) {
+    let theme = &app.theme;
+    let area = centered(frame.area(), popup_width(frame.area()), PICKER_ROWS + 6);
+    let block = theme.panel("Ajouter une app", true);
+    let inner = block.inner(area);
+    frame.render_widget(Clear, area);
+    frame.render_widget(block, area);
+    if inner.height == 0 {
+        return;
+    }
+
+    let prompt = "Chercher : ";
+    let room = (inner.width as usize).saturating_sub(prompt.len() + 1);
+    let (visible, cursor) = picker.query.view(room);
+    let search = Line::from(vec![Span::styled(prompt, theme.title), Span::raw(visible)]);
+    frame.render_widget(Paragraph::new(search), Rect { height: 1, ..inner });
+    frame.set_cursor_position(Position::new(
+        inner.x + (prompt.chars().count() + cursor) as u16,
+        inner.y,
+    ));
+
+    let matches = app.picker_matches(picker);
+    let rows = PICKER_ROWS.min(inner.height.saturating_sub(3)) as usize;
+    let mut lines = Vec::new();
+    if matches.is_empty() {
+        let text = if app.scan_running {
+            "Recherche des apps installées…"
+        } else if picker.query.is_empty() {
+            "Aucune app trouvée dans le menu Démarrer"
+        } else {
+            "Aucune app ne correspond : Tab pour la saisir à la main"
+        };
+        lines.push(Line::styled(format!("  {text}"), theme.muted()));
+    }
+    let first = picker.selected.saturating_sub(rows.saturating_sub(1));
+    for (i, shortcut) in matches.iter().enumerate().skip(first).take(rows) {
+        let selected = i == picker.selected;
+        let process = shortcut.watch_exe.as_deref().unwrap_or("");
+        let line = Line::from(vec![
+            Span::raw(if selected { "> " } else { "  " }),
+            Span::raw(shortcut.name.clone()),
+            Span::styled(format!("  {process}"), theme.muted()),
+        ]);
+        lines.push(if selected {
+            line.style(theme.highlight(true))
+        } else {
+            line
+        });
+    }
+    let list = Rect::new(inner.x, inner.y + 2, inner.width, rows as u16);
+    frame.render_widget(Paragraph::new(lines), list.intersection(inner));
+
+    if inner.height > 1 {
+        let footer = Line::styled(
+            format!(
+                "  {} app(s) · Entrée : remplir · Tab : saisie manuelle",
+                matches.len()
+            ),
+            theme.muted(),
+        );
+        let y = inner.bottom() - 1;
+        frame.render_widget(
+            Paragraph::new(footer),
+            Rect::new(inner.x, y, inner.width, 1),
+        );
+    }
+}
+
 fn render_form(frame: &mut Frame, form: &Form, app: &App) {
     let theme = &app.theme;
     let rows = form.fields.len() as u16;
-    let area = centered(frame.area(), popup_width(frame.area()), rows + 4);
+    // Fields, blank, help (3 rows), footer, borders.
+    let area = centered(frame.area(), popup_width(frame.area()), rows + 7);
     let block = theme.panel(&form.title(), true);
     let inner = block.inner(area);
     frame.render_widget(Clear, area);
@@ -192,8 +266,22 @@ fn render_form(frame: &mut Frame, form: &Form, app: &App) {
             theme.muted(),
         ),
     };
-    if inner.height > rows + 1 {
-        let y = inner.y + rows + 1;
+    if let Some(help) = form.help() {
+        let rect = Rect::new(
+            inner.x + 2,
+            inner.y + rows + 1,
+            inner.width.saturating_sub(2),
+            3,
+        );
+        frame.render_widget(
+            Paragraph::new(help)
+                .style(theme.muted())
+                .wrap(Wrap { trim: true }),
+            rect.intersection(inner),
+        );
+    }
+    if inner.height > rows + 4 {
+        let y = inner.y + rows + 4;
         frame.render_widget(
             Paragraph::new(footer),
             Rect::new(inner.x, y, inner.width, 1),
@@ -253,6 +341,27 @@ mod tests {
         ] {
             assert!(text.contains(expected), "missing {expected:?} in\n{text}");
         }
+    }
+
+    #[test]
+    fn picker_lists_installed_apps_and_form_explains_process() {
+        let mut app = App::with_defaults();
+        app.shortcuts = vec![crate::launcher::scan::Shortcut {
+            name: "Hades".into(),
+            target: r"C:\Start\Hades.lnk".into(),
+            watch_exe: Some("Hades.exe".into()),
+        }];
+        app.mode = Mode::Popup(Popup::Picker(Picker::new("Jeux")));
+        let text = screen(&app, 100, 30);
+        for expected in ["Chercher :", "> Hades", "Hades.exe", "1 app(s)"] {
+            assert!(text.contains(expected), "missing {expected:?} in\n{text}");
+        }
+
+        let mut form = Form::add_app("Jeux");
+        form.focused = 3;
+        app.mode = Mode::Popup(Popup::Form(form));
+        let text = screen(&app, 100, 30);
+        assert!(text.contains("compter le temps de jeu"), "{text}");
     }
 
     #[test]
@@ -320,7 +429,8 @@ mod tests {
             description: "Jouer 3 h d'affilée".into(),
             app: None,
         });
-        for popup in [Popup::Form(Form::add_app("Jeux")), level_up, reward] {
+        let picker = Popup::Picker(Picker::new("Jeux"));
+        for popup in [Popup::Form(Form::add_app("Jeux")), picker, level_up, reward] {
             app.mode = Mode::Popup(popup);
             for (w, h) in [(30, 8), (10, 3), (1, 1)] {
                 screen(&app, w, h);

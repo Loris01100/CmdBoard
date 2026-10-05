@@ -29,6 +29,12 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         (Mode::Popup(Popup::LevelUp(_) | Popup::RewardUnlocked(_)), _) => {
             &[("Entrée/Esc", "continuer")]
         }
+        (Mode::Popup(Popup::Picker(_)), _) => &[
+            ("↑↓", "choisir"),
+            ("Entrée", "remplir"),
+            ("Tab", "saisie manuelle"),
+            ("Esc", "annuler"),
+        ],
         (Mode::Popup(Popup::Form(_)), _) => &[
             ("Tab ↑↓", "champ"),
             ("Entrée", "suivant / valider"),

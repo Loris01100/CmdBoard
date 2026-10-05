@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 
+use crate::launcher::scan::Shortcut;
 use crate::update;
 
 /// Drives animations and the live session timer.
@@ -30,6 +31,8 @@ pub enum AppEvent {
         action: update::Action,
         result: Result<update::Outcome, String>,
     },
+    /// Installed apps found by a short-lived scan thread, for the "add app" picker.
+    ShortcutsScanned(Vec<Shortcut>),
 }
 
 /// Reads the keyboard and sends a `Tick` every `TICK`. Stops once the UI thread is gone.

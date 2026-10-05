@@ -22,8 +22,11 @@ use crate::config;
 use crate::core::{rewards, xp};
 use crate::event::AppEvent;
 use crate::fuzzy;
-use crate::launcher::launch;
-use crate::popup::{Form, FormKind, LevelUp, Popup, RewardUnlocked};
+use crate::launcher::{
+    launch,
+    scan::{self, Shortcut},
+};
+use crate::popup::{Form, FormKind, LevelUp, Picker, Popup, RewardUnlocked};
 use crate::storage::{
     Database,
     models::{AppEntry, Category, NewApp, Profile, RewardView, Stats},
@@ -188,6 +191,9 @@ pub struct App {
     update_running: bool,
     /// Newer version found by a check, shown in the status bar.
     pub update_available: Option<String>,
+    /// Installed apps for the "add app" picker, rescanned each time it opens.
+    pub shortcuts: Vec<Shortcut>,
+    pub scan_running: bool,
     pub should_quit: bool,
 }
 
@@ -227,6 +233,8 @@ impl App {
             events: None,
             update_running: false,
             update_available: None,
+            shortcuts: Vec::new(),
+            scan_running: false,
             should_quit: false,
         };
         app.reload()?;
@@ -338,6 +346,14 @@ impl App {
                 AppEvent::SessionEnded { app_id, secs } => self.on_session_end(app_id, secs),
                 AppEvent::UpdateFinished { action, result } => {
                     self.on_update_finished(action, result)
+                }
+                AppEvent::ShortcutsScanned(found) => {
+                    self.scan_running = false;
+                    self.shortcuts = found;
+                    // The list changed: back to the best match.
+                    if let Mode::Popup(Popup::Picker(picker)) = &mut self.mode {
+                        picker.selected = 0;
+                    }
                 }
             }
         }
@@ -781,6 +797,7 @@ impl App {
             return;
         };
         match popup {
+            Popup::Picker(_) => self.on_picker_key(key),
             Popup::Confirm { command, .. } => match key.code {
                 KeyCode::Enter | KeyCode::Char('o' | 'O' | 'y' | 'Y') => {
                     let command = command.clone();
@@ -806,6 +823,79 @@ impl App {
                 if matches!(key.code, KeyCode::Enter | KeyCode::Esc | KeyCode::Char(' ')) {
                     self.mode = Mode::Normal;
                     self.show_pending_popup();
+                }
+            }
+        }
+    }
+
+    /// Scans the installed apps in a short-lived thread (about 0.1 s of disk reads).
+    fn start_shortcut_scan(&mut self) {
+        let Some(events) = self.events.clone() else {
+            return;
+        };
+        if self.scan_running {
+            return;
+        }
+        self.scan_running = true;
+        std::thread::spawn(move || {
+            let _ = events.send(AppEvent::ShortcutsScanned(scan::scan()));
+        });
+    }
+
+    /// Installed apps matching the picker's query, best first, minus the ones already added.
+    pub fn picker_matches(&self, picker: &Picker) -> Vec<&Shortcut> {
+        let candidates: Vec<&Shortcut> = self
+            .shortcuts
+            .iter()
+            .filter(|s| {
+                !self
+                    .apps
+                    .iter()
+                    .any(|a| a.launch_target.eq_ignore_ascii_case(&s.target))
+            })
+            .collect();
+        fuzzy::rank(
+            picker.query.text(),
+            candidates.iter().map(|s| s.name.as_str()),
+        )
+        .into_iter()
+        .map(|i| candidates[i])
+        .collect()
+    }
+
+    fn on_picker_key(&mut self, key: KeyEvent) {
+        let Mode::Popup(Popup::Picker(picker)) = &self.mode else {
+            return;
+        };
+        let matches = self.picker_matches(picker);
+        let count = matches.len();
+        let chosen = matches.get(picker.selected).map(|s| (*s).clone());
+        let (query, category) = (
+            picker.query.text().trim().to_string(),
+            picker.category.clone(),
+        );
+        let Mode::Popup(Popup::Picker(picker)) = &mut self.mode else {
+            return;
+        };
+        match (key.code, chosen) {
+            (KeyCode::Esc, _) => self.cancel_popup(),
+            (KeyCode::Down, _) if count > 0 => picker.selected = (picker.selected + 1) % count,
+            (KeyCode::Up, _) if count > 0 => {
+                picker.selected = (picker.selected + count - 1) % count
+            }
+            (KeyCode::Enter, Some(s)) => {
+                let form =
+                    Form::add_app_from(&category, &s.name, &s.target, s.watch_exe.as_deref());
+                self.mode = Mode::Popup(Popup::Form(form));
+            }
+            // Tab, or Enter without a match: fill in by hand, keeping what was typed as the name.
+            (KeyCode::Tab | KeyCode::Enter, _) => {
+                let form = Form::add_app_from(&category, &query, "", None);
+                self.mode = Mode::Popup(Popup::Form(form));
+            }
+            _ => {
+                if picker.query.handle_key(key) {
+                    picker.selected = 0;
                 }
             }
         }
@@ -1015,7 +1105,10 @@ impl App {
                 let form = match kind {
                     FormKind::AddApp => {
                         let category = self.selected_category().map_or("", |c| c.name.as_str());
-                        Form::add_app(category)
+                        let picker = Picker::new(category);
+                        self.mode = Mode::Popup(Popup::Picker(picker));
+                        self.start_shortcut_scan();
+                        return Ok(None);
                     }
                     FormKind::MoveApp { app } => {
                         let entry = self.app_named(&app)?;
@@ -1421,11 +1514,13 @@ mod tests {
     #[test]
     fn add_form_adds_app() {
         let mut app = App::with_defaults();
-        press(&mut app, KeyCode::Char('a'));
-        assert_eq!(form(&app).fields[2].input.text(), "Jeux"); // selected category
-
+        press(&mut app, KeyCode::Char('a')); // picker first, empty in tests
         type_text(&mut app, "Paint");
-        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Enter); // no match: by hand, the search becomes the name
+        assert_eq!(form(&app).fields[0].input.text(), "Paint");
+        assert_eq!(form(&app).fields[2].input.text(), "Jeux"); // selected category
+        assert_eq!(form(&app).focused, 1);
+
         type_text(&mut app, "mspaint.exe");
         press(&mut app, KeyCode::Tab);
         press(&mut app, KeyCode::Tab);
@@ -1442,6 +1537,7 @@ mod tests {
     fn form_keeps_errors_inside() {
         let mut app = App::with_defaults();
         run(&mut app, "add");
+        press(&mut app, KeyCode::Tab); // skip the picker
         for _ in 0..4 {
             press(&mut app, KeyCode::Enter); // empty name: submit fails on the last field
         }
@@ -1460,6 +1556,47 @@ mod tests {
         press(&mut app, KeyCode::Esc);
         assert_eq!(app.mode, Mode::Normal);
         assert_eq!(app.apps.len(), 5);
+    }
+
+    #[test]
+    fn picker_fills_the_form_from_an_installed_app() {
+        let mut app = App::with_defaults();
+        let shortcut = |name: &str, target: &str, exe: Option<&str>| Shortcut {
+            name: name.into(),
+            target: target.into(),
+            watch_exe: exe.map(Into::into),
+        };
+        app.shortcuts = vec![
+            shortcut("Hades", r"C:\Start\Hades.lnk", Some("Hades.exe")),
+            shortcut("Hollow Knight", "steam://rungameid/367520", None),
+            shortcut("Steam", "STEAM://open/main", None), // already added: hidden
+        ];
+        press(&mut app, KeyCode::Char('a'));
+        let Mode::Popup(Popup::Picker(picker)) = &app.mode else {
+            panic!("{:?}", app.mode)
+        };
+        let names: Vec<_> = app
+            .picker_matches(picker)
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert_eq!(names, ["Hades", "Hollow Knight"]);
+
+        type_text(&mut app, "hk");
+        press(&mut app, KeyCode::Enter);
+        let fields: Vec<_> = form(&app).fields.iter().map(|f| f.input.text()).collect();
+        assert_eq!(
+            fields,
+            ["Hollow Knight", "steam://rungameid/367520", "Jeux", ""]
+        );
+        assert_eq!(form(&app).focused, 2); // only the category is left to check
+
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Char('a'));
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Up);
+        press(&mut app, KeyCode::Enter); // Hades, the first one
+        assert_eq!(form(&app).fields[3].input.text(), "Hades.exe");
     }
 
     #[test]

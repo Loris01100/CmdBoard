@@ -11,6 +11,8 @@ pub enum Popup {
         message: String,
         command: Command,
     },
+    /// First step of "add app": choose among the installed apps.
+    Picker(Picker),
     Form(Form),
     LevelUp(LevelUp),
     RewardUnlocked(RewardUnlocked),
@@ -35,6 +37,27 @@ pub struct LevelUp {
     pub global_level: Option<u32>,
     /// XP that caused it.
     pub gained: u32,
+}
+
+/// Filterable list of installed apps (`App::picker_matches`). Choosing one opens the
+/// add form pre-filled; Tab opens it empty.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Picker {
+    pub query: TextInput,
+    /// Index into the current matches.
+    pub selected: usize,
+    /// Category to pre-fill in the form.
+    pub category: String,
+}
+
+impl Picker {
+    pub fn new(category: &str) -> Self {
+        Self {
+            query: TextInput::default(),
+            selected: 0,
+            category: category.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,6 +112,20 @@ impl Form {
         )
     }
 
+    /// Pre-filled add-app form, focused on the first empty field (the category when
+    /// everything is filled: the one choice left).
+    pub fn add_app_from(category: &str, name: &str, target: &str, watch_exe: Option<&str>) -> Self {
+        let mut form = Self::add_app(category);
+        form.fields[NAME].input.set(name);
+        form.fields[TARGET].input.set(target);
+        form.fields[PROCESS].input.set(watch_exe.unwrap_or(""));
+        form.focused = [NAME, TARGET, CATEGORY]
+            .into_iter()
+            .find(|&i| form.fields[i].input.is_empty())
+            .unwrap_or(CATEGORY);
+        form
+    }
+
     /// Move form for `app`, pre-filled with its current category.
     pub fn move_app(app: &str, category: &str) -> Self {
         Self::new(
@@ -126,6 +163,23 @@ impl Form {
                     None => "exe à surveiller, ex. Hades.exe".into(),
                 })
             }
+            _ => None,
+        }
+    }
+
+    /// What the focused field is for, shown under the fields.
+    pub fn help(&self) -> Option<&'static str> {
+        match (&self.kind, self.focused) {
+            (FormKind::AddApp, NAME) => Some("Nom affiché dans CmdBoard."),
+            (FormKind::AddApp, TARGET) => Some(
+                "Ce qui est lancé : un .exe ou un raccourci .lnk, un nom sur le PATH, ou un lien steam://…",
+            ),
+            (FormKind::AddApp, CATEGORY) | (FormKind::MoveApp { .. }, _) => {
+                Some("Une catégorie existante, ou une nouvelle qui sera créée.")
+            }
+            (FormKind::AddApp, PROCESS) => Some(
+                "Exe surveillé pour compter le temps de jeu (XP). Vide : déduit de la cible. Pour un lien steam://…, l'exe du jeu (ex. Hades.exe).",
+            ),
             _ => None,
         }
     }
