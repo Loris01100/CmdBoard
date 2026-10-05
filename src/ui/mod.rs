@@ -53,7 +53,7 @@ mod tests {
             buffer
                 .content()
                 .iter()
-                .map(|c| c.symbol())
+                .map(ratatui::buffer::Cell::symbol)
                 .collect::<String>()
         };
         app.mode = Mode::Command;
@@ -78,7 +78,7 @@ mod tests {
             buffer
                 .content()
                 .iter()
-                .map(|c| c.symbol())
+                .map(ratatui::buffer::Cell::symbol)
                 .collect::<String>()
         };
         assert!(render(&app).contains("aucune session en cours"));
@@ -96,7 +96,7 @@ mod tests {
             buffer
                 .content()
                 .iter()
-                .map(|c| c.symbol())
+                .map(ratatui::buffer::Cell::symbol)
                 .collect::<String>()
         };
         assert!(render(120).contains("Détails"));

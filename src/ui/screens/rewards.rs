@@ -126,7 +126,11 @@ mod tests {
         let mut terminal = Terminal::new(TestBackend::new(110, 30)).unwrap();
         terminal.draw(|f| crate::ui::draw(f, app)).unwrap();
         let buffer = terminal.backend().buffer();
-        buffer.content().iter().map(|c| c.symbol()).collect()
+        buffer
+            .content()
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect()
     }
 
     #[test]

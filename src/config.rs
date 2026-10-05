@@ -36,13 +36,15 @@ impl Config {
             Ok(table) => {
                 let theme = table
                     .get("theme")
-                    .and_then(|v| v.as_str())
+                    .and_then(toml::Value::as_str)
                     .map(String::from);
                 let update_check = table
                     .get("update_check")
-                    .and_then(|v| v.as_bool())
+                    .and_then(toml::Value::as_bool)
                     .unwrap_or(true);
-                let last_update_check = table.get("last_update_check").and_then(|v| v.as_integer());
+                let last_update_check = table
+                    .get("last_update_check")
+                    .and_then(toml::Value::as_integer);
                 (
                     Self {
                         theme,

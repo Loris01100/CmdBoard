@@ -151,7 +151,7 @@ pub fn available(user_dir: Option<&Path>) -> Vec<String> {
             if path
                 .extension()
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
-                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+                && let Some(stem) = path.file_stem().and_then(std::ffi::OsStr::to_str)
             {
                 names.push(stem.to_lowercase());
             }
