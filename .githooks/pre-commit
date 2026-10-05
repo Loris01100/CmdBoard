@@ -1,0 +1,7 @@
+#!/bin/sh
+# Blocks the commit if the code isn't formatted. Enable once per clone:
+#   git config core.hooksPath .githooks
+if ! cargo fmt --check >/dev/null 2>&1; then
+    echo "pre-commit: code is not formatted. Run 'cargo fmt', then commit again." >&2
+    exit 1
+fi
