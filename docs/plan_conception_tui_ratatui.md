@@ -34,7 +34,7 @@ src/
 │   └── models.rs        // App, Category, Session, Reward
 ├── launcher/
 │   ├── launch.rs        // lancement (exe, URI)
-│   └── scan.rs          // import des .lnk
+│   └── scan.rs          // import des .lnk et des bibliothèques Steam/Epic
 ├── popup.rs             // état des popups : confirmation, formulaires
 ├── text_input.rs        // champ texte éditable (ligne de commande, formulaires)
 ├── tracker.rs           // thread de suivi des sessions (sysinfo)
@@ -266,7 +266,7 @@ Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le pa
 
 - **Confirmation** : toute commande destructive (`RemoveApp`, `RemoveCategory`) porte un champ `confirmed`. Non confirmée, son exécution ouvre une popup qui contient la même commande avec `confirmed: true`. Touche `d` et `:rm` passent donc par la même confirmation.
 - **Formulaires** : `Form` = liste de champs (`TextInput`, partagé avec la ligne de commande) avec un champ focalisé. La validation produit une `Command` (`Add`, `Move`) exécutée par le chemin habituel. En cas d'erreur (champ requis, nom déjà pris, fichier introuvable), le formulaire reste ouvert et affiche l'erreur ; le premier champ requis vide reçoit le focus.
-- **Choix de l'app** (`Popup::Picker`) : `a` et `:add` sans argument ouvrent d'abord une liste filtrable (fuzzy) des apps installées, lue par `launcher/scan.rs` dans les raccourcis `.lnk` et `.url` du menu Démarrer et du Bureau. Le scan tourne dans un thread temporaire (`AppEvent::ShortcutsScanned`) à chaque ouverture. Les apps déjà ajoutées sont masquées. `Entrée` ouvre le formulaire pré-rempli (cible = le `.lnk`, qui garde ses arguments ; process = l'exe pointé par le raccourci), focus sur la catégorie. `Tab`, ou `Entrée` sans résultat, ouvre le formulaire vide avec la recherche comme nom.
+- **Choix de l'app** (`Popup::Picker`) : `a` et `:add` sans argument ouvrent d'abord une liste filtrable (fuzzy) des apps installées, lue par `launcher/scan.rs` dans les bibliothèques Steam (`libraryfolders.vdf` puis `appmanifest_*.acf` complètement installés : cible `steam://rungameid/<id>`, process = le plus gros exe du dossier du jeu, jusqu'à trois niveaux) et Epic (manifests `.item` de `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests`, hors DLC : cible `com.epicgames.launcher://apps/...?action=launch`, process = `LaunchExecutable`), puis dans les raccourcis `.lnk` et `.url` du menu Démarrer et du Bureau. À nom égal, l'entrée de bibliothèque l'emporte. Le scan tourne dans un thread temporaire (`AppEvent::ShortcutsScanned`) à chaque ouverture. Les apps déjà ajoutées sont masquées. `Entrée` ouvre le formulaire pré-rempli (cible = le `.lnk`, qui garde ses arguments ; process = l'exe pointé par le raccourci), focus sur la catégorie. `Tab`, ou `Entrée` sans résultat, ouvre le formulaire vide avec la recherche comme nom.
 - Formulaire d'ajout : Nom*, Cible*, Catégorie* (pré-remplie avec la catégorie sélectionnée), Process (vide : déduit de la cible, affiché en grisé « auto : X.exe »). Une ligne d'aide sous les champs explique le champ actif, notamment à quoi sert Process (l'exe surveillé pour compter le temps de jeu).
 - **Level-up** : ouverte quand une app ou le profil gagne un niveau (fin de session ou `:xp`). Bordure qui alterne de couleur à chaque `Tick`. `Entrée`, `Esc` ou `Espace` la ferment.
 - **Récompense débloquée** : une popup par récompense, après celle de level-up, mêmes touches et même clignotement.
@@ -502,6 +502,7 @@ Pilotées par `Tick` et un compteur `frame_count` dans `App` :
    - `%ProgramData%\Microsoft\Windows\Start Menu\Programs`
    - `%AppData%\Microsoft\Windows\Start Menu\Programs`
    - le Bureau
+   - Steam : dossier lu dans `HKCU\Software\Valve\Steam\SteamPath` ; Epic : `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests`.
 3. Icônes impossibles dans un terminal : glyphe Nerd Font ou emoji par catégorie.
 4. Base de données dans `%APPDATA%` (crate `directories`).
 

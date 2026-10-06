@@ -289,6 +289,7 @@ dependencies = [
  "rusqlite",
  "self_update",
  "serde",
+ "serde_json",
  "sysinfo",
  "toml",
  "windows-sys 0.61.2",

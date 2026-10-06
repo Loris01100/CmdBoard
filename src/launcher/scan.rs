@@ -1,7 +1,9 @@
-//! Installed apps, from the Start Menu and Desktop shortcuts (`.lnk`, and `.url` for
-//! Steam/Epic games). Feeds the picker of the "add app" form.
+//! Installed apps, from the Steam and Epic libraries and the Start Menu and Desktop
+//! shortcuts (`.lnk`, and `.url` for games). Feeds the picker of the "add app" form.
 
 use std::path::{Path, PathBuf};
+
+use serde::Deserialize;
 
 use super::launch::watch_exe_for;
 
@@ -16,8 +18,10 @@ pub struct Shortcut {
 }
 
 /// Every shortcut found, sorted by name, without duplicates or uninstallers.
+/// Library games come first so they win over a `.url` of the same name (no exe).
 pub fn scan() -> Vec<Shortcut> {
-    let mut found = Vec::new();
+    let mut found = steam_games();
+    found.extend(epic_games());
     for dir in shortcut_dirs() {
         walk(&dir, &mut found);
     }
@@ -116,6 +120,168 @@ fn url_of(text: &str) -> Option<String> {
     (!web && url.contains("://")).then(|| url.to_string())
 }
 
+/// Installed Steam games: every library of `libraryfolders.vdf`, every `appmanifest_*.acf`.
+fn steam_games() -> Vec<Shortcut> {
+    let Some(steam) = steam_dir() else {
+        return Vec::new();
+    };
+    let libraries: Vec<PathBuf> =
+        std::fs::read_to_string(steam.join(r"steamapps\libraryfolders.vdf"))
+            .map(|vdf| vdf_values(&vdf, "path").map(PathBuf::from).collect())
+            .unwrap_or_else(|_| vec![steam]);
+    let mut games = Vec::new();
+    for steamapps in libraries.iter().map(|lib| lib.join("steamapps")) {
+        let Ok(entries) = std::fs::read_dir(&steamapps) else {
+            continue;
+        };
+        for path in entries.flatten().map(|e| e.path()) {
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            if name.starts_with("appmanifest_") && name.ends_with(".acf") {
+                let acf = std::fs::read_to_string(&path).unwrap_or_default();
+                games.extend(steam_game(&steamapps, &acf));
+            }
+        }
+    }
+    games
+}
+
+fn steam_dir() -> Option<PathBuf> {
+    let out = std::process::Command::new("reg")
+        .args(["query", r"HKCU\Software\Valve\Steam", "/v", "SteamPath"])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let path = text.lines().find_map(|l| l.split_once("REG_SZ"))?.1.trim();
+    Some(PathBuf::from(path))
+}
+
+fn steam_game(steamapps: &Path, acf: &str) -> Option<Shortcut> {
+    let get = |key| vdf_values(acf, key).next();
+    let id = get("appid")?;
+    let flags: u32 = get("StateFlags").and_then(|f| f.parse().ok()).unwrap_or(0);
+    // 4: fully installed. 228980: Steamworks Common Redistributables.
+    if flags & 4 == 0 || id == "228980" {
+        return None;
+    }
+    Some(Shortcut {
+        name: get("name")?,
+        target: format!("steam://rungameid/{id}"),
+        watch_exe: main_exe(&steamapps.join("common").join(get("installdir")?)),
+    })
+}
+
+/// Values of `"key" "value"` lines in a Valve KeyValues text (`.vdf`, `.acf`), in order.
+fn vdf_values<'a>(text: &'a str, key: &'a str) -> impl Iterator<Item = String> + 'a {
+    text.lines()
+        .filter_map(move |line| match quoted(line).as_slice() {
+            [k, v] if k.eq_ignore_ascii_case(key) => Some(v.clone()),
+            _ => None,
+        })
+}
+
+/// Quoted strings of a line, with backslash escapes resolved.
+fn quoted(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut chars = line.chars();
+    while chars.by_ref().any(|c| c == '"') {
+        let mut s = String::new();
+        while let Some(c) = chars.next() {
+            match c {
+                '"' => break,
+                '\\' => s.extend(chars.next()),
+                c => s.push(c),
+            }
+        }
+        out.push(s);
+    }
+    out
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct EpicManifest {
+    display_name: String,
+    install_location: String,
+    #[serde(default)]
+    launch_executable: String,
+    app_name: String,
+    catalog_namespace: String,
+    catalog_item_id: String,
+    #[serde(default)]
+    main_game_app_name: String,
+    #[serde(rename = "bIsIncompleteInstall", default)]
+    incomplete: bool,
+}
+
+/// Installed Epic games, from the launcher's `.item` manifests.
+fn epic_games() -> Vec<Shortcut> {
+    let Some(data) = std::env::var_os("ProgramData") else {
+        return Vec::new();
+    };
+    let dir = PathBuf::from(data).join(r"Epic\EpicGamesLauncher\Data\Manifests");
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "item"))
+        .filter_map(|e| epic_game(&std::fs::read_to_string(e.path()).ok()?))
+        .collect()
+}
+
+fn epic_game(json: &str) -> Option<Shortcut> {
+    let m: EpicManifest = serde_json::from_str(json).ok()?;
+    // DLCs have their own manifest, pointing to the main game.
+    let dlc = !m.main_game_app_name.is_empty() && m.main_game_app_name != m.app_name;
+    if m.incomplete || dlc {
+        return None;
+    }
+    let exe = Path::new(&m.install_location).join(&m.launch_executable);
+    Some(Shortcut {
+        name: m.display_name,
+        target: format!(
+            "com.epicgames.launcher://apps/{}%3A{}%3A{}?action=launch&silent=true",
+            m.catalog_namespace, m.catalog_item_id, m.app_name
+        ),
+        watch_exe: watch_exe_for(&exe.to_string_lossy()),
+    })
+}
+
+/// File name of a Steam game's exe, which the manifest does not record.
+/// ponytail: guesses the largest exe up to three folders deep (Unreal games keep the real
+/// one in `Binaries\Win64`); a wrong guess is fixed in the form.
+fn main_exe(dir: &Path) -> Option<String> {
+    fn visit(dir: &Path, depth: u8, best: &mut Option<(u64, String)>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let lower = name.to_lowercase();
+            let skipped = ["redist", "crash", "setup", "support", "prereq"]
+                .iter()
+                .any(|w| lower.contains(w));
+            if skipped || is_noise(&name) || lower.starts_with("unins") {
+                continue;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                if depth > 0 {
+                    visit(&path, depth - 1, best);
+                }
+            } else if is_exe(&name) {
+                let size = entry.metadata().map_or(0, |m| m.len());
+                if best.as_ref().is_none_or(|(s, _)| size > *s) {
+                    *best = Some((size, name));
+                }
+            }
+        }
+    }
+    let mut best = None;
+    visit(dir, 3, &mut best);
+    best.map(|(_, name)| name)
+}
+
 fn is_noise(name: &str) -> bool {
     let name = name.to_lowercase();
     ["uninstall", "désinstall", "desinstall"]
@@ -136,6 +302,71 @@ mod tests {
             None
         );
         assert_eq!(url_of("[InternetShortcut]\n"), None);
+    }
+
+    #[test]
+    fn steam_manifests_give_rungameid_targets() {
+        let acf = "\"AppState\"\n{\n\t\"appid\"\t\t\"1145360\"\n\t\"name\"\t\t\"Hades\"\n\t\"StateFlags\"\t\t\"4\"\n\t\"installdir\"\t\t\"Hades\"\n}\n";
+        let game = steam_game(Path::new(r"C:\nope\steamapps"), acf).unwrap();
+        assert_eq!(game.name, "Hades");
+        assert_eq!(game.target, "steam://rungameid/1145360");
+        assert_eq!(game.watch_exe, None); // install dir missing
+        let updating = acf.replace("\"4\"", "\"6\"");
+        assert!(steam_game(Path::new("x"), &updating).is_some());
+        let downloading = acf.replace("\"4\"", "\"1026\"");
+        assert_eq!(steam_game(Path::new("x"), &downloading), None);
+        let redist = acf.replace("1145360", "228980");
+        assert_eq!(steam_game(Path::new("x"), &redist), None);
+    }
+
+    #[test]
+    fn vdf_paths_are_unescaped() {
+        let vdf = r#""libraryfolders"
+{
+	"0"
+	{
+		"path"		"C:\\Program Files (x86)\\Steam"
+		"label"		""
+	}
+	"1"
+	{
+		"path"		"D:\\SteamLibrary"
+	}
+}"#;
+        let paths: Vec<String> = vdf_values(vdf, "path").collect();
+        assert_eq!(paths, [r"C:\Program Files (x86)\Steam", r"D:\SteamLibrary"]);
+    }
+
+    #[test]
+    fn epic_manifests_give_launcher_uris_and_skip_dlcs() {
+        let json = r#"{"DisplayName":"Hades","InstallLocation":"C:\\Games\\Hades","LaunchExecutable":"x64\\Hades.exe","AppName":"Min","CatalogNamespace":"ns","CatalogItemId":"item","MainGameAppName":"Min","bIsIncompleteInstall":false}"#;
+        let game = epic_game(json).unwrap();
+        assert_eq!(game.name, "Hades");
+        assert_eq!(
+            game.target,
+            "com.epicgames.launcher://apps/ns%3Aitem%3AMin?action=launch&silent=true"
+        );
+        assert_eq!(game.watch_exe.as_deref(), Some("Hades.exe"));
+        let dlc = json.replace(r#""MainGameAppName":"Min""#, r#""MainGameAppName":"Other""#);
+        assert_eq!(epic_game(&dlc), None);
+        assert_eq!(epic_game(&json.replace("false", "true")), None);
+        assert_eq!(epic_game("not json"), None);
+    }
+
+    #[test]
+    fn main_exe_is_the_largest_real_one() {
+        let dir = std::env::temp_dir().join(format!("cmdboard-exe-{}", std::process::id()));
+        let bin = dir.join(r"Game\Binaries\Win64");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(dir.join("Game.exe"), [0; 10]).unwrap();
+        std::fs::write(bin.join("Game-Win64-Shipping.exe"), [0; 100]).unwrap();
+        std::fs::write(dir.join("unins000.exe"), [0; 1000]).unwrap();
+        std::fs::write(dir.join("UnityCrashHandler64.exe"), [0; 1000]).unwrap();
+        std::fs::write(dir.join("data.pak"), [0; 1000]).unwrap();
+        let found = main_exe(&dir);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(found.as_deref(), Some("Game-Win64-Shipping.exe"));
+        assert_eq!(main_exe(Path::new(r"C:\nope")), None);
     }
 
     #[test]
