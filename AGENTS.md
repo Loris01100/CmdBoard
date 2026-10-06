@@ -1,0 +1,48 @@
+# Repository instructions
+
+CmdBoard is a Windows-only Rust/ratatui dashboard for launching apps, tracking usage, and awarding XP and rewards.
+
+## Source of truth
+
+Read [the design plan](docs/plan_conception_tui_ratatui.md) before implementing a feature. Update it in the same change when behavior, architecture, keybindings, or data diverge. Sections 1–7 cover state and commands, 8–10 the UI, 11–12 sessions and rewards, 15 tests, and 18 distribution.
+
+Steps 1–11 are complete; step 12 is in progress. Release tooling and updates exist; publishing v0.1.0 and its winget manifest remain. Check the plan and code for current implementation details rather than duplicating a feature inventory here.
+
+## Architecture
+
+- State belongs in App, including selections, table/list state and animations. Handlers mutate it; draw(frame, &app) only reads it.
+- Keys, command-line input and aliases run through Command and App::execute. A new command-line action also needs a COMMANDS entry, parser arm, completion where relevant, and translated help. Key-only navigation actions need a variant and key mapping but no invented command-line syntax.
+- Destructive commands carry confirmed: bool and open Popup::Confirm before executing. Forms produce commands; errors stay in the form.
+- Keep business logic out of ui/: XP and reward rules in core/, SQLite in storage/, scanning/launching in launcher/, updating in update.rs.
+- Three permanent threads (UI, events, tracker) communicate through mpsc/AppEvent. Temporary scanning/network work reports through the same event channel. Do not block UI handlers on network or scanning.
+- Rewards are data-driven rules. launch_target and watch_exe are deliberately separate.
+
+## Windows and persisted data
+
+- Windows only; do not introduce Linux portability layers.
+- Filter crossterm events on KeyEventKind::Press. Preserve terminal restoration on panic.
+- Store user data through directories under %APPDATA%\CmdBoard. Close orphaned sessions at startup and preserve session checkpointing and XP attribution.
+- Never edit shipped migrations: add a migration using PRAGMA user_version. Updates must preserve user data.
+- Preserve Windows paths in the custom command parser: double quotes group arguments, backslashes remain literal. Do not replace it with shell-words.
+
+## UI, themes and translations
+
+- Every widget color comes from Theme. TOML palettes resolve into semantic slots; built-in and user themes share the loader. Keep terminal ANSI-only and keep the current theme when loading a replacement fails.
+- Preserve compatibility of user themes; caution is optional and falls back to warning.
+- All UI text uses t!; add keys and matching placeholders to every locale. en.toml is the reference.
+- Tests use the default French language. Do not change the global language in parallel tests. Starter rewards use starter_rewards.<code> translations.
+- For UI, theme or translation changes, read the local [cmdboard-ui skill](.agents/skills/cmdboard-ui/SKILL.md). Claude users should read the same file directly; no separate copy is needed.
+
+## Validation
+
+Run cargo fmt --check, cargo clippy --all-targets and appropriate cargo test checks before handing off code changes. The pre-commit hook and CI check formatting, linting and tests.
+
+Use table-driven parser tests, in-memory SQLite tests (including migration upgrades), built-in theme parsing tests, and ratatui TestBackend for rendering. Verify behavior and boundary cases rather than duplicating implementation details in assertions.
+
+Useful commands: cargo run, cargo build, cargo test <name_substring>. Coverage uses cargo llvm-cov --lcov --output-path target/lcov.info followed by cargo sonar-scanner. Add dependencies with cargo add; plan versions are indicative.
+
+## Releases
+
+Read plan section 18 for release work. dist plan previews artifacts; distribution targets x86_64-pc-windows-msvc with PowerShell and MSI installers and install-updater = false.
+
+Never change WiX upgrade-guid or path-guid. Under Program Files, :update must direct users to winget instead of replacing the executable. Do not tag, push or publish without an explicit request.
