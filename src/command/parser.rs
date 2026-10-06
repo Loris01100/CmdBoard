@@ -67,6 +67,23 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("lang", [code]) => Ok(Command::Lang {
             code: Some(code.clone()),
         }),
+        // Apps are comma-separated, so their names need no quotes.
+        ("group", [name, apps @ ..]) => {
+            let apps: Vec<String> = apps
+                .join(" ")
+                .split(',')
+                .map(str::trim)
+                .filter(|a| !a.is_empty())
+                .map(String::from)
+                .collect();
+            if apps.is_empty() {
+                return Err(t!("parse.usage", usage = help.usage()));
+            }
+            Ok(Command::Group {
+                name: name.clone(),
+                apps,
+            })
+        }
         ("export", []) => Ok(Command::Export { path: None }),
         ("export", [_, ..]) => Ok(Command::Export {
             path: Some(rest.join(" ")),
@@ -230,6 +247,13 @@ mod tests {
                     code: Some(s("EN")),
                 },
             ),
+            (
+                "group streaming OBS, Windows Terminal ,Spotify,",
+                Command::Group {
+                    name: s("streaming"),
+                    apps: vec![s("OBS"), s("Windows Terminal"), s("Spotify")],
+                },
+            ),
             ("export", Command::Export { path: None }),
             (
                 r"export D:\Mes sauvegardes\cmdboard.json",
@@ -276,6 +300,8 @@ mod tests {
             ("quit now", "Usage : quit"),
             ("update now", "Usage : update"),
             ("import", "Usage : import <fichier>"),
+            ("group streaming", "Usage : group <nom> <app>, <app>…"),
+            ("group streaming ,", "Usage : group <nom> <app>, <app>…"),
             (
                 "sort size",
                 "Tri inconnu : size (usage : sort [name|xp|recent|time])",

@@ -12,6 +12,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use anyhow::{Context, anyhow, bail};
 use serde::Deserialize;
 
 use super::{find_help, parser::split_args};
@@ -67,6 +68,42 @@ impl Aliases {
         }
         let warning = (!skipped.is_empty()).then(|| t!("alias.skipped", list = skipped.join(", ")));
         Ok((Self { map }, warning))
+    }
+
+    /// Adds or replaces the alias `name` in `path` (`:group`), then returns the reloaded
+    /// aliases. A file that does not parse is left untouched.
+    /// ponytail: rewritten through `toml`, so comments in the file are lost; toml_edit if it matters.
+    pub fn save(path: &Path, name: &str, body: &str) -> anyhow::Result<Self> {
+        let lower = name.to_lowercase();
+        if find_help(&lower).is_some() {
+            bail!(t!("alias.reserved", name));
+        }
+        if lower.is_empty() || lower.contains(char::is_whitespace) {
+            bail!(t!("alias.bad_name", name));
+        }
+        let mut file = match std::fs::read_to_string(path) {
+            Ok(text) => text
+                .parse::<toml::Table>()
+                .map_err(|e| anyhow!(t!("pair", label = "commands.toml", value = e.message())))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => toml::Table::new(),
+            Err(e) => return Err(e.into()),
+        };
+        let section = file
+            .entry("alias")
+            .or_insert_with(|| toml::Table::new().into())
+            .as_table_mut()
+            .with_context(|| t!("pair", label = "commands.toml", value = "[alias]"))?;
+        section.retain(|key, _| key.to_lowercase() != lower);
+        section.insert(lower, body.into());
+        let text = toml::to_string(&file)?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        std::fs::write(path, &text)
+            .with_context(|| t!("error.cannot_write", path = path.display()))?;
+        Self::parse(&text)
+            .map(|(aliases, _)| aliases)
+            .map_err(|e| anyhow!(e))
     }
 
     pub fn names(&self) -> impl Iterator<Item = &str> {
@@ -185,6 +222,36 @@ mod tests {
             warning.as_deref(),
             Some("commands.toml : alias ignoré(s) : help, q")
         );
+    }
+
+    #[test]
+    fn save_adds_or_replaces_and_keeps_the_rest() {
+        let dir = std::env::temp_dir().join(format!("cmdboard-alias-{}", std::process::id()));
+        let path = dir.join("commands.toml");
+        let a = Aliases::save(&path, "Streaming", "launch OBS; launch Discord").unwrap();
+        assert_eq!(a.get("streaming"), Some("launch OBS; launch Discord"));
+
+        std::fs::write(
+            &path,
+            "other = 1\n[alias]\nSTREAMING = \"x\"\njouer = \"launch $1\"\n",
+        )
+        .unwrap();
+        let a = Aliases::save(&path, "streaming", "launch Spotify").unwrap();
+        assert_eq!(a.names().collect::<Vec<_>>(), ["jouer", "streaming"]);
+        assert_eq!(a.get("streaming"), Some("launch Spotify"));
+        assert_eq!(Aliases::load(&path).0, a);
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .contains("other = 1")
+        );
+
+        assert!(Aliases::save(&path, "q", "quit").is_err());
+        assert!(Aliases::save(&path, "mon groupe", "quit").is_err());
+        std::fs::write(&path, "[alias\n").unwrap();
+        assert!(Aliases::save(&path, "streaming", "launch OBS").is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "[alias\n"); // untouched
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

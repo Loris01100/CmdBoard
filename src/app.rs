@@ -1281,6 +1281,25 @@ impl App {
                 }
                 return success(t!("lang.set", name = t!("language")));
             }
+            Command::Group { name, apps } => {
+                let names = apps
+                    .iter()
+                    .map(|app| self.app_named(app).map(|entry| entry.name.clone()))
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                let body: Vec<String> = names.iter().map(|n| format!("launch {n}")).collect();
+                let path = self
+                    .config_path
+                    .as_deref()
+                    .and_then(Path::parent)
+                    .with_context(|| t!("error.no_appdata"))?
+                    .join("commands.toml");
+                self.aliases = Aliases::save(&path, &name, &body.join("; "))?;
+                return success(t!(
+                    "action.group_saved",
+                    name = name.to_lowercase(),
+                    list = names.join(", ")
+                ));
+            }
             Command::Export { path } => {
                 let path = match path {
                     Some(path) => PathBuf::from(path),
@@ -2070,6 +2089,28 @@ mod tests {
             app.message.as_ref().unwrap().0,
             "alias boost : xp $1 50; stats $1"
         );
+    }
+
+    #[test]
+    fn group_command_saves_a_launch_alias() {
+        let dir = std::env::temp_dir().join(format!("cmdboard-app-group-{}", std::process::id()));
+        let mut app = App::with_defaults();
+        app.init_theme(&dir, None);
+        run(&mut app, "group Outils bloc-notes, calculatrice");
+        assert_eq!(message_kind(&app), Some(MsgKind::Success));
+        assert_eq!(
+            app.aliases.get("outils"),
+            Some("launch Bloc-notes; launch Calculatrice")
+        );
+        assert_eq!(Aliases::load(&dir.join("commands.toml")).0, app.aliases);
+
+        run(&mut app, "group outils nope");
+        assert_eq!(message_kind(&app), Some(MsgKind::Error));
+        assert_eq!(
+            app.aliases.get("outils"),
+            Some("launch Bloc-notes; launch Calculatrice")
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

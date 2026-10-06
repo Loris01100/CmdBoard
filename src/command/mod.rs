@@ -70,6 +70,11 @@ pub enum Command {
         app: String,
         amount: i64,
     },
+    /// Saves an alias launching these apps in order (`commands.toml`).
+    Group {
+        name: String,
+        apps: Vec<String>,
+    },
     /// Writes apps and sessions to a JSON file; `None` picks a dated file in Documents.
     Export {
         path: Option<String>,
@@ -142,6 +147,10 @@ pub const COMMANDS: &[CommandHelp] = &[
     },
     CommandHelp {
         name: "xp",
+        aliases: &[],
+    },
+    CommandHelp {
+        name: "group",
         aliases: &[],
     },
     CommandHelp {

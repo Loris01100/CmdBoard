@@ -78,6 +78,7 @@ moved = "Moved: {name} → {category}{note}"
 removed = "Removed: {name}"
 category_removed = "Category removed: {name}"
 xp = "{name}: {change} XP (total {total})"
+group_saved = "Group :{name} saved: {list}"
 exported = "Exported {apps} app(s) and {sessions} session(s) to {path}"
 imported = "Imported {apps} new app(s) and {sessions} session(s)"
 confirm_remove_app = "Remove “{name}”? Its play time, XP and rewards will be lost."
@@ -118,6 +119,8 @@ unclosed_quote = "Unclosed quote"
 [alias]
 skipped = "commands.toml: alias(es) skipped: {list}"
 missing_argument = "missing argument ${number}"
+reserved = "“{name}” is a built-in command"
+bad_name = "“{name}”: an alias name is a single word"
 
 [rule]
 empty = "empty rule"
@@ -316,6 +319,10 @@ summary = "Switches language (saved). Without arguments: lists the languages"
 [cmd.xp]
 usage = "xp <app> <amount>"
 summary = "Adds (or removes, if negative) XP to an app"
+
+[cmd.group]
+usage = "group <name> <app>, <app>…"
+summary = "Creates (or replaces) an alias :<name> that launches these apps"
 
 [cmd.export]
 usage = "export [file]"
