@@ -31,6 +31,7 @@ src/
 ├── storage/
 │   ├── db.rs            // connexion SQLite, migrations, contenu de départ
 │   ├── queries.rs       // CRUD et agrégats (temps joué, profil, récompenses)
+│   ├── backup.rs        // :export / :import en JSON
 │   └── models.rs        // App, Category, Session, Reward
 ├── launcher/
 │   ├── launch.rs        // lancement (exe, URI)
@@ -208,10 +209,14 @@ La table `COMMANDS` (`command/mod.rs`) décrit chaque commande (nom, alias, usag
 | `xp` | | `xp <app> <montant>` (montant en dernier, signé ; l'XP ne descend pas sous 0) |
 | `stats` | | `stats [app]` (sans argument : toutes les apps ; avec : filtre jusqu'au prochain `:stats`) |
 | `theme` | | `theme [nom]` (sans nom : liste les thèmes et l'actuel ; nom complété par Tab) |
+| `export` | | `export [fichier]` (JSON des apps et sessions terminées ; sans argument : `Documents\cmdboard-<aaaa-mm-jj>.json`) |
+| `import` | | `import <fichier>` (fusionne un export, voir ci-dessous) |
 | `help` | `h`, `?` | `help [commande]` |
 | `quit` | `q` | `quit` |
 
 Noms d'apps et de catégories insensibles à la casse. `:add` déduit `watch_exe` du nom de fichier quand la cible est un `.exe`, et refuse un chemin absolu inexistant. Après `:add` ou `:move`, la sélection suit l'app.
+
+`:export` / `:import` (`storage/backup.rs`) servent à la sauvegarde, à l'analyse externe et au changement de PC. Le fichier : `{ version: 1, exported_at, apps: [{ name, category, launch_target, watch_exe, total_xp }], sessions: [{ app, started_at, ended_at, duration_s, xp_gained }] }` (sessions en cours exclues, horodatages Unix). L'import fusionne en une transaction, sans confirmation puisqu'il ne supprime rien : une app absente est créée avec sa catégorie et son `total_xp` ; une app déjà présente (même nom) garde sa cible et sa catégorie, et gagne l'XP de ses sessions nouvellement importées ; une session déjà présente (même app, même début) est ignorée, donc réimporter le même fichier ne change rien. Les récompenses ne sont pas exportées.
 
 ### Confort
 

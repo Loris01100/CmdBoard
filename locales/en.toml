@@ -78,6 +78,8 @@ moved = "Moved: {name} → {category}{note}"
 removed = "Removed: {name}"
 category_removed = "Category removed: {name}"
 xp = "{name}: {change} XP (total {total})"
+exported = "Exported {apps} app(s) and {sessions} session(s) to {path}"
+imported = "Imported {apps} new app(s) and {sessions} session(s)"
 confirm_remove_app = "Remove “{name}”? Its play time, XP and rewards will be lost."
 confirm_remove_category = "Remove the category “{name}”?"
 
@@ -88,6 +90,9 @@ category_not_empty = "“{name}” still holds {count} app(s): move or remove th
 unknown_app = "unknown app: {name}"
 unknown_category = "unknown category: {name}"
 unknown_command = "unknown command: {name}"
+cannot_read = "cannot read {path}"
+bad_backup = "{path} is not a CmdBoard export"
+backup_version = "export format {version} not supported by this version"
 cannot_write = "cannot write {path}"
 cannot_create = "cannot create {path}"
 cannot_open = "cannot open {path}"
@@ -311,6 +316,14 @@ summary = "Switches language (saved). Without arguments: lists the languages"
 [cmd.xp]
 usage = "xp <app> <amount>"
 summary = "Adds (or removes, if negative) XP to an app"
+
+[cmd.export]
+usage = "export [file]"
+summary = 'Saves apps and sessions to JSON (default: Documents\cmdboard-<date>.json)'
+
+[cmd.import]
+usage = "import <file>"
+summary = "Merges an export: adds the missing apps and sessions, deletes nothing"
 
 [cmd.update]
 usage = "update"

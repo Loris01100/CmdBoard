@@ -70,6 +70,14 @@ pub enum Command {
         app: String,
         amount: i64,
     },
+    /// Writes apps and sessions to a JSON file; `None` picks a dated file in Documents.
+    Export {
+        path: Option<String>,
+    },
+    /// Merges a file written by `Export`: adds what is missing, never deletes.
+    Import {
+        path: String,
+    },
     /// Installs the latest GitHub release, or points to winget for MSI installs.
     Update,
     Help {
@@ -134,6 +142,14 @@ pub const COMMANDS: &[CommandHelp] = &[
     },
     CommandHelp {
         name: "xp",
+        aliases: &[],
+    },
+    CommandHelp {
+        name: "export",
+        aliases: &[],
+    },
+    CommandHelp {
+        name: "import",
         aliases: &[],
     },
     CommandHelp {

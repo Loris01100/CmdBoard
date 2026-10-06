@@ -78,6 +78,8 @@ moved = "Déplacé : {name} → {category}{note}"
 removed = "Supprimé : {name}"
 category_removed = "Catégorie supprimée : {name}"
 xp = "{name} : {change} XP (total {total})"
+exported = "Exporté : {apps} app(s) et {sessions} session(s) vers {path}"
+imported = "Importé : {apps} nouvelle(s) app(s) et {sessions} session(s)"
 confirm_remove_app = "Supprimer « {name} » ? Son temps de jeu, son XP et ses récompenses seront perdus."
 confirm_remove_category = "Supprimer la catégorie « {name} » ?"
 
@@ -88,6 +90,9 @@ category_not_empty = "« {name} » contient encore {count} app(s) : déplacez-le
 unknown_app = "app inconnue : {name}"
 unknown_category = "catégorie inconnue : {name}"
 unknown_command = "commande inconnue : {name}"
+cannot_read = "impossible de lire {path}"
+bad_backup = "{path} n'est pas un export CmdBoard"
+backup_version = "format d'export {version} non pris en charge par cette version"
 cannot_write = "impossible d'écrire {path}"
 cannot_create = "impossible de créer {path}"
 cannot_open = "impossible d'ouvrir {path}"
@@ -311,6 +316,14 @@ summary = "Change de langue (mémorisée). Sans argument : liste les langues"
 [cmd.xp]
 usage = "xp <app> <montant>"
 summary = "Ajoute (ou retire, si négatif) de l'XP à une app"
+
+[cmd.export]
+usage = "export [fichier]"
+summary = 'Sauvegarde apps et sessions en JSON (par défaut : Documents\cmdboard-<date>.json)'
+
+[cmd.import]
+usage = "import <fichier>"
+summary = "Fusionne un export : ajoute les apps et sessions manquantes, ne supprime rien"
 
 [cmd.update]
 usage = "update"

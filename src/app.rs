@@ -1281,6 +1281,23 @@ impl App {
                 }
                 return success(t!("lang.set", name = t!("language")));
             }
+            Command::Export { path } => {
+                let path = match path {
+                    Some(path) => PathBuf::from(path),
+                    None => self.db.default_export_path()?,
+                };
+                let (apps, sessions) = self.db.export_to(&path)?;
+                return success(t!("action.exported", apps, sessions, path = path.display()));
+            }
+            Command::Import { path } => {
+                let imported = self.db.import_from(Path::new(&path))?;
+                self.reload()?;
+                return success(t!(
+                    "action.imported",
+                    apps = imported.apps,
+                    sessions = imported.sessions
+                ));
+            }
             Command::Update => {
                 if self.update_running {
                     bail!(t!("update.running"));

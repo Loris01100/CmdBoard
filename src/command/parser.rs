@@ -67,6 +67,13 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("lang", [code]) => Ok(Command::Lang {
             code: Some(code.clone()),
         }),
+        ("export", []) => Ok(Command::Export { path: None }),
+        ("export", [_, ..]) => Ok(Command::Export {
+            path: Some(rest.join(" ")),
+        }),
+        ("import", [_, ..]) => Ok(Command::Import {
+            path: rest.join(" "),
+        }),
         ("update", []) => Ok(Command::Update),
         ("help", []) => Ok(Command::Help { command: None }),
         ("help", [command]) => Ok(Command::Help {
@@ -223,6 +230,19 @@ mod tests {
                     code: Some(s("EN")),
                 },
             ),
+            ("export", Command::Export { path: None }),
+            (
+                r"export D:\Mes sauvegardes\cmdboard.json",
+                Command::Export {
+                    path: Some(s(r"D:\Mes sauvegardes\cmdboard.json")),
+                },
+            ),
+            (
+                r#"import "C:\Users\Me\cmdboard.json""#,
+                Command::Import {
+                    path: s(r"C:\Users\Me\cmdboard.json"),
+                },
+            ),
             ("update", Command::Update),
             ("help", Command::Help { command: None }),
             (
@@ -255,6 +275,7 @@ mod tests {
             ),
             ("quit now", "Usage : quit"),
             ("update now", "Usage : update"),
+            ("import", "Usage : import <fichier>"),
             (
                 "sort size",
                 "Tri inconnu : size (usage : sort [name|xp|recent|time])",

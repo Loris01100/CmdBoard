@@ -1,3 +1,4 @@
+mod backup;
 pub mod db;
 pub mod models;
 mod queries;
