@@ -10,7 +10,7 @@ use crate::app::App;
 use crate::optimize::Bench;
 use crate::storage::{models::Activity, unix_now};
 use crate::ui::{
-    layout,
+    icons, layout,
     screens::optimize::format_score,
     widgets::{
         app_table, category_list, command_line, format_ago, format_clock, format_duration,
@@ -61,7 +61,10 @@ fn session_line(app: &App) -> Line<'static> {
     sessions.sort_by_key(|(_, started)| *started);
     let mut spans = Vec::new();
     for (entry, started) in sessions {
-        spans.push(Span::styled("▶ ", Style::new().fg(theme.success)));
+        spans.push(Span::styled(
+            format!("{} ", icons::SESSION),
+            Style::new().fg(theme.success),
+        ));
         spans.push(Span::raw(format!("{} ", entry.name)));
         spans.push(Span::styled(
             format!("{}  ", format_clock(started.elapsed().as_secs())),
@@ -113,7 +116,11 @@ fn render_details(frame: &mut Frame, area: Rect, app: &App) {
             time = format_duration(entry.total_secs)
         )),
         Line::from(t!("dashboard.last", last)),
-        Line::from(t!("dashboard.rewards", count = entry.rewards)),
+        Line::from(t!(
+            "dashboard.rewards",
+            icon = icons::TROPHY,
+            count = entry.rewards
+        )),
         Line::from(""),
         Line::styled(
             t!("dashboard.target", target = entry.launch_target),
@@ -146,7 +153,10 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
     for event in &app.activity {
         let at = match event {
             Activity::Session { app, secs, xp, at } => {
-                spans.push(Span::styled("▶ ", Style::new().fg(theme.success)));
+                spans.push(Span::styled(
+                    format!("{} ", icons::SESSION),
+                    Style::new().fg(theme.success),
+                ));
                 spans.push(Span::raw(t!(
                     "dashboard.activity_session",
                     name = app,
@@ -156,7 +166,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
                 at
             }
             Activity::Reward { name, at } => {
-                spans.push(Span::styled("🏆 ", Style::new().fg(theme.warning)));
+                spans.push(Span::raw(format!("{} ", icons::TROPHY)));
                 spans.push(Span::styled(name.clone(), theme.title));
                 at
             }
@@ -169,7 +179,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
     }
     for bench in Bench::ALL {
         if let Some((_, Ok(score))) = app.bench_results.get(&bench) {
-            spans.push(Span::styled("⚡ ", Style::new().fg(theme.info)));
+            spans.push(Span::raw(format!("{} ", icons::BENCH)));
             spans.push(Span::raw(format!(
                 "{} {}",
                 bench.label(),

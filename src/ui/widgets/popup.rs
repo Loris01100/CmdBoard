@@ -8,6 +8,7 @@ use ratatui::{
 
 use crate::app::App;
 use crate::popup::{Form, LevelUp, Picker, Popup, RewardUnlocked};
+use crate::ui::icons;
 
 const MAX_WIDTH: u16 = 64;
 
@@ -31,7 +32,7 @@ fn render_reward(frame: &mut Frame, reward: &RewardUnlocked, app: &App) {
     let mut text = vec![
         Line::styled(t!("popup.reward_unlocked"), accent_style).centered(),
         Line::from(""),
-        Line::styled(format!("🏆 {}", reward.name), theme.title).centered(),
+        Line::styled(format!("{} {}", icons::TROPHY, reward.name), theme.title).centered(),
         Line::from(reward.description.clone()).centered(),
     ];
     if let Some(app_name) = &reward.app {
@@ -68,7 +69,7 @@ fn render_level_up(frame: &mut Frame, level_up: &LevelUp, app: &App) {
     let accent_style = Style::new().fg(accent).add_modifier(Modifier::BOLD);
 
     let mut text = vec![
-        Line::styled(t!("popup.level_up"), accent_style).centered(),
+        Line::styled(t!("popup.level_up", icon = icons::STAR), accent_style).centered(),
         Line::from(""),
     ];
     if let Some(level) = level_up.app_level {

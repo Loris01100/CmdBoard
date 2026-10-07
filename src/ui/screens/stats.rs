@@ -13,7 +13,7 @@ use ratatui::{
 use crate::app::App;
 use crate::storage::models::ACTIVITY_DAYS;
 use crate::ui::{
-    layout,
+    icons, layout,
     widgets::{command_line, format_duration, status_bar},
 };
 
@@ -161,7 +161,7 @@ fn render_pie(frame: &mut Frame, area: Rect, app: &App, title: &str, data: &[(St
         .enumerate()
         .map(|(i, ((_, secs), name))| {
             Line::from(vec![
-                Span::styled("● ", Style::new().fg(color(i))),
+                Span::styled(format!("{} ", icons::DOT), Style::new().fg(color(i))),
                 Span::raw(format!("{:pad$}", ellipsis(name, pad))),
                 Span::styled(
                     format!(
@@ -207,7 +207,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
     let (daily, today) = (&app.stats.daily, app.stats.today);
     let weekday = (today + 3).rem_euclid(7); // 0 = Monday
     // Same square everywhere, the color tells the time played.
-    let cell = |secs: u64| ("■", theme.heat(level(secs)));
+    let cell = |secs: u64| (icons::SQUARE, theme.heat(level(secs)));
 
     // Bottom border: what each color means, in time played.
     let mut legend = vec![Span::raw(" ")];
@@ -217,7 +217,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
             n if n <= HEAT_STEPS.len() => format!("<{}", format_duration(HEAT_STEPS[n - 1])),
             _ => format!("≥{}", format_duration(HEAT_STEPS[HEAT_STEPS.len() - 1])),
         };
-        legend.push(Span::styled("■ ", theme.heat(n)));
+        legend.push(Span::styled(format!("{} ", icons::SQUARE), theme.heat(n)));
         legend.push(Span::styled(format!("{label}  "), theme.muted()));
     }
     let block = theme

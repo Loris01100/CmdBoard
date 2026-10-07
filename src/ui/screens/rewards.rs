@@ -9,7 +9,7 @@ use ratatui::{
 use crate::app::App;
 use crate::storage::models::RewardView;
 use crate::ui::{
-    layout,
+    icons, layout,
     widgets::{command_line, status_bar},
 };
 
@@ -35,9 +35,9 @@ pub fn draw(frame: &mut Frame, app: &App) {
     .style(theme.title);
     let rows = app.rewards.iter().map(|reward| {
         let (icon, style) = if reward.unlocks.is_empty() {
-            ("🔒", theme.muted())
+            (icons::LOCK, theme.muted())
         } else {
-            ("🏆", Style::new())
+            (icons::TROPHY, Style::new())
         };
         Row::new([
             Cell::from(icon),

@@ -372,6 +372,8 @@ Chaque widget est une fonction `render(frame, area, &app)` ou une struct implém
 
 ---
 
+**Icônes** : toutes dans `ui/icons.rs` (constantes : session ▶, trophée 🏆, cadenas 🔒, benchmark ⚡, étoile ★, puce ●, carré ■), jamais en dur dans les widgets ni dans les traductions (placeholder `{icon}`). Les emojis gardent leurs propres couleurs ; les symboles texte prennent celles du thème.
+
 ## 10. Thème
 
 Un `Theme` unique, jamais de couleur codée en dur dans les widgets. Thèmes de référence : **[Catppuccin](https://catppuccin.com/palette)** (Latte, Frappé, Macchiato, Mocha).

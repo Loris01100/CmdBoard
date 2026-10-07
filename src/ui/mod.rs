@@ -1,3 +1,4 @@
+mod icons;
 pub mod layout;
 mod screens;
 pub mod theme;
