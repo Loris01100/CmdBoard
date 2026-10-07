@@ -1,6 +1,6 @@
 [package]
 name = "cmdboard"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Terminal dashboard to launch apps and track play time, with XP and rewards"
 repository = "https://github.com/Loris01100/CmdBoard"

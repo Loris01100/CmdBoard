@@ -230,6 +230,8 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+          # Every commit and tag, for the commit list in the release notes
+          fetch-depth: 0
       - name: Install cached dist
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -273,9 +275,23 @@ jobs:
           ANNOUNCEMENT_TITLE: "${{ fromJson(steps.host.outputs.manifest).announcement_title }}"
           ANNOUNCEMENT_BODY: "${{ fromJson(steps.host.outputs.manifest).announcement_github_body }}"
           RELEASE_COMMIT: "${{ github.sha }}"
+          RELEASE_TAG: "${{ needs.plan.outputs.tag }}"
         run: |
           # Write and read notes from a file to avoid quoting breaking things
           echo "$ANNOUNCEMENT_BODY" > $RUNNER_TEMP/notes.txt
+
+          # Commits since the previous version tag (all of them for the first release)
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$RELEASE_COMMIT^" 2>/dev/null || true)
+          {
+            echo
+            echo "## Commits"
+            echo
+            git log --no-merges --pretty='- %s (%h)' "${PREVIOUS_TAG:+$PREVIOUS_TAG..}$RELEASE_COMMIT"
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo
+              echo "**Full changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$PREVIOUS_TAG...$RELEASE_TAG"
+            fi
+          } >> $RUNNER_TEMP/notes.txt
 
           gh release create "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" $PRERELEASE_FLAG --title "$ANNOUNCEMENT_TITLE" --notes-file "$RUNNER_TEMP/notes.txt" artifacts/*
 
