@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
+use rayon::prelude::*;
 use serde::Deserialize;
 
 use super::launch::watch_exe_for;
@@ -20,11 +21,11 @@ pub struct Shortcut {
 /// Every shortcut found, sorted by name, without duplicates or uninstallers.
 /// Library games come first so they win over a `.url` of the same name (no exe).
 pub fn scan() -> Vec<Shortcut> {
-    let mut found = steam_games();
-    found.extend(epic_games());
-    for dir in shortcut_dirs() {
-        walk(&dir, &mut found);
-    }
+    let (mut found, (epic, shortcuts)) =
+        rayon::join(steam_games, || rayon::join(epic_games, shortcuts));
+    found.extend(epic);
+    found.extend(shortcuts);
+    // Stable sort: dedup keeps the library game.
     found.sort_by_key(|s| s.name.to_lowercase());
     found.dedup_by_key(|s| s.name.to_lowercase());
     found
@@ -43,16 +44,24 @@ fn shortcut_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-fn walk(dir: &Path, found: &mut Vec<Shortcut>) {
+/// Start Menu and Desktop shortcuts. Listing files is cheap; parsing them runs in parallel.
+fn shortcuts() -> Vec<Shortcut> {
+    let mut files = Vec::new();
+    for dir in shortcut_dirs() {
+        walk(&dir, &mut files);
+    }
+    files.par_iter().filter_map(|p| read_shortcut(p)).collect()
+}
+
+fn walk(dir: &Path, files: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
-    for entry in entries.flatten() {
-        let path = entry.path();
+    for path in entries.flatten().map(|e| e.path()) {
         if path.is_dir() {
-            walk(&path, found);
-        } else if let Some(shortcut) = read_shortcut(&path) {
-            found.push(shortcut);
+            walk(&path, files);
+        } else {
+            files.push(path);
         }
     }
 }
@@ -129,7 +138,7 @@ fn steam_games() -> Vec<Shortcut> {
         std::fs::read_to_string(steam.join(r"steamapps\libraryfolders.vdf"))
             .map(|vdf| vdf_values(&vdf, "path").map(PathBuf::from).collect())
             .unwrap_or_else(|_| vec![steam]);
-    let mut games = Vec::new();
+    let mut manifests = Vec::new();
     for steamapps in libraries.iter().map(|lib| lib.join("steamapps")) {
         let Ok(entries) = std::fs::read_dir(&steamapps) else {
             continue;
@@ -137,12 +146,20 @@ fn steam_games() -> Vec<Shortcut> {
         for path in entries.flatten().map(|e| e.path()) {
             let name = path.file_name().unwrap_or_default().to_string_lossy();
             if name.starts_with("appmanifest_") && name.ends_with(".acf") {
-                let acf = std::fs::read_to_string(&path).unwrap_or_default();
-                games.extend(steam_game(&steamapps, &acf));
+                manifests.push((steamapps.clone(), path));
             }
         }
     }
-    games
+    // Parallel: each game walks its install folder to guess the exe.
+    manifests
+        .par_iter()
+        .filter_map(|(steamapps, path)| {
+            steam_game(
+                steamapps,
+                &std::fs::read_to_string(path).unwrap_or_default(),
+            )
+        })
+        .collect()
 }
 
 fn steam_dir() -> Option<PathBuf> {
