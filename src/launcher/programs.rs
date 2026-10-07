@@ -166,7 +166,7 @@ fn split_command(command: &str) -> (String, String) {
     (command[..end].into(), command[end..].trim().into())
 }
 
-fn wide(text: &str) -> Vec<u16> {
+pub(crate) fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain([0]).collect()
 }
 

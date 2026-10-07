@@ -34,6 +34,7 @@ use crate::launcher::{
     programs::{self, Disk, Program},
     scan::{self, Shortcut},
 };
+use crate::optimize::{self, Bench, Gaming, Score};
 use crate::popup::{Form, FormKind, LevelUp, Picker, Popup, RewardUnlocked};
 use crate::storage::{
     Database,
@@ -60,6 +61,7 @@ pub enum Screen {
     Stats,
     Rewards,
     Storage,
+    Optimize,
     Help,
 }
 
@@ -70,6 +72,7 @@ impl Screen {
             Screen::Stats => t!("screen.stats"),
             Screen::Rewards => t!("screen.rewards"),
             Screen::Storage => t!("screen.storage"),
+            Screen::Optimize => t!("screen.optimize"),
             Screen::Help => t!("screen.help"),
         }
     }
@@ -291,6 +294,20 @@ pub struct App {
     pub folders: Option<Folders>,
     /// Folder sizes measured so far, kept while browsing back and forth.
     folder_sizes: HashMap<PathBuf, u64>,
+
+    // Optimization screen, nothing saved
+    /// Read when the screen first opens.
+    pub system: Option<optimize::System>,
+    /// On or off, read each time the screen opens.
+    pub gaming: Vec<(Gaming, bool)>,
+    pub bench_state: TableState,
+    pub gaming_state: TableState,
+    /// The gaming settings have the focus instead of the benchmarks.
+    pub gaming_focus: bool,
+    pub bench_heavy: bool,
+    pub bench_running: Option<Bench>,
+    /// Last result of each benchmark, with whether it ran heavy.
+    pub bench_results: HashMap<Bench, (bool, Result<Score, String>)>,
     pub should_quit: bool,
 }
 
@@ -342,6 +359,14 @@ impl App {
             storage_scanning: false,
             folders: None,
             folder_sizes: HashMap::new(),
+            system: None,
+            gaming: Vec::new(),
+            bench_state: TableState::default().with_selected(0),
+            gaming_state: TableState::default().with_selected(0),
+            gaming_focus: false,
+            bench_heavy: false,
+            bench_running: None,
+            bench_results: HashMap::new(),
             should_quit: false,
         };
         app.reload()?;
@@ -477,6 +502,11 @@ impl App {
                 }
                 AppEvent::FolderSized { path, size } => self.on_folder_sized(path, size),
                 AppEvent::Trashed { path, result } => self.on_trashed(&path, result),
+                AppEvent::BenchFinished {
+                    bench,
+                    heavy,
+                    result,
+                } => self.on_bench_finished(bench, heavy, result),
                 AppEvent::ShortcutsScanned(found) => {
                     self.scan_running = false;
                     self.shortcuts = found;
@@ -853,10 +883,12 @@ impl App {
             KeyCode::Char('2') => Command::Show(Screen::Stats),
             KeyCode::Char('3') => Command::Show(Screen::Rewards),
             KeyCode::Char('4') => Command::Show(Screen::Storage),
-            KeyCode::Char('5') | KeyCode::Char('?') => Command::Show(Screen::Help),
+            KeyCode::Char('5') => Command::Show(Screen::Optimize),
+            KeyCode::Char('0') | KeyCode::Char('?') => Command::Show(Screen::Help),
             KeyCode::Down | KeyCode::Char('j') => Command::SelectNext,
             KeyCode::Up | KeyCode::Char('k') => Command::SelectPrev,
             _ if self.screen == Screen::Storage => self.storage_key(key)?,
+            _ if self.screen == Screen::Optimize => self.optimize_key(key)?,
             KeyCode::Tab | KeyCode::BackTab => Command::ToggleFocus,
             KeyCode::Left | KeyCode::Char('h') => Command::FocusPanel(Focus::Categories),
             KeyCode::Right | KeyCode::Char('l') => Command::FocusPanel(Focus::Apps),
@@ -937,6 +969,23 @@ impl App {
                     },
                 }
             }
+            _ => return None,
+        })
+    }
+
+    /// Optimization screen: Tab switches between benchmarks and gaming settings, Enter runs
+    /// or switches, `n` light/heavy, `o` the setting's Windows page.
+    fn optimize_key(&self, key: KeyEvent) -> Option<Command> {
+        Some(match key.code {
+            KeyCode::Tab | KeyCode::BackTab => Command::ToggleFocus,
+            KeyCode::Char('n') => Command::ToggleBenchLevel,
+            KeyCode::Enter if self.gaming_focus => {
+                Command::ToggleGaming(self.gaming.get(self.gaming_state.selected()?)?.0)
+            }
+            KeyCode::Char('o') if self.gaming_focus => {
+                Command::OpenGamingPage(self.gaming.get(self.gaming_state.selected()?)?.0)
+            }
+            KeyCode::Enter => Command::Bench(*Bench::ALL.get(self.bench_state.selected()?)?),
             _ => return None,
         })
     }
@@ -1346,6 +1395,19 @@ impl App {
     }
 
     /// Single execution path for every `Command`. Shows the outcome as a message.
+    /// Reads what the Optimization screen shows: the PC once, the gaming settings each time.
+    fn open_optimize(&mut self) {
+        if self.system.is_none() {
+            self.system = Some(optimize::system());
+        }
+        self.gaming = Gaming::ALL.iter().map(|&g| (g, g.enabled())).collect();
+    }
+
+    pub fn on_bench_finished(&mut self, bench: Bench, heavy: bool, result: Result<Score, String>) {
+        self.bench_running = None;
+        self.bench_results.insert(bench, (heavy, result));
+    }
+
     pub fn execute(&mut self, command: Command) {
         match self.run_command(command) {
             Ok(Some(message)) => self.message = Some(message),
@@ -1362,10 +1424,16 @@ impl App {
                 if screen == Screen::Storage {
                     self.start_storage_scan();
                 }
+                if screen == Screen::Optimize {
+                    self.open_optimize();
+                }
             }
             Command::SelectNext => self.move_selection(true),
             Command::SelectPrev => self.move_selection(false),
             Command::FocusPanel(focus) => self.focus = focus,
+            Command::ToggleFocus if self.screen == Screen::Optimize => {
+                self.gaming_focus = !self.gaming_focus
+            }
             Command::ToggleFocus => {
                 self.focus = match self.focus {
                     Focus::Categories => Focus::Apps,
@@ -1373,6 +1441,42 @@ impl App {
                 }
             }
             Command::ToggleStatsPie => self.stats_by_app = !self.stats_by_app,
+            Command::ToggleBenchLevel => self.bench_heavy = !self.bench_heavy,
+            Command::Bench(bench) => {
+                if self.bench_running.is_some() {
+                    bail!(t!("optimize.busy"));
+                }
+                let Some(events) = self.events.clone() else {
+                    return Ok(None);
+                };
+                self.bench_running = Some(bench);
+                let heavy = self.bench_heavy;
+                std::thread::spawn(move || {
+                    let result = optimize::run(bench, heavy);
+                    let _ = events.send(AppEvent::BenchFinished {
+                        bench,
+                        heavy,
+                        result,
+                    });
+                });
+            }
+            Command::ToggleGaming(setting) if !setting.switchable() => {
+                return self.run_command(Command::OpenGamingPage(setting));
+            }
+            Command::ToggleGaming(setting) => {
+                let on = !setting.enabled();
+                setting.set(on).context(t!("optimize.set_failed"))?;
+                self.open_optimize();
+                let state = if on {
+                    t!("optimize.on")
+                } else {
+                    t!("optimize.off")
+                };
+                return success(t!("optimize.switched", name = setting.label(), state));
+            }
+            Command::OpenGamingPage(setting) => {
+                opener::open(setting.page()).context(t!("optimize.open_failed"))?;
+            }
             Command::CycleDisk { forward } => {
                 // `None` (every drive) sits before the first drive.
                 let mut choices = vec![None];
@@ -1851,6 +1955,15 @@ impl App {
                 self.storage_state.select(next);
                 return;
             }
+            Screen::Optimize => {
+                let (state, len) = if self.gaming_focus {
+                    (&mut self.gaming_state, self.gaming.len())
+                } else {
+                    (&mut self.bench_state, Bench::ALL.len())
+                };
+                state.select(step(state.selected(), len, forward));
+                return;
+            }
             Screen::Dashboard | Screen::Help => {}
         }
         match self.focus {
@@ -2059,7 +2172,7 @@ mod tests {
         press(&mut app, KeyCode::Esc); // never run a real uninstaller in tests
         run(&mut app, "uninstall nope");
         assert_eq!(message_kind(&app), Some(MsgKind::Error));
-        press(&mut app, KeyCode::Char('5'));
+        press(&mut app, KeyCode::Char('0'));
         assert_eq!(app.screen, Screen::Help);
     }
 
@@ -2794,6 +2907,29 @@ mod tests {
         );
         assert_eq!(message_kind(&app), Some(MsgKind::Success));
         assert_eq!(app.update_available, None);
+    }
+
+    #[test]
+    fn optimize_screen_keys() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char('5'));
+        assert_eq!(app.screen, Screen::Optimize);
+        assert!(app.system.is_some() && app.gaming.len() == Gaming::ALL.len());
+        press(&mut app, KeyCode::Char('n'));
+        assert!(app.bench_heavy);
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.bench_state.selected(), Some(1));
+        press(&mut app, KeyCode::Tab);
+        press(&mut app, KeyCode::Char('k'));
+        assert!(app.gaming_focus);
+        assert_eq!(app.gaming_state.selected(), Some(Gaming::ALL.len() - 1));
+        assert_eq!(app.bench_state.selected(), Some(1));
+        // No event channel in tests: the benchmark thread does not start.
+        app.execute(Command::Bench(Bench::CpuSingle));
+        assert_eq!(app.bench_running, None);
+        app.bench_running = Some(Bench::Disk);
+        app.execute(Command::Bench(Bench::CpuSingle));
+        assert_eq!(message_kind(&app), Some(MsgKind::Error));
     }
 
     #[test]

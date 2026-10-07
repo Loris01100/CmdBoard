@@ -8,6 +8,7 @@ mod core;
 mod event;
 mod fuzzy;
 mod launcher;
+mod optimize;
 mod popup;
 mod storage;
 mod text_input;

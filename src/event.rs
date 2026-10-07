@@ -62,6 +62,12 @@ pub enum AppEvent {
         path: std::path::PathBuf,
         result: Result<(), String>,
     },
+    /// A benchmark of the Optimization screen finished (sent by a short-lived thread).
+    BenchFinished {
+        bench: crate::optimize::Bench,
+        heavy: bool,
+        result: Result<crate::optimize::Score, String>,
+    },
 }
 
 /// Reads the keyboard and sends a `Tick` every `TICK`. Stops once the UI thread is gone.

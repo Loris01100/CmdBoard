@@ -36,6 +36,15 @@ pub enum Command {
         confirmed: bool,
     },
 
+    /// Optimization screen: runs a benchmark at the current level, in a thread.
+    Bench(crate::optimize::Bench),
+    /// Optimization screen: light or heavy benchmarks.
+    ToggleBenchLevel,
+    /// Optimization screen: switches a gaming setting, or opens its Windows page.
+    ToggleGaming(crate::optimize::Gaming),
+    /// Optimization screen: opens the Windows page of a gaming setting.
+    OpenGamingPage(crate::optimize::Gaming),
+
     // actions, also available from the command line
     Launch {
         app: String,

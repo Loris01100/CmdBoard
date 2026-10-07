@@ -102,7 +102,7 @@ unlocked_rewards(id, reward_id, app_id NULL, unlocked_at, session_id)
 ## 4. Modèle d'état
 
 ```rust
-pub enum Screen { Dashboard, Stats, Rewards, Storage, Help }
+pub enum Screen { Dashboard, Stats, Rewards, Storage, Optimize, Help }
 
 pub enum Mode {
     Normal,
@@ -153,6 +153,7 @@ pub enum AppEvent {
     FolderProgress { path, percent },         // explorateur : % des enfants d'un sous-dossier mesurés
     FolderSized { path, size },               // explorateur : un sous-dossier mesuré
     Trashed { path, result },                 // explorateur : envoi à la corbeille
+    BenchFinished { bench, heavy, result },   // écran Optimisation : un test terminé
 }
 
 fn run(&mut self, terminal: &mut DefaultTerminal, events: &Receiver<AppEvent>) -> Result<()> {
@@ -263,8 +264,8 @@ Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le pa
 | Normal | `Enter` | `Command::Launch` (sur les catégories : passe au panneau apps) |
 | Normal | `:` | Ouvre la ligne de commande |
 | Normal | `/` | Recherche floue parmi toutes les apps (`Mode::Search`) |
-| Normal | `1 2 3 4 5` | Changer d'écran : Dashboard, Stats, Récompenses, Stockage, Aide |
-| Normal | `?` | Aide |
+| Normal | `1 2 3 4 5` | Changer d'écran : Dashboard, Stats, Récompenses, Stockage, Optimisation |
+| Normal | `0` / `?` | Aide |
 | Normal | `a` / `m` | Formulaire d'ajout / de déplacement de l'app sélectionnée |
 | Normal | `d` | Supprimer l'app sélectionnée, ou la catégorie si le focus y est (vide uniquement) |
 | Normal | `s` | Tri suivant des apps (`Command::Sort`) : nom, XP, récent, temps |
@@ -276,6 +277,9 @@ Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le pa
 | Normal (Stockage, dossiers) | `Entrée` `→` `l` / `Backspace` `←` `h` | Ouvrir le dossier (`Command::OpenFolder`) / remonter, puis revenir aux disques (`Command::ParentFolder`) |
 | Normal (Stockage, dossiers) | `s` | Plus gros ↔ plus petits d'abord |
 | Normal (Stockage, dossiers) | `d` / `Suppr` | Dossier d'un programme : `Command::Uninstall` ; sinon `Command::Trash` (corbeille, confirmation) |
+| Normal (Optimisation) | `Tab` | Tests ↔ réglages Gaming (`Command::ToggleFocus`, état `gaming_focus`) |
+| Normal (Optimisation) | `Entrée` | Lancer le test sélectionné (`Command::Bench`) / basculer le réglage (`Command::ToggleGaming`) |
+| Normal (Optimisation) | `n` / `o` | Tests légers ↔ lourds (`Command::ToggleBenchLevel`) / page Windows du réglage (`Command::OpenGamingPage`) |
 | Command | `Enter` / `Esc` | Valider / annuler |
 | Command | `↑↓` / `Tab` `Shift-Tab` | Historique / autocomplétion |
 | Search | saisie | Filtre le panneau Applications (toutes catégories, meilleur résultat en tête et sélectionné) |
@@ -339,7 +343,8 @@ let cols = Layout::horizontal([
 - **Rewards** : tableau des récompenses (🏆 débloquées en couleur, 🔒 verrouillées en gris), titre « Récompenses (n/total) », sélection propre (`reward_state`, `j`/`k`). Un panneau Détail montre la portée, la condition (`rule`) et qui l'a débloquée, et quand.
 - **Stockage** (`4`) : en haut, une jauge par disque (`LineGauge`, % utilisé ; `success`, `warning` dès 75 %, `error` dès 90 %) avec utilisé / total / libre ; le disque filtré est marqué `>`. En dessous, les programmes installés (nom, taille, disque, éditeur), triés par taille (plus gros d'abord par défaut, tailles inconnues toujours à la fin, égalités par nom), sur un disque ou tous. Sélection propre (`storage_state`, `j`/`k`), filtre `storage_disk`, ordre `storage_ascending`, non mémorisés. Les données viennent de `launcher/programs.rs` : disques via `sysinfo::Disks`, programmes via les clés `HKLM\...\CurrentVersion\Uninstall` (vues 64 et 32 bits) et `HKCU` (ce que lit « Applications installées » de Windows), lues avec l'API registre de `windows-sys` (Unicode, sans lancer `reg`). Sont écartés : `SystemComponent = 1`, mises à jour (`ParentKeyName`, `ReleaseType` Update/Hotfix), entrées sans `DisplayName` ou `UninstallString` ; doublons par nom. Taille = `EstimatedSize` (déclarée par l'installeur, parfois absente ou approximative : pas de calcul de dossier pour l'instant). Disque = lettre de `InstallLocation`, sinon de `DisplayIcon` ; beaucoup de MSI n'en ont pas et n'apparaissent que sous « tous les disques ». Les apps du Store (MSIX) ne sont pas listées. Lecture dans un thread temporaire (`AppEvent::StorageScanned`) au démarrage (pour la complétion de `:uninstall`) et à chaque ouverture de l'écran. **Désinstallation** : `UninstallString` découpée en exe + arguments (exe entre guillemets, ou chemin non cité jusqu'à `.exe`), lancée par `ShellExecuteW` pour que Windows demande l'élévation (UAC) si besoin. CmdBoard n'attend pas la fin : rouvrir l'écran (`4`) actualise la liste. Disques masqués sous 12 lignes de corps.
 - **Stockage, explorateur** (`f`) : remplace la liste des programmes (état `App::folders`, `None` = vue programmes). Part du disque filtré, sinon de la liste des disques (taille = espace utilisé). Rien n'est mesuré à l'avance : ouvrir un dossier le lit dans un thread temporaire (`FolderListed` : fichiers avec leur taille, sous-dossiers à « … »), puis mesure chaque sous-dossier en parallèle (rayon ; `FolderProgress` affiche à la place de « … » le % de ses enfants directs déjà mesurés ; `FolderSized` un par un, la liste se retrie et la sélection suit son élément). Quitter le dossier arrête ses mesures (`AtomicBool` d'annulation). Les tailles mesurées restent en cache (`folder_sizes`) le temps de la session, pour remonter et redescendre sans tout recompter ; un envoi à la corbeille invalide l'élément et ses dossiers parents. Taille = somme des tailles logiques des fichiers (pas la taille sur disque) ; dossiers illisibles comptés vides ; liens symboliques et jonctions ignorés (certains bouclent, comme `Application Data`). Une colonne « Programme » signale le dossier d'installation d'un programme (`InstallLocation`) : `d` le désinstalle au lieu de le supprimer. Ailleurs, `d` envoie fichier ou dossier à la corbeille (`SHFileOperationW`, `FOF_ALLOWUNDO`, Windows prévient si l'élément est trop gros pour la corbeille), dans un thread temporaire (`Trashed`). Les disques eux-mêmes ne se suppriment pas.
-- **Help** : commandes et raccourcis, générés à partir du parser.
+- **Optimisation** (`5`, `src/optimize.rs`) : rien n'est enregistré ni ne rapporte d'XP. En haut, le strict nécessaire pour lire les scores (processeur avec cœurs / threads, mémoire totale, via `sysinfo`, lu à la première ouverture ; masqué sous 14 lignes de corps). Puis deux tableaux, côte à côte dès 90 colonnes, sinon empilés : **Tests** (CPU 1 cœur et tous les cœurs : pas xorshift pendant 3 s / 15 s, en M op/s ; mémoire : copie d'un tampon de 256 Mo / 1 Go pendant 3 s / 15 s, allocation via `try_reserve_exact` pour échouer proprement ; disque : écriture puis lecture d'un fichier de 256 Mo / 2 Go dans `%TEMP%` sans cache Windows (`FILE_FLAG_NO_BUFFERING`, tampon aligné sur 4 Kio), refusé sous deux fois sa taille d'espace libre, fichier supprimé ensuite). Un test à la fois, dans un thread temporaire (`BenchFinished`) ; le dernier résultat de chaque test reste affiché avec son niveau, le temps de la session. **Gaming** : Mode Jeu (`HKCU\Software\Microsoft\GameBar\AutoGameModeEnabled`), enregistrement en arrière-plan (`HKCU\System\GameConfigStore\GameDVR_Enabled` et `...\CurrentVersion\GameDVR\AppCaptureEnabled`), lus à chaque ouverture (valeur absente = défaut Windows, activé) et basculés par `Entrée` via `RegSetKeyValueW`. La planification GPU (`HKLM\...\GraphicsDrivers\HwSchMode`, 2 = activée) n'est que lue : elle demande les droits admin et un redémarrage, `Entrée` ouvre donc sa page `ms-settings:`. GPU non testé (demanderait une dépendance graphique).
+- **Help** (`0` ou `?`) : commandes et raccourcis, générés à partir du parser.
 
 ### Responsive
 

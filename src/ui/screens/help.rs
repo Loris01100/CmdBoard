@@ -12,7 +12,7 @@ use crate::ui::{
     widgets::{command_line, status_bar},
 };
 
-fn keys() -> [(String, String); 10] {
+fn keys() -> [(String, String); 11] {
     [
         ("j/k ↑↓".into(), t!("help.navigate")),
         ("Tab ←→ h/l".into(), t!("help.panel")),
@@ -21,8 +21,9 @@ fn keys() -> [(String, String); 10] {
         ("s".into(), t!("help.sort")),
         ("/".into(), t!("help.search")),
         ("Tab s d f".into(), t!("help.storage")),
+        ("Tab n o".into(), t!("help.optimize")),
         (":".into(), t!("help.command")),
-        ("1 2 3 4 5 ?".into(), t!("help.screens")),
+        ("1-5  0 ?".into(), t!("help.screens")),
         ("q  Ctrl-C".into(), t!("help.quit")),
     ]
 }

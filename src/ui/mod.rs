@@ -15,6 +15,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         Screen::Rewards => screens::rewards::draw(frame, app),
         Screen::Stats => screens::stats::draw(frame, app),
         Screen::Storage => screens::storage::draw(frame, app),
+        Screen::Optimize => screens::optimize::draw(frame, app),
     }
     if let Mode::Popup(popup) = &app.mode {
         widgets::popup::render(frame, popup, app);
@@ -34,6 +35,7 @@ mod tests {
             Screen::Stats,
             Screen::Rewards,
             Screen::Storage,
+            Screen::Optimize,
             Screen::Help,
         ] {
             app.screen = screen;
@@ -115,6 +117,7 @@ mod tests {
                 Screen::Stats,
                 Screen::Rewards,
                 Screen::Storage,
+                Screen::Optimize,
                 Screen::Help,
             ] {
                 app.screen = screen;
