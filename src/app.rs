@@ -1441,7 +1441,7 @@ impl App {
             }
             Command::ToggleGaming(setting) => return self.toggle_gaming(setting),
             Command::OpenGamingPage(setting) => {
-                opener::open(setting.page()).context(t!("optimize.open_failed"))?;
+                opener::open(setting.page()).with_context(|| t!("optimize.open_failed"))?;
             }
             Command::CycleDisk { forward } => {
                 // `None` (every drive) sits before the first drive.
@@ -1715,7 +1715,7 @@ impl App {
 
     fn toggle_gaming(&mut self, setting: Gaming) -> anyhow::Result<Option<Message>> {
         let on = !setting.enabled();
-        setting.set(on).context(t!("optimize.set_failed"))?;
+        setting.set(on).with_context(|| t!("optimize.set_failed"))?;
         self.open_optimize();
         let state = if on {
             t!("optimize.on")
