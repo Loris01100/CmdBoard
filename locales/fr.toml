@@ -12,7 +12,15 @@ app_count = "{count} app(s)"
 dashboard = "Dashboard"
 stats = "Stats"
 rewards = "Récompenses"
+storage = "Stockage"
 help = "Aide"
+
+[size]
+decimal = ","
+kb = "{n} Ko"
+mb = "{n} Mo"
+gb = "{n} Go"
+tb = "{n} To"
 
 [sort]
 name = "nom"
@@ -224,6 +232,24 @@ locked = "verrouillée"
 condition = "Condition : "
 unlocked_on = "Débloquée : "
 
+[storage]
+disks = "Disques"
+disk_usage = "{used} / {total} · {free} libres"
+all_disks = "tous les disques"
+biggest_first = "plus gros d'abord"
+smallest_first = "plus petits d'abord"
+programs = "Programmes · {drive} · {order} ({count})"
+scanning = "Lecture des programmes installés…"
+none = "Aucun programme"
+name = "Nom"
+size = "Taille"
+drive = "Disque"
+publisher = "Éditeur"
+unknown_program = "programme inconnu : {name}"
+confirm_uninstall = "Désinstaller « {name} » ? Son propre désinstalleur va se lancer."
+uninstalling = "Désinstalleur de {name} lancé (4 pour actualiser une fois fini)"
+uninstall_failed = "impossible de lancer le désinstalleur de {name} (refusé ou introuvable)"
+
 [stats]
 one_app = " {name} (:stats pour tout voir)"
 all_apps = " Toutes les apps"
@@ -264,6 +290,9 @@ edit = "ajouter/déplacer/suppr."
 search = "chercher"
 command = "commande"
 screens = "écrans"
+disk = "disque"
+order = "ordre"
+uninstall = "désinstaller"
 quit = "quitter"
 
 [help]
@@ -277,7 +306,8 @@ edit = "ajouter / déplacer / supprimer (app ou catégorie vide)"
 sort = "changer le tri des apps (nom, XP, récent, temps) ; Stats : camembert par catégorie ou par app"
 search = "chercher une app dans toutes les catégories (Entrée : y aller)"
 command = "ligne de commande (↑↓ historique, Tab compléter, Esc annuler)"
-screens = "Dashboard, Stats, Récompenses, Aide"
+screens = "Dashboard, Stats, Récompenses, Stockage, Aide"
+storage = "Stockage : Tab/←→ choisit le disque, s plus petits/plus gros d'abord, d/Suppr désinstalle"
 quit = "quitter"
 
 [cmd.launch]
@@ -331,6 +361,10 @@ summary = 'Sauvegarde apps et sessions en JSON (par défaut : Documents\cmdboard
 [cmd.import]
 usage = "import <fichier>"
 summary = "Fusionne un export : ajoute les apps et sessions manquantes, ne supprime rien"
+
+[cmd.uninstall]
+usage = "uninstall <programme>"
+summary = "Lance le désinstalleur d'un programme, après confirmation (écran Stockage)"
 
 [cmd.update]
 usage = "update"

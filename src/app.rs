@@ -25,6 +25,7 @@ use crate::fuzzy;
 use crate::i18n;
 use crate::launcher::{
     launch,
+    programs::{self, Disk, Program},
     scan::{self, Shortcut},
 };
 use crate::popup::{Form, FormKind, LevelUp, Picker, Popup, RewardUnlocked};
@@ -52,6 +53,7 @@ pub enum Screen {
     Dashboard,
     Stats,
     Rewards,
+    Storage,
     Help,
 }
 
@@ -61,6 +63,7 @@ impl Screen {
             Screen::Dashboard => t!("screen.dashboard"),
             Screen::Stats => t!("screen.stats"),
             Screen::Rewards => t!("screen.rewards"),
+            Screen::Storage => t!("screen.storage"),
             Screen::Help => t!("screen.help"),
         }
     }
@@ -251,6 +254,16 @@ pub struct App {
     /// Installed apps for the "add app" picker, rescanned each time it opens.
     pub shortcuts: Vec<Shortcut>,
     pub scan_running: bool,
+
+    // Storage screen, rescanned each time it opens
+    pub disks: Vec<Disk>,
+    pub programs: Vec<Program>,
+    pub storage_state: TableState,
+    /// Programs of this drive only; `None`: every drive.
+    pub storage_disk: Option<char>,
+    /// Smallest programs first instead of biggest.
+    pub storage_ascending: bool,
+    pub storage_scanning: bool,
     pub should_quit: bool,
 }
 
@@ -294,6 +307,12 @@ impl App {
             update_available: None,
             shortcuts: Vec::new(),
             scan_running: false,
+            disks: Vec::new(),
+            programs: Vec::new(),
+            storage_state: TableState::default(),
+            storage_disk: None,
+            storage_ascending: false,
+            storage_scanning: false,
             should_quit: false,
         };
         app.reload()?;
@@ -382,6 +401,8 @@ impl App {
             update::spawn(events.clone(), update::Action::Check);
         }
         self.events = Some(events);
+        // So that `:uninstall` completes from any screen.
+        self.start_storage_scan();
     }
 
     fn send_watch_list(&self) {
@@ -417,6 +438,9 @@ impl App {
                 AppEvent::SessionEnded { app_id, secs } => self.on_session_end(app_id, secs),
                 AppEvent::UpdateFinished { action, result } => {
                     self.on_update_finished(action, result)
+                }
+                AppEvent::StorageScanned { disks, programs } => {
+                    self.on_storage_scanned(disks, programs)
                 }
                 AppEvent::ShortcutsScanned(found) => {
                     self.scan_running = false;
@@ -793,9 +817,11 @@ impl App {
             KeyCode::Char('1') => Command::Show(Screen::Dashboard),
             KeyCode::Char('2') => Command::Show(Screen::Stats),
             KeyCode::Char('3') => Command::Show(Screen::Rewards),
-            KeyCode::Char('4') | KeyCode::Char('?') => Command::Show(Screen::Help),
+            KeyCode::Char('4') => Command::Show(Screen::Storage),
+            KeyCode::Char('5') | KeyCode::Char('?') => Command::Show(Screen::Help),
             KeyCode::Down | KeyCode::Char('j') => Command::SelectNext,
             KeyCode::Up | KeyCode::Char('k') => Command::SelectPrev,
+            _ if self.screen == Screen::Storage => self.storage_key(key)?,
             KeyCode::Tab | KeyCode::BackTab => Command::ToggleFocus,
             KeyCode::Left | KeyCode::Char('h') => Command::FocusPanel(Focus::Categories),
             KeyCode::Right | KeyCode::Char('l') => Command::FocusPanel(Focus::Apps),
@@ -824,6 +850,27 @@ impl App {
                     confirmed: false,
                 },
             },
+            _ => return None,
+        })
+    }
+
+    /// Storage screen: Tab/←→ pick the drive, `s` the order, `d`/Del uninstall.
+    fn storage_key(&self, key: KeyEvent) -> Option<Command> {
+        Some(match key.code {
+            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
+                Command::CycleDisk { forward: true }
+            }
+            KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
+                Command::CycleDisk { forward: false }
+            }
+            KeyCode::Char('s') => Command::ToggleStorageOrder,
+            KeyCode::Char('d') | KeyCode::Delete => {
+                let i = self.storage_state.selected()?;
+                Command::Uninstall {
+                    program: self.visible_programs().get(i)?.name.clone(),
+                    confirmed: false,
+                }
+            }
             _ => return None,
         })
     }
@@ -903,6 +950,52 @@ impl App {
         std::thread::spawn(move || {
             let _ = events.send(AppEvent::ShortcutsScanned(scan::scan()));
         });
+    }
+
+    /// Reads the disks and installed programs in a short-lived thread.
+    fn start_storage_scan(&mut self) {
+        let Some(events) = self.events.clone() else {
+            return;
+        };
+        if self.storage_scanning {
+            return;
+        }
+        self.storage_scanning = true;
+        std::thread::spawn(move || {
+            let (disks, programs) = rayon::join(programs::disks, programs::installed);
+            let _ = events.send(AppEvent::StorageScanned { disks, programs });
+        });
+    }
+
+    pub fn on_storage_scanned(&mut self, disks: Vec<Disk>, programs: Vec<Program>) {
+        self.storage_scanning = false;
+        self.disks = disks;
+        self.programs = programs;
+        if self
+            .storage_disk
+            .is_some_and(|letter| !self.disks.iter().any(|d| d.letter == letter))
+        {
+            self.storage_disk = None; // drive unplugged
+        }
+        let visible = self.visible_programs().len();
+        self.storage_state
+            .select(clamp(self.storage_state.selected(), visible));
+    }
+
+    /// Programs of the chosen drive, by size (unknown sizes last), ties by name.
+    pub fn visible_programs(&self) -> Vec<&Program> {
+        let mut list: Vec<&Program> = self
+            .programs
+            .iter()
+            .filter(|p| self.storage_disk.is_none() || p.drive == self.storage_disk)
+            .collect();
+        // `programs` is sorted by name and the sort is stable.
+        list.sort_by(|a, b| match (a.size, b.size) {
+            (Some(x), Some(y)) if self.storage_ascending => x.cmp(&y),
+            (Some(x), Some(y)) => y.cmp(&x),
+            (a, b) => b.is_some().cmp(&a.is_some()),
+        });
+        list
     }
 
     /// Installed apps matching the picker's query, best first, minus the ones already added.
@@ -1002,6 +1095,7 @@ impl App {
             aliases: self.aliases.names().collect(),
             apps: self.apps.iter().map(|a| a.name.as_str()).collect(),
             categories: self.categories.iter().map(|c| c.name.as_str()).collect(),
+            programs: self.programs.iter().map(|p| p.name.as_str()).collect(),
         };
         self.command_line
             .complete(|text| complete::complete(text, &sources), forward);
@@ -1055,7 +1149,12 @@ impl App {
     fn run_command(&mut self, command: Command) -> anyhow::Result<Option<Message>> {
         let success = |text: String| Ok(Some((text, MsgKind::Success)));
         match command {
-            Command::Show(screen) => self.screen = screen,
+            Command::Show(screen) => {
+                self.screen = screen;
+                if screen == Screen::Storage {
+                    self.start_storage_scan();
+                }
+            }
             Command::SelectNext => self.move_selection(true),
             Command::SelectPrev => self.move_selection(false),
             Command::FocusPanel(focus) => self.focus = focus,
@@ -1066,6 +1165,19 @@ impl App {
                 }
             }
             Command::ToggleStatsPie => self.stats_by_app = !self.stats_by_app,
+            Command::CycleDisk { forward } => {
+                // `None` (every drive) sits before the first drive.
+                let mut choices = vec![None];
+                choices.extend(self.disks.iter().map(|d| Some(d.letter)));
+                let current = choices.iter().position(|&c| c == self.storage_disk);
+                let next = step(current, choices.len(), forward).unwrap_or(0);
+                self.storage_disk = choices[next];
+                self.reset_storage_selection();
+            }
+            Command::ToggleStorageOrder => {
+                self.storage_ascending = !self.storage_ascending;
+                self.reset_storage_selection();
+            }
             Command::Quit => self.should_quit = true,
 
             Command::Launch { app } => {
@@ -1165,6 +1277,27 @@ impl App {
                 self.db.delete_category(id)?;
                 self.reload()?;
                 return success(t!("action.category_removed", name));
+            }
+            Command::Uninstall { program, confirmed } => {
+                let lower = program.to_lowercase();
+                let found = self
+                    .programs
+                    .iter()
+                    .find(|p| p.name.to_lowercase() == lower)
+                    .with_context(|| t!("storage.unknown_program", name = program))?;
+                let name = found.name.clone();
+                if !confirmed {
+                    self.mode = Mode::Popup(Popup::Confirm {
+                        message: t!("storage.confirm_uninstall", name),
+                        command: Command::Uninstall {
+                            program: name,
+                            confirmed: true,
+                        },
+                    });
+                    return Ok(None);
+                }
+                programs::uninstall(found)?;
+                return Ok(Some((t!("storage.uninstalling", name), MsgKind::Info)));
             }
             Command::OpenForm(kind) => {
                 let form = match kind {
@@ -1448,6 +1581,12 @@ impl App {
                 self.stats_state.select(next);
                 return;
             }
+            Screen::Storage => {
+                let len = self.visible_programs().len();
+                let next = step(self.storage_state.selected(), len, forward);
+                self.storage_state.select(next);
+                return;
+            }
             Screen::Dashboard | Screen::Help => {}
         }
         match self.focus {
@@ -1467,6 +1606,11 @@ impl App {
                 self.app_state.select(next);
             }
         }
+    }
+
+    fn reset_storage_selection(&mut self) {
+        let selected = (!self.visible_programs().is_empty()).then_some(0);
+        self.storage_state = TableState::default().with_selected(selected);
     }
 
     fn reset_app_selection(&mut self) {
@@ -1582,6 +1726,67 @@ mod tests {
             app.init_sort(Some("size")).unwrap(),
             "config.toml : tri inconnu : size"
         );
+    }
+
+    #[test]
+    fn storage_sorts_filters_and_confirms_uninstall() {
+        let mut app = App::with_defaults();
+        let program = |name: &str, size: Option<u64>, drive: char| Program {
+            name: name.into(),
+            publisher: None,
+            size,
+            drive: Some(drive),
+            uninstall: "x.exe".into(),
+        };
+        let disk = |letter| Disk {
+            letter,
+            total: 100,
+            free: 50,
+        };
+        app.on_storage_scanned(
+            vec![disk('C'), disk('D')],
+            vec![
+                program("Alpha", Some(10), 'C'),
+                program("Beta", None, 'C'),
+                program("Gamma", Some(30), 'D'),
+                program("Zeta", Some(20), 'C'),
+            ],
+        );
+        let names = |app: &App| -> Vec<String> {
+            app.visible_programs()
+                .iter()
+                .map(|p| p.name.clone())
+                .collect()
+        };
+        press(&mut app, KeyCode::Char('4'));
+        assert_eq!(app.screen, Screen::Storage);
+        assert_eq!(names(&app), ["Gamma", "Zeta", "Alpha", "Beta"]);
+        press(&mut app, KeyCode::Char('s'));
+        assert_eq!(names(&app), ["Alpha", "Zeta", "Gamma", "Beta"]); // unknown stays last
+        press(&mut app, KeyCode::Tab);
+        assert_eq!(names(&app), ["Alpha", "Zeta", "Beta"]); // C:
+        press(&mut app, KeyCode::Tab);
+        press(&mut app, KeyCode::Tab);
+        assert_eq!(app.storage_disk, None); // D:, then every disk again
+        press(&mut app, KeyCode::BackTab);
+        assert_eq!(app.storage_disk, Some('D'));
+
+        press(&mut app, KeyCode::Char('d'));
+        let Mode::Popup(Popup::Confirm { command, .. }) = &app.mode else {
+            panic!("expected a confirmation, got {:?}", app.mode);
+        };
+        assert_eq!(
+            *command,
+            Command::Uninstall {
+                program: "Gamma".into(),
+                confirmed: true
+            }
+        );
+        press(&mut app, KeyCode::Esc); // never run a real uninstaller in tests
+        run(&mut app, "uninstall nope");
+        assert_eq!(message_kind(&app), Some(MsgKind::Error));
+        press(&mut app, KeyCode::Char('5'));
+        assert_eq!(app.screen, Screen::Help);
     }
 
     #[test]

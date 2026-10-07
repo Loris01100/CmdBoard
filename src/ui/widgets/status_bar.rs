@@ -52,15 +52,24 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             (":".into(), "hint.command"),
             ("q".into(), "hint.quit"),
         ],
+        (Mode::Normal, Screen::Storage) => vec![
+            ("j/k".into(), "hint.navigate"),
+            ("Tab".into(), "hint.disk"),
+            ("s".into(), "hint.order"),
+            ("d".into(), "hint.uninstall"),
+            (":".into(), "hint.command"),
+            ("1-5".into(), "hint.screens"),
+            ("q".into(), "hint.quit"),
+        ],
         (Mode::Normal, Screen::Rewards | Screen::Stats) => vec![
             ("j/k".into(), "hint.navigate"),
             (":".into(), "hint.command"),
-            ("1-4".into(), "hint.screens"),
+            ("1-5".into(), "hint.screens"),
             ("q".into(), "hint.quit"),
         ],
         (Mode::Normal, _) => vec![
             (":".into(), "hint.command"),
-            ("1-4".into(), "hint.screens"),
+            ("1-5".into(), "hint.screens"),
             ("q".into(), "hint.quit"),
         ],
     };

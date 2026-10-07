@@ -35,6 +35,7 @@ src/
 │   └── models.rs        // App, Category, Session, Reward
 ├── launcher/
 │   ├── launch.rs        // lancement (exe, URI)
+│   ├── programs.rs      // disques et programmes installés (registre), désinstallation
 │   └── scan.rs          // import des .lnk et des bibliothèques Steam/Epic
 ├── popup.rs             // état des popups : confirmation, formulaires
 ├── text_input.rs        // champ texte éditable (ligne de commande, formulaires)
@@ -48,6 +49,7 @@ src/
     │   ├── dashboard.rs
     │   ├── stats.rs
     │   ├── rewards.rs
+    │   ├── storage.rs
     │   └── help.rs
     └── widgets/
         ├── category_list.rs
@@ -99,7 +101,7 @@ unlocked_rewards(id, reward_id, app_id NULL, unlocked_at, session_id)
 ## 4. Modèle d'état
 
 ```rust
-pub enum Screen { Dashboard, Stats, Rewards, Help }
+pub enum Screen { Dashboard, Stats, Rewards, Storage, Help }
 
 pub enum Mode {
     Normal,
@@ -144,6 +146,8 @@ pub enum AppEvent {
     SessionStarted { app_id: i64 },
     SessionEnded { app_id: i64, secs: u64 },
     UpdateFinished(Result<String, String>),   // voir section 18
+    ShortcutsScanned(Vec<Shortcut>),          // choix de l'app (section 7)
+    StorageScanned { disks, programs },       // écran Stockage (section 8)
 }
 
 fn run(&mut self, terminal: &mut DefaultTerminal, events: &Receiver<AppEvent>) -> Result<()> {
@@ -212,6 +216,7 @@ La table `COMMANDS` (`command/mod.rs`) décrit chaque commande (nom, alias, usag
 | `group` | | `group <nom> <app>, <app>…` (apps séparées par des virgules, sans guillemets ; écrit l'alias `<nom> = "launch A; launch B"` dans `commands.toml`, le remplace s'il existe, et le recharge aussitôt) |
 | `export` | | `export [fichier]` (JSON des apps et sessions terminées ; sans argument : `Documents\cmdboard-<aaaa-mm-jj>.json`) |
 | `import` | | `import <fichier>` (fusionne un export, voir ci-dessous) |
+| `uninstall` | | `uninstall <programme>` (programme installé, complété par Tab ; confirmation, puis lance son propre désinstalleur, voir écran Stockage) |
 | `help` | `h`, `?` | `help [commande]` |
 | `quit` | `q` | `quit` |
 
@@ -253,12 +258,15 @@ Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le pa
 | Normal | `Enter` | `Command::Launch` (sur les catégories : passe au panneau apps) |
 | Normal | `:` | Ouvre la ligne de commande |
 | Normal | `/` | Recherche floue parmi toutes les apps (`Mode::Search`) |
-| Normal | `1 2 3 4` | Changer d'écran |
+| Normal | `1 2 3 4 5` | Changer d'écran : Dashboard, Stats, Récompenses, Stockage, Aide |
 | Normal | `?` | Aide |
 | Normal | `a` / `m` | Formulaire d'ajout / de déplacement de l'app sélectionnée |
 | Normal | `d` | Supprimer l'app sélectionnée, ou la catégorie si le focus y est (vide uniquement) |
 | Normal | `s` | Tri suivant des apps (`Command::Sort`) : nom, XP, récent, temps |
 | Normal (Stats) | `s` | Camembert par catégorie ↔ par app (`Command::ToggleStatsPie`) |
+| Normal (Stockage) | `Tab` `→` `l` / `Shift-Tab` `←` `h` | Disque suivant / précédent, « tous les disques » avant le premier (`Command::CycleDisk`) |
+| Normal (Stockage) | `s` | Plus gros ↔ plus petits d'abord (`Command::ToggleStorageOrder`) |
+| Normal (Stockage) | `d` / `Suppr` | Désinstaller le programme sélectionné (`Command::Uninstall`, confirmation) |
 | Command | `Enter` / `Esc` | Valider / annuler |
 | Command | `↑↓` / `Tab` `Shift-Tab` | Historique / autocomplétion |
 | Search | saisie | Filtre le panneau Applications (toutes catégories, meilleur résultat en tête et sélectionné) |
@@ -270,7 +278,7 @@ Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le pa
 
 ### Popups (`src/popup.rs`, rendu dans `ui/widgets/popup.rs`)
 
-- **Confirmation** : toute commande destructive (`RemoveApp`, `RemoveCategory`) porte un champ `confirmed`. Non confirmée, son exécution ouvre une popup qui contient la même commande avec `confirmed: true`. Touche `d` et `:rm` passent donc par la même confirmation.
+- **Confirmation** : toute commande destructive (`RemoveApp`, `RemoveCategory`, `Uninstall`) porte un champ `confirmed`. Non confirmée, son exécution ouvre une popup qui contient la même commande avec `confirmed: true`. Touche `d` et `:rm` passent donc par la même confirmation.
 - **Formulaires** : `Form` = liste de champs (`TextInput`, partagé avec la ligne de commande) avec un champ focalisé. La validation produit une `Command` (`Add`, `Move`) exécutée par le chemin habituel. En cas d'erreur (champ requis, nom déjà pris, fichier introuvable), le formulaire reste ouvert et affiche l'erreur ; le premier champ requis vide reçoit le focus.
 - **Choix de l'app** (`Popup::Picker`) : `a` et `:add` sans argument ouvrent d'abord une liste filtrable (fuzzy) des apps installées, lue par `launcher/scan.rs` dans les bibliothèques Steam (`libraryfolders.vdf` puis `appmanifest_*.acf` complètement installés : cible `steam://rungameid/<id>`, process = le plus gros exe du dossier du jeu, jusqu'à trois niveaux) et Epic (manifests `.item` de `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests`, hors DLC : cible `com.epicgames.launcher://apps/...?action=launch`, process = `LaunchExecutable`), puis dans les raccourcis `.lnk` et `.url` du menu Démarrer et du Bureau. À nom égal, l'entrée de bibliothèque l'emporte. Le scan tourne dans un thread temporaire (`AppEvent::ShortcutsScanned`) à chaque ouverture ; les trois sources et la lecture des fichiers sont parallélisées avec rayon (ordre conservé, donc la priorité des bibliothèques aussi). Les apps déjà ajoutées sont masquées. `Entrée` ouvre le formulaire pré-rempli (cible = le `.lnk`, qui garde ses arguments ; process = l'exe pointé par le raccourci), focus sur la catégorie. `Tab`, ou `Entrée` sans résultat, ouvre le formulaire vide avec la recherche comme nom.
 - Formulaire d'ajout : Nom*, Cible*, Catégorie* (pré-remplie avec la catégorie sélectionnée), Process (vide : déduit de la cible, affiché en grisé « auto : X.exe »). Une ligne d'aide sous les champs explique le champ actif, notamment à quoi sert Process (l'exe surveillé pour compter le temps de jeu).
@@ -320,6 +328,7 @@ let cols = Layout::horizontal([
 
 - **Stats** : ligne de résumé (portée, nombre de sessions, temps total, plus longue session), temps par catégorie ou par app (un camembert en braille via `Canvas`, `s` bascule entre les deux via `Command::ToggleStatsPie`, état `App::stats_by_app` ; couleurs `xp_fill`/`info`/`warning`/`error`, au-delà le reste est regroupé en « Autres » en `muted`, légende avec durée et % ; masqué sous 60 colonnes), heatmap d'activité des 12 dernières semaines façon GitHub sur la moitié droite (une colonne par semaine, lundi en haut, aujourd'hui en bas à droite, jours de la semaine à gauche, date du lundi au-dessus des colonnes, un carré `■` par jour dont la couleur dit le temps joué (`Theme::heat` : rien en `muted`, < 22 min `success`, < 45 min `warning`, < 1 h `caution`, au-delà `error`), légende des durées par bloc dans la bordure du bas ; `Stats::today` donne le jour local en jours depuis 1970), historique des 200 dernières sessions (`Table`, sélection `stats_state`, `j`/`k`). `:stats <app>` filtre tout l'écran sur une app. Les données (`Database::stats`) sont rechargées avec le reste à chaque `reload()`.
 - **Rewards** : tableau des récompenses (🏆 débloquées en couleur, 🔒 verrouillées en gris), titre « Récompenses (n/total) », sélection propre (`reward_state`, `j`/`k`). Un panneau Détail montre la portée, la condition (`rule`) et qui l'a débloquée, et quand.
+- **Stockage** (`4`) : en haut, une jauge par disque (`LineGauge`, % utilisé ; `success`, `warning` dès 75 %, `error` dès 90 %) avec utilisé / total / libre ; le disque filtré est marqué `>`. En dessous, les programmes installés (nom, taille, disque, éditeur), triés par taille (plus gros d'abord par défaut, tailles inconnues toujours à la fin, égalités par nom), sur un disque ou tous. Sélection propre (`storage_state`, `j`/`k`), filtre `storage_disk`, ordre `storage_ascending`, non mémorisés. Les données viennent de `launcher/programs.rs` : disques via `sysinfo::Disks`, programmes via les clés `HKLM\...\CurrentVersion\Uninstall` (vues 64 et 32 bits) et `HKCU` (ce que lit « Applications installées » de Windows), lues avec l'API registre de `windows-sys` (Unicode, sans lancer `reg`). Sont écartés : `SystemComponent = 1`, mises à jour (`ParentKeyName`, `ReleaseType` Update/Hotfix), entrées sans `DisplayName` ou `UninstallString` ; doublons par nom. Taille = `EstimatedSize` (déclarée par l'installeur, parfois absente ou approximative : pas de calcul de dossier pour l'instant). Disque = lettre de `InstallLocation`, sinon de `DisplayIcon` ; beaucoup de MSI n'en ont pas et n'apparaissent que sous « tous les disques ». Les apps du Store (MSIX) ne sont pas listées. Lecture dans un thread temporaire (`AppEvent::StorageScanned`) au démarrage (pour la complétion de `:uninstall`) et à chaque ouverture de l'écran. **Désinstallation** : `UninstallString` découpée en exe + arguments (exe entre guillemets, ou chemin non cité jusqu'à `.exe`), lancée par `ShellExecuteW` pour que Windows demande l'élévation (UAC) si besoin. CmdBoard n'attend pas la fin : rouvrir l'écran (`4`) actualise la liste. Disques masqués sous 12 lignes de corps.
 - **Help** : commandes et raccourcis, générés à partir du parser.
 
 ### Responsive
@@ -561,7 +570,7 @@ anyhow = "1"
 directories = "6"
 fuzzy-matcher = "0.3"
 self_update = { version = "1.3", default-features = false, features = ["github", "ureq", "rustls", "archive-zip", "compression-zip-deflate"] }
-windows-sys = { version = "0.61", features = ["Win32_Globalization"] }  # langue d'affichage de Windows
+windows-sys = { version = "0.61", features = ["Win32_Globalization", "Win32_System_Registry", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }  # langue de Windows ; registre et ShellExecute (écran Stockage)
 ```
 
 À vérifier avec `cargo add` au moment de créer le projet, pour obtenir les dernières versions. Pour lire les `.lnk`, ajouter `lnk` ou `parselnk`.

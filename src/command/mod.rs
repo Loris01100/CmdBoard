@@ -18,6 +18,12 @@ pub enum Command {
     ToggleFocus,
     /// Stats screen: pie of the time per category, or per app.
     ToggleStatsPie,
+    /// Storage screen: programs of the next (or previous) disk, then of every disk.
+    CycleDisk {
+        forward: bool,
+    },
+    /// Storage screen: biggest programs first, or smallest first.
+    ToggleStorageOrder,
 
     // actions, also available from the command line
     Launch {
@@ -42,6 +48,11 @@ pub enum Command {
     /// Only empty categories can be removed.
     RemoveCategory {
         category: String,
+        confirmed: bool,
+    },
+    /// Destructive: starts the program's own uninstaller, after confirmation.
+    Uninstall {
+        program: String,
         confirmed: bool,
     },
     OpenForm(FormKind),
@@ -159,6 +170,10 @@ pub const COMMANDS: &[CommandHelp] = &[
     },
     CommandHelp {
         name: "import",
+        aliases: &[],
+    },
+    CommandHelp {
+        name: "uninstall",
         aliases: &[],
     },
     CommandHelp {

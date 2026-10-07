@@ -11,6 +11,8 @@ pub struct Sources<'a> {
     pub aliases: Vec<&'a str>,
     pub apps: Vec<&'a str>,
     pub categories: Vec<&'a str>,
+    /// Installed programs, for `:uninstall`.
+    pub programs: Vec<&'a str>,
     pub themes: Vec<&'a str>,
 }
 
@@ -32,6 +34,7 @@ enum Kind {
     Command,
     App,
     Category,
+    Program,
     Theme,
     Sort,
     Lang,
@@ -53,6 +56,7 @@ pub fn complete(line: &str, sources: &Sources) -> Option<Completion> {
         // These take the rest of the line as one name: no quotes needed.
         "launch" | "rm" | "stats" | "xp" => whole(line, rest_start, Kind::App, sources),
         "rmcat" => whole(line, rest_start, Kind::Category, sources),
+        "uninstall" => whole(line, rest_start, Kind::Program, sources),
         "help" => whole(line, rest_start, Kind::Command, sources),
         "theme" => whole(line, rest_start, Kind::Theme, sources),
         "sort" => whole(line, rest_start, Kind::Sort, sources),
@@ -138,6 +142,7 @@ fn build(
             .collect(),
         Kind::App => sources.apps.clone(),
         Kind::Category => sources.categories.clone(),
+        Kind::Program => sources.programs.clone(),
         Kind::Theme => sources.themes.clone(),
         Kind::Sort => AppSort::ALL.iter().map(|s| s.name()).collect(),
         Kind::Lang => crate::i18n::LANGS.iter().map(|(code, _)| *code).collect(),
@@ -162,6 +167,7 @@ mod tests {
             aliases: vec!["gaming"],
             apps: vec!["Steam", "Windows Terminal", "Bloc-notes"],
             categories: vec!["Jeux", "Dev", "Outils"],
+            programs: vec!["Visual Studio Code", "7-Zip"],
             themes: vec!["catppuccin-latte", "catppuccin-mocha", "terminal"],
         }
     }
@@ -181,6 +187,7 @@ mod tests {
             ("launch ste", Some("launch Steam")),
             ("l wterm", Some("l Windows Terminal")), // alias of launch, fuzzy match
             ("rmcat ou", Some("rmcat Outils")),
+            ("uninstall vsc", Some("uninstall Visual Studio Code")),
             ("help mo", Some("help move")),
             ("theme moc", Some("theme catppuccin-mocha")),
             ("sort rec", Some("sort recent")),

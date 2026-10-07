@@ -14,6 +14,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         Screen::Help => screens::help::draw(frame, app),
         Screen::Rewards => screens::rewards::draw(frame, app),
         Screen::Stats => screens::stats::draw(frame, app),
+        Screen::Storage => screens::storage::draw(frame, app),
     }
     if let Mode::Popup(popup) = &app.mode {
         widgets::popup::render(frame, popup, app);
@@ -32,6 +33,7 @@ mod tests {
             Screen::Dashboard,
             Screen::Stats,
             Screen::Rewards,
+            Screen::Storage,
             Screen::Help,
         ] {
             app.screen = screen;
@@ -112,6 +114,7 @@ mod tests {
                 Screen::Dashboard,
                 Screen::Stats,
                 Screen::Rewards,
+                Screen::Storage,
                 Screen::Help,
             ] {
                 app.screen = screen;

@@ -91,6 +91,10 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("import", [_, ..]) => Ok(Command::Import {
             path: rest.join(" "),
         }),
+        ("uninstall", [_, ..]) => Ok(Command::Uninstall {
+            program: rest.join(" "),
+            confirmed: false,
+        }),
         ("update", []) => Ok(Command::Update),
         ("help", []) => Ok(Command::Help { command: None }),
         ("help", [command]) => Ok(Command::Help {
@@ -269,6 +273,13 @@ mod tests {
             ),
             ("update", Command::Update),
             ("help", Command::Help { command: None }),
+            (
+                "uninstall Visual Studio Code",
+                Command::Uninstall {
+                    program: s("Visual Studio Code"),
+                    confirmed: false,
+                },
+            ),
             (
                 "? add",
                 Command::Help {

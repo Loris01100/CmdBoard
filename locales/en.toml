@@ -12,7 +12,15 @@ app_count = "{count} app(s)"
 dashboard = "Dashboard"
 stats = "Stats"
 rewards = "Rewards"
+storage = "Storage"
 help = "Help"
+
+[size]
+decimal = "."
+kb = "{n} KB"
+mb = "{n} MB"
+gb = "{n} GB"
+tb = "{n} TB"
 
 [sort]
 name = "name"
@@ -224,6 +232,24 @@ locked = "locked"
 condition = "Condition: "
 unlocked_on = "Unlocked: "
 
+[storage]
+disks = "Disks"
+disk_usage = "{used} / {total} · {free} free"
+all_disks = "all disks"
+biggest_first = "biggest first"
+smallest_first = "smallest first"
+programs = "Programs · {drive} · {order} ({count})"
+scanning = "Reading the installed programs…"
+none = "No program"
+name = "Name"
+size = "Size"
+drive = "Disk"
+publisher = "Publisher"
+unknown_program = "unknown program: {name}"
+confirm_uninstall = "Uninstall “{name}”? Its own uninstaller will start."
+uninstalling = "Uninstaller of {name} started (4 to refresh once done)"
+uninstall_failed = "cannot start the uninstaller of {name} (refused or missing)"
+
 [stats]
 one_app = " {name} (:stats to see all)"
 all_apps = " All apps"
@@ -264,6 +290,9 @@ edit = "add/move/del."
 search = "search"
 command = "command"
 screens = "screens"
+disk = "disk"
+order = "order"
+uninstall = "uninstall"
 quit = "quit"
 
 [help]
@@ -277,7 +306,8 @@ edit = "add / move / remove (app or empty category)"
 sort = "change the app order (name, XP, recent, time); Stats: pie per category or per app"
 search = "search an app in every category (Enter: go there)"
 command = "command line (↑↓ history, Tab complete, Esc cancel)"
-screens = "Dashboard, Stats, Rewards, Help"
+screens = "Dashboard, Stats, Rewards, Storage, Help"
+storage = "Storage: Tab/←→ pick the disk, s smallest/biggest first, d/Del uninstall"
 quit = "quit"
 
 [cmd.launch]
@@ -331,6 +361,10 @@ summary = 'Saves apps and sessions to JSON (default: Documents\cmdboard-<date>.j
 [cmd.import]
 usage = "import <file>"
 summary = "Merges an export: adds the missing apps and sessions, deletes nothing"
+
+[cmd.uninstall]
+usage = "uninstall <program>"
+summary = "Starts a program's uninstaller, after confirmation (Storage screen)"
 
 [cmd.update]
 usage = "update"
