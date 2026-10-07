@@ -1420,15 +1420,7 @@ impl App {
     fn run_command(&mut self, command: Command) -> anyhow::Result<Option<Message>> {
         let success = |text: String| Ok(Some((text, MsgKind::Success)));
         match command {
-            Command::Show(screen) => {
-                self.screen = screen;
-                if screen == Screen::Storage {
-                    self.start_storage_scan();
-                }
-                if screen == Screen::Optimize {
-                    self.open_optimize();
-                }
-            }
+            Command::Show(screen) => self.show(screen),
             Command::SelectNext => self.move_selection(true),
             Command::SelectPrev => self.move_selection(false),
             Command::FocusPanel(focus) => self.focus = focus,
@@ -1443,38 +1435,11 @@ impl App {
             }
             Command::ToggleStatsPie => self.stats_by_app = !self.stats_by_app,
             Command::ToggleBenchLevel => self.bench_heavy = !self.bench_heavy,
-            Command::Bench(bench) => {
-                if self.bench_running.is_some() {
-                    bail!(t!("optimize.busy"));
-                }
-                let Some(events) = self.events.clone() else {
-                    return Ok(None);
-                };
-                self.bench_running = Some(bench);
-                let heavy = self.bench_heavy;
-                std::thread::spawn(move || {
-                    let result = optimize::run(bench, heavy);
-                    let _ = events.send(AppEvent::BenchFinished {
-                        bench,
-                        heavy,
-                        result,
-                    });
-                });
-            }
+            Command::Bench(bench) => self.bench(bench)?,
             Command::ToggleGaming(setting) if !setting.switchable() => {
                 return self.run_command(Command::OpenGamingPage(setting));
             }
-            Command::ToggleGaming(setting) => {
-                let on = !setting.enabled();
-                setting.set(on).context(t!("optimize.set_failed"))?;
-                self.open_optimize();
-                let state = if on {
-                    t!("optimize.on")
-                } else {
-                    t!("optimize.off")
-                };
-                return success(t!("optimize.switched", name = setting.label(), state));
-            }
+            Command::ToggleGaming(setting) => return self.toggle_gaming(setting),
             Command::OpenGamingPage(setting) => {
                 opener::open(setting.page()).context(t!("optimize.open_failed"))?;
             }
@@ -1492,19 +1457,7 @@ impl App {
                 self.reset_storage_selection();
                 self.select_entry(None);
             }
-            Command::ToggleFolders => match self.folders {
-                Some(_) => {
-                    self.stop_measures();
-                    self.folders = None;
-                }
-                // Starts on the chosen drive, else on the list of drives.
-                None => {
-                    let root = self
-                        .storage_disk
-                        .map(|letter| PathBuf::from(format!("{letter}:\\")));
-                    self.open_folder(root, None);
-                }
-            },
+            Command::ToggleFolders => self.toggle_folders(),
             Command::OpenFolder => {
                 if let Some(entry) = self.selected_entry().filter(|e| e.is_dir) {
                     let path = entry.path.clone();
@@ -1517,28 +1470,7 @@ impl App {
                     self.open_folder(dir.parent().map(Path::to_path_buf), Some(dir));
                 }
             }
-            Command::Trash { path, confirmed } => {
-                if !confirmed {
-                    self.mode = Mode::Popup(Popup::Confirm {
-                        message: t!("storage.confirm_trash", path = path.display()),
-                        command: Command::Trash {
-                            path,
-                            confirmed: true,
-                        },
-                    });
-                    return Ok(None);
-                }
-                let events = self
-                    .events
-                    .clone()
-                    .with_context(|| t!("storage.unavailable"))?;
-                let text = t!("storage.trashing", path = path.display());
-                std::thread::spawn(move || {
-                    let result = folders::trash(&path).map_err(|e| format!("{e:#}"));
-                    let _ = events.send(AppEvent::Trashed { path, result });
-                });
-                return Ok(Some((text, MsgKind::Info)));
-            }
+            Command::Trash { path, confirmed } => return self.trash(path, confirmed),
             Command::Quit => self.should_quit = true,
 
             Command::Launch { app } => {
@@ -1551,30 +1483,7 @@ impl App {
                 target,
                 category,
                 watch_exe,
-            } => {
-                if self.find_app(&name).is_some() {
-                    bail!(t!("error.app_exists", name));
-                }
-                launch::check_target(&target)?;
-                let (category_id, created) = match category {
-                    Some(category) => self.category_or_create(&category)?,
-                    None => {
-                        let selected = self
-                            .selected_category()
-                            .with_context(|| t!("error.no_category"))?;
-                        (selected.id, false)
-                    }
-                };
-                let id = self.db.add_app(&NewApp {
-                    watch_exe: watch_exe.or_else(|| launch::watch_exe_for(&target)),
-                    name: name.clone(),
-                    launch_target: target,
-                    category_id,
-                })?;
-                self.reload()?;
-                self.select_app(id);
-                return success(t!("action.added", name, note = created_note(created)));
-            }
+            } => return self.add_app(name, target, category, watch_exe),
             Command::Move { app, category } => {
                 let (id, name) = {
                     let entry = self.app_named(&app)?;
@@ -1616,29 +1525,7 @@ impl App {
             Command::RemoveCategory {
                 category,
                 confirmed,
-            } => {
-                let (id, name) = {
-                    let found = self.category_named(&category)?;
-                    (found.id, found.name.clone())
-                };
-                let count = self.app_count(id);
-                if count > 0 {
-                    bail!(t!("error.category_not_empty", name, count));
-                }
-                if !confirmed {
-                    self.mode = Mode::Popup(Popup::Confirm {
-                        message: t!("action.confirm_remove_category", name),
-                        command: Command::RemoveCategory {
-                            category: name,
-                            confirmed: true,
-                        },
-                    });
-                    return Ok(None);
-                }
-                self.db.delete_category(id)?;
-                self.reload()?;
-                return success(t!("action.category_removed", name));
-            }
+            } => return self.remove_category(&category, confirmed),
             Command::Uninstall { program, confirmed } => {
                 let lower = program.to_lowercase();
                 let found = self
@@ -1684,27 +1571,7 @@ impl App {
                 self.reload()?;
                 return success(t!("action.stats_cleared", count));
             }
-            Command::OpenForm(kind) => {
-                let form = match kind {
-                    FormKind::AddApp => {
-                        let category = self.selected_category().map_or("", |c| c.name.as_str());
-                        let picker = Picker::new(category);
-                        self.mode = Mode::Popup(Popup::Picker(picker));
-                        self.start_shortcut_scan();
-                        return Ok(None);
-                    }
-                    FormKind::MoveApp { app } => {
-                        let entry = self.app_named(&app)?;
-                        let category = self
-                            .categories
-                            .iter()
-                            .find(|c| c.id == entry.category_id)
-                            .map_or("", |c| c.name.as_str());
-                        Form::move_app(&entry.name, category)
-                    }
-                };
-                self.mode = Mode::Popup(Popup::Form(form));
-            }
+            Command::OpenForm(kind) => self.open_form(kind)?,
             Command::Select { app } => {
                 let id = self.app_named(&app)?.id;
                 self.screen = Screen::Dashboard;
@@ -1749,19 +1616,7 @@ impl App {
                 );
                 return Ok(Some((text, MsgKind::Info)));
             }
-            Command::Sort { by: Some(sort) } => {
-                let selected = self.selected_app().map(|a| a.id);
-                self.sort = sort;
-                self.sort.apply(&mut self.apps);
-                if let Some(id) = selected {
-                    self.select_app(id);
-                }
-                if let Some(path) = &self.config_path {
-                    config::save_value(path, "sort", sort.name())
-                        .with_context(|| t!("sort.not_saved"))?;
-                }
-                return success(t!("sort.set", label = sort.label()));
-            }
+            Command::Sort { by: Some(sort) } => return self.set_sort(sort),
             Command::Lang { code: None } => {
                 let codes: Vec<_> = i18n::LANGS.iter().map(|(code, _)| *code).collect();
                 let text = t!(
@@ -1771,16 +1626,7 @@ impl App {
                 );
                 return Ok(Some((text, MsgKind::Info)));
             }
-            Command::Lang { code: Some(code) } => {
-                if !i18n::set(&code) {
-                    bail!(t!("lang.unknown", code));
-                }
-                if let Some(path) = &self.config_path {
-                    config::save_value(path, "lang", i18n::current())
-                        .with_context(|| t!("lang.not_saved"))?;
-                }
-                return success(t!("lang.set", name = t!("language")));
-            }
+            Command::Lang { code: Some(code) } => return self.set_lang(&code),
             Command::Group { name, apps } => {
                 let names = apps
                     .iter()
@@ -1832,19 +1678,220 @@ impl App {
             Command::Help { command: None } => self.screen = Screen::Help,
             Command::Help {
                 command: Some(name),
-            } => {
-                if let Some(body) = self.aliases.get(&name) {
-                    let label = format!("alias {name}");
-                    return Ok(Some((t!("pair", label, value = body), MsgKind::Info)));
-                }
-                let help = find_help(&name).with_context(|| t!("error.unknown_command", name))?;
-                return Ok(Some((
-                    t!("pair", label = help.usage(), value = help.summary()),
-                    MsgKind::Info,
-                )));
-            }
+            } => return self.help(&name),
         }
         Ok(None)
+    }
+
+    fn show(&mut self, screen: Screen) {
+        self.screen = screen;
+        if screen == Screen::Storage {
+            self.start_storage_scan();
+        }
+        if screen == Screen::Optimize {
+            self.open_optimize();
+        }
+    }
+
+    fn bench(&mut self, bench: Bench) -> anyhow::Result<()> {
+        if self.bench_running.is_some() {
+            bail!(t!("optimize.busy"));
+        }
+        let Some(events) = self.events.clone() else {
+            return Ok(());
+        };
+        self.bench_running = Some(bench);
+        let heavy = self.bench_heavy;
+        std::thread::spawn(move || {
+            let result = optimize::run(bench, heavy);
+            let _ = events.send(AppEvent::BenchFinished {
+                bench,
+                heavy,
+                result,
+            });
+        });
+        Ok(())
+    }
+
+    fn toggle_gaming(&mut self, setting: Gaming) -> anyhow::Result<Option<Message>> {
+        let on = !setting.enabled();
+        setting.set(on).context(t!("optimize.set_failed"))?;
+        self.open_optimize();
+        let state = if on {
+            t!("optimize.on")
+        } else {
+            t!("optimize.off")
+        };
+        Ok(Some((
+            t!("optimize.switched", name = setting.label(), state),
+            MsgKind::Success,
+        )))
+    }
+
+    fn toggle_folders(&mut self) {
+        if self.folders.is_some() {
+            self.stop_measures();
+            self.folders = None;
+            return;
+        }
+        // Starts on the chosen drive, else on the list of drives.
+        let root = self
+            .storage_disk
+            .map(|letter| PathBuf::from(format!("{letter}:\\")));
+        self.open_folder(root, None);
+    }
+
+    fn trash(&mut self, path: PathBuf, confirmed: bool) -> anyhow::Result<Option<Message>> {
+        if !confirmed {
+            self.mode = Mode::Popup(Popup::Confirm {
+                message: t!("storage.confirm_trash", path = path.display()),
+                command: Command::Trash {
+                    path,
+                    confirmed: true,
+                },
+            });
+            return Ok(None);
+        }
+        let events = self
+            .events
+            .clone()
+            .with_context(|| t!("storage.unavailable"))?;
+        let text = t!("storage.trashing", path = path.display());
+        std::thread::spawn(move || {
+            let result = folders::trash(&path).map_err(|e| format!("{e:#}"));
+            let _ = events.send(AppEvent::Trashed { path, result });
+        });
+        Ok(Some((text, MsgKind::Info)))
+    }
+
+    fn add_app(
+        &mut self,
+        name: String,
+        target: String,
+        category: Option<String>,
+        watch_exe: Option<String>,
+    ) -> anyhow::Result<Option<Message>> {
+        if self.find_app(&name).is_some() {
+            bail!(t!("error.app_exists", name));
+        }
+        launch::check_target(&target)?;
+        let (category_id, created) = match category {
+            Some(category) => self.category_or_create(&category)?,
+            None => {
+                let selected = self
+                    .selected_category()
+                    .with_context(|| t!("error.no_category"))?;
+                (selected.id, false)
+            }
+        };
+        let id = self.db.add_app(&NewApp {
+            watch_exe: watch_exe.or_else(|| launch::watch_exe_for(&target)),
+            name: name.clone(),
+            launch_target: target,
+            category_id,
+        })?;
+        self.reload()?;
+        self.select_app(id);
+        Ok(Some((
+            t!("action.added", name, note = created_note(created)),
+            MsgKind::Success,
+        )))
+    }
+
+    fn remove_category(
+        &mut self,
+        category: &str,
+        confirmed: bool,
+    ) -> anyhow::Result<Option<Message>> {
+        let (id, name) = {
+            let found = self.category_named(category)?;
+            (found.id, found.name.clone())
+        };
+        let count = self.app_count(id);
+        if count > 0 {
+            bail!(t!("error.category_not_empty", name, count));
+        }
+        if !confirmed {
+            self.mode = Mode::Popup(Popup::Confirm {
+                message: t!("action.confirm_remove_category", name),
+                command: Command::RemoveCategory {
+                    category: name,
+                    confirmed: true,
+                },
+            });
+            return Ok(None);
+        }
+        self.db.delete_category(id)?;
+        self.reload()?;
+        Ok(Some((
+            t!("action.category_removed", name),
+            MsgKind::Success,
+        )))
+    }
+
+    fn open_form(&mut self, kind: FormKind) -> anyhow::Result<()> {
+        let form = match kind {
+            FormKind::AddApp => {
+                let category = self.selected_category().map_or("", |c| c.name.as_str());
+                let picker = Picker::new(category);
+                self.mode = Mode::Popup(Popup::Picker(picker));
+                self.start_shortcut_scan();
+                return Ok(());
+            }
+            FormKind::MoveApp { app } => {
+                let entry = self.app_named(&app)?;
+                let category = self
+                    .categories
+                    .iter()
+                    .find(|c| c.id == entry.category_id)
+                    .map_or("", |c| c.name.as_str());
+                Form::move_app(&entry.name, category)
+            }
+        };
+        self.mode = Mode::Popup(Popup::Form(form));
+        Ok(())
+    }
+
+    fn set_sort(&mut self, sort: AppSort) -> anyhow::Result<Option<Message>> {
+        let selected = self.selected_app().map(|a| a.id);
+        self.sort = sort;
+        self.sort.apply(&mut self.apps);
+        if let Some(id) = selected {
+            self.select_app(id);
+        }
+        if let Some(path) = &self.config_path {
+            config::save_value(path, "sort", sort.name()).with_context(|| t!("sort.not_saved"))?;
+        }
+        Ok(Some((
+            t!("sort.set", label = sort.label()),
+            MsgKind::Success,
+        )))
+    }
+
+    fn set_lang(&mut self, code: &str) -> anyhow::Result<Option<Message>> {
+        if !i18n::set(code) {
+            bail!(t!("lang.unknown", code));
+        }
+        if let Some(path) = &self.config_path {
+            config::save_value(path, "lang", i18n::current())
+                .with_context(|| t!("lang.not_saved"))?;
+        }
+        Ok(Some((
+            t!("lang.set", name = t!("language")),
+            MsgKind::Success,
+        )))
+    }
+
+    fn help(&self, name: &str) -> anyhow::Result<Option<Message>> {
+        if let Some(body) = self.aliases.get(name) {
+            let label = format!("alias {name}");
+            return Ok(Some((t!("pair", label, value = body), MsgKind::Info)));
+        }
+        let help = find_help(name).with_context(|| t!("error.unknown_command", name))?;
+        Ok(Some((
+            t!("pair", label = help.usage(), value = help.summary()),
+            MsgKind::Info,
+        )))
     }
 
     fn find_app_by_id(&self, id: i64) -> Option<&AppEntry> {
