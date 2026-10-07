@@ -47,6 +47,11 @@ pub enum AppEvent {
         dir: std::path::PathBuf,
         entries: Vec<Entry>,
     },
+    /// Percentage of a subfolder's direct children measured so far.
+    FolderProgress {
+        path: std::path::PathBuf,
+        percent: u8,
+    },
     /// One subfolder measured.
     FolderSized {
         path: std::path::PathBuf,

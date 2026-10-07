@@ -185,6 +185,8 @@ pub struct Folders {
     select: Option<PathBuf>,
     /// Set when leaving `dir`: its measures stop.
     cancel: Arc<AtomicBool>,
+    /// Subfolders being measured: percentage of their children done.
+    pub progress: HashMap<PathBuf, u8>,
 }
 
 /// What a recorded session earned.
@@ -470,6 +472,9 @@ impl App {
                     self.on_storage_scanned(disks, programs)
                 }
                 AppEvent::FolderListed { dir, entries } => self.on_folder_listed(&dir, entries),
+                AppEvent::FolderProgress { path, percent } => {
+                    self.on_folder_progress(path, percent)
+                }
                 AppEvent::FolderSized { path, size } => self.on_folder_sized(path, size),
                 AppEvent::Trashed { path, result } => self.on_trashed(&path, result),
                 AppEvent::ShortcutsScanned(found) => {
@@ -1105,6 +1110,7 @@ impl App {
             state: TableState::default(),
             select: select.clone(),
             cancel: Arc::new(AtomicBool::new(false)),
+            progress: HashMap::new(),
         });
         self.select_entry(select.as_deref());
         if let (Some(dir), Some(events)) = (dir, self.events.clone()) {
@@ -1150,11 +1156,21 @@ impl App {
         std::thread::spawn(move || {
             use rayon::prelude::*;
             todo.into_par_iter().for_each(|path| {
-                if let Some(size) = folders::dir_size(&path, &cancel) {
+                let progress = |percent| {
+                    let path = path.clone();
+                    let _ = events.send(AppEvent::FolderProgress { path, percent });
+                };
+                if let Some(size) = folders::dir_size_with_progress(&path, &cancel, progress) {
                     let _ = events.send(AppEvent::FolderSized { path, size });
                 }
             });
         });
+    }
+
+    pub fn on_folder_progress(&mut self, path: PathBuf, percent: u8) {
+        if let Some(folders) = &mut self.folders {
+            folders.progress.insert(path, percent);
+        }
     }
 
     /// Keeps the selection on the same entry while the list reorders.
@@ -1164,6 +1180,9 @@ impl App {
             && let Some(entry) = folders.entries.iter_mut().find(|e| e.path == path)
         {
             entry.size = Some(size);
+        }
+        if let Some(folders) = &mut self.folders {
+            folders.progress.remove(&path);
         }
         self.folder_sizes.insert(path, size);
         self.select_entry(selected.as_deref());

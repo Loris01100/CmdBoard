@@ -2,7 +2,7 @@
 //! demand, and sends items to the Recycle Bin.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 
 use anyhow::bail;
 use rayon::prelude::*;
@@ -57,12 +57,45 @@ pub fn dir_size(dir: &Path, cancel: &AtomicBool) -> Option<u64> {
     };
     read.flatten()
         .par_bridge()
-        .map(|e| match e.file_type() {
-            Ok(kind) if kind.is_symlink() => Some(0),
-            Ok(kind) if kind.is_dir() => dir_size(&e.path(), cancel),
-            _ => Some(e.metadata().map_or(0, |m| m.len())),
+        .map(|e| entry_size(&e, cancel))
+        .sum()
+}
+
+/// `dir_size`, calling `progress` with the percentage of `dir`'s direct children measured
+/// each time it goes up.
+// ponytail: progress counts children, not bytes; one huge subfolder can sit at 95 %.
+pub fn dir_size_with_progress(
+    dir: &Path,
+    cancel: &AtomicBool,
+    progress: impl Fn(u8) + Sync,
+) -> Option<u64> {
+    if cancel.load(Ordering::Relaxed) {
+        return None;
+    }
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return Some(0);
+    };
+    let children: Vec<_> = read.flatten().collect();
+    let (done, shown) = (AtomicUsize::new(0), AtomicU8::new(0));
+    children
+        .par_iter()
+        .map(|e| {
+            let size = entry_size(e, cancel);
+            let percent = ((done.fetch_add(1, Ordering::Relaxed) + 1) * 100 / children.len()) as u8;
+            if shown.fetch_max(percent, Ordering::Relaxed) < percent {
+                progress(percent);
+            }
+            size
         })
         .sum()
+}
+
+fn entry_size(e: &std::fs::DirEntry, cancel: &AtomicBool) -> Option<u64> {
+    match e.file_type() {
+        Ok(kind) if kind.is_symlink() => Some(0),
+        Ok(kind) if kind.is_dir() => dir_size(&e.path(), cancel),
+        _ => Some(e.metadata().map_or(0, |m| m.len())),
+    }
 }
 
 /// Sends a file or folder to the Recycle Bin. Windows warns before deleting for good
@@ -108,6 +141,11 @@ mod tests {
         assert_eq!(dir_size(&root.join("sub"), &cancel), Some(1024));
         assert_eq!(dir_size(&root, &cancel), Some(1124));
         assert_eq!(dir_size(&root.join("missing"), &cancel), Some(0));
+        let seen = std::sync::Mutex::new(Vec::new());
+        let size = dir_size_with_progress(&root, &cancel, |p| seen.lock().unwrap().push(p));
+        assert_eq!(size, Some(1124));
+        // Two children: 50 then 100, unless both finish together.
+        assert_eq!(seen.into_inner().unwrap().iter().max(), Some(&100));
         cancel.store(true, Ordering::Relaxed);
         assert_eq!(dir_size(&root, &cancel), None);
 

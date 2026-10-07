@@ -160,7 +160,8 @@ fn draw_programs(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_stateful_widget(table, area, &mut state);
 }
 
-/// The browsed folder's files and subfolders by size. Subfolders show "…" until measured.
+/// The browsed folder's files and subfolders by size. Subfolders show "…", then the
+/// percentage of their children measured, until measured.
 fn draw_folders(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
     let Some(folders) = &app.folders else {
@@ -223,7 +224,14 @@ fn draw_folders(frame: &mut Frame, area: Rect, app: &App) {
         };
         Row::new([
             Cell::from(name),
-            size_cell(entry.size, "…", theme),
+            size_cell(
+                entry.size,
+                &folders
+                    .progress
+                    .get(&entry.path)
+                    .map_or("…".into(), |p| format!("{p} %")),
+                theme,
+            ),
             Cell::from(Span::styled(program, theme.muted())),
         ])
     });
@@ -351,6 +359,8 @@ mod tests {
         let text = screen(&app, 110, 30);
         assert!(text.contains("1 dossier(s) en cours de mesure"), "{text}");
         assert!(text.contains(r"Dev\") && text.contains("…"), "{text}");
+        app.on_folder_progress(dir.join("Dev"), 40);
+        assert!(screen(&app, 110, 30).contains("40 %"));
 
         app.on_folder_sized(dir.join("Dev"), 9 * gb);
         let names: Vec<_> = app
