@@ -193,6 +193,7 @@ pub enum Command {
     Launch { app: String },
     Add { name: String, target: String, category: Option<String> },  // catégorie créée si absente
     Move { app: String, category: String },                          // idem
+    Edit { app: String, name: String, target: String, category: String, watch_exe: Option<String> }, // idem, garde l'historique
     Help { command: Option<String> },
     Stats { app: Option<String> },     // écran Stats, filtré sur une app ou non
     Select { app: String },            // touche seulement : Entrée dans la recherche `/`
@@ -214,6 +215,7 @@ La table `COMMANDS` (`command/mod.rs`) décrit chaque commande (nom, alias, usag
 | `launch` | `l` | `launch <app>` (le reste de la ligne, guillemets inutiles) |
 | `add` | | `add [<nom> <cible> [catégorie]]` (sans catégorie : la sélectionnée ; sans argument : formulaire) |
 | `move` | `mv` | `move <app> [catégorie]` (sans catégorie : formulaire) |
+| `edit` | | `edit <app>` (le reste de la ligne ; ouvre le formulaire de modification) |
 | `rm` | `delete` | `rm <app>` (confirmation, supprime aussi sessions et récompenses) |
 | `rmcat` | | `rmcat <catégorie>` (catégorie vide uniquement, confirmation) |
 | `clear` | | `clear sessions` (masque les sessions terminées de l'historique, colonne `sessions.hidden` (migration v4), les stats les comptent toujours) ou `clear stats` (supprime les sessions terminées : stats et série repartent de zéro) ; XP et récompenses conservées ; confirmation |
@@ -226,7 +228,7 @@ La table `COMMANDS` (`command/mod.rs`) décrit chaque commande (nom, alias, usag
 | `help` | `h`, `?` | `help [commande]` |
 | `quit` | `q` | `quit` |
 
-Noms d'apps et de catégories insensibles à la casse. `:add` déduit `watch_exe` du nom de fichier quand la cible est un `.exe`, et refuse un chemin absolu inexistant. Après `:add` ou `:move`, la sélection suit l'app.
+Noms d'apps et de catégories insensibles à la casse. `:add` déduit `watch_exe` du nom de fichier quand la cible est un `.exe`, et refuse un chemin absolu inexistant. Après `:add`, `:move` ou `:edit`, la sélection suit l'app. `:edit` change nom, cible, catégorie et process d'une app sans toucher à son id (`Database::update_app`), donc sessions, XP et récompenses restent ; mêmes vérifications que `:add` (nom déjà pris par une autre app, mais changer la casse du sien est permis ; chemin absolu inexistant ; catégorie créée si absente ; process vide déduit de la cible). Un alias de `commands.toml` qui citait l'ancien nom n'est pas réécrit. Si le process change pendant une session, le tracker voit l'ancien disparaître : la session se ferme normalement.
 
 `:export` / `:import` (`storage/backup.rs`) servent à la sauvegarde, à l'analyse externe et au changement de PC. Le fichier : `{ version: 1, exported_at, apps: [{ name, category, launch_target, watch_exe, total_xp }], sessions: [{ app, started_at, ended_at, duration_s, xp_gained }] }` (sessions en cours exclues, horodatages Unix). L'import fusionne en une transaction, sans confirmation puisqu'il ne supprime rien : une app absente est créée avec sa catégorie et son `total_xp` ; une app déjà présente (même nom) garde sa cible et sa catégorie, et gagne l'XP de ses sessions nouvellement importées ; une session déjà présente (même app, même début) est ignorée, donc réimporter le même fichier ne change rien. Les récompenses ne sont pas exportées.
 
@@ -266,7 +268,7 @@ Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le pa
 | Normal | `/` | Recherche floue parmi toutes les apps (`Mode::Search`) |
 | Normal | `1 2 3 4 5` | Changer d'écran : Dashboard, Stats, Récompenses, Stockage, Optimisation |
 | Normal | `0` / `?` | Aide |
-| Normal | `a` / `m` | Formulaire d'ajout / de déplacement de l'app sélectionnée |
+| Normal | `a` / `e` / `m` | Formulaire d'ajout / de modification / de déplacement de l'app sélectionnée |
 | Normal | `d` | Supprimer l'app sélectionnée, ou la catégorie si le focus y est (vide uniquement) |
 | Normal | `s` | Tri suivant des apps (`Command::Sort`) : nom, XP, récent, temps |
 | Normal (Stats) | `s` | Camembert par catégorie ↔ par app (`Command::ToggleStatsPie`) |
@@ -292,9 +294,10 @@ Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le pa
 ### Popups (`src/popup.rs`, rendu dans `ui/widgets/popup.rs`)
 
 - **Confirmation** : toute commande destructive (`RemoveApp`, `RemoveCategory`, `Uninstall`, `Trash`, `ClearSessions`, `ClearStats`) porte un champ `confirmed`. Non confirmée, son exécution ouvre une popup qui contient la même commande avec `confirmed: true`. Touche `d` et `:rm` passent donc par la même confirmation.
-- **Formulaires** : `Form` = liste de champs (`TextInput`, partagé avec la ligne de commande) avec un champ focalisé. La validation produit une `Command` (`Add`, `Move`) exécutée par le chemin habituel. En cas d'erreur (champ requis, nom déjà pris, fichier introuvable), le formulaire reste ouvert et affiche l'erreur ; le premier champ requis vide reçoit le focus.
+- **Formulaires** : `Form` = liste de champs (`TextInput`, partagé avec la ligne de commande) avec un champ focalisé. La validation produit une `Command` (`Add`, `Edit`, `Move`) exécutée par le chemin habituel. En cas d'erreur (champ requis, nom déjà pris, fichier introuvable), le formulaire reste ouvert et affiche l'erreur ; le premier champ requis vide reçoit le focus.
 - **Choix de l'app** (`Popup::Picker`) : `a` et `:add` sans argument ouvrent d'abord une liste filtrable (fuzzy) des apps installées, lue par `launcher/scan.rs` dans les bibliothèques Steam (`libraryfolders.vdf` puis `appmanifest_*.acf` complètement installés : cible `steam://rungameid/<id>`, process = le plus gros exe du dossier du jeu, jusqu'à trois niveaux) et Epic (manifests `.item` de `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests`, hors DLC : cible `com.epicgames.launcher://apps/...?action=launch`, process = `LaunchExecutable`), puis dans les raccourcis `.lnk` et `.url` du menu Démarrer et du Bureau. À nom égal, l'entrée de bibliothèque l'emporte. Le scan tourne dans un thread temporaire (`AppEvent::ShortcutsScanned`) à chaque ouverture ; les trois sources et la lecture des fichiers sont parallélisées avec rayon (ordre conservé, donc la priorité des bibliothèques aussi). Les apps déjà ajoutées sont masquées. `Entrée` ouvre le formulaire pré-rempli (cible = le `.lnk`, qui garde ses arguments ; process = l'exe pointé par le raccourci), focus sur la catégorie. `Tab`, ou `Entrée` sans résultat, ouvre le formulaire vide avec la recherche comme nom.
 - Formulaire d'ajout : Nom*, Cible*, Catégorie* (pré-remplie avec la catégorie sélectionnée), Process (vide : déduit de la cible, affiché en grisé « auto : X.exe »). Une ligne d'aide sous les champs explique le champ actif, notamment à quoi sert Process (l'exe surveillé pour compter le temps de jeu).
+- Formulaire de modification (`FormKind::Edit`, touche `e` ou `:edit <app>`) : mêmes champs, pré-remplis avec l'app, focus sur le nom. Vider Process le déduit à nouveau de la cible.
 - **Level-up** : ouverte quand une app ou le profil gagne un niveau (fin de session). Bordure qui alterne de couleur à chaque `Tick`. `Entrée`, `Esc` ou `Espace` la ferment.
 - **Récompense débloquée** : une popup par récompense, après celle de level-up, mêmes touches et même clignotement.
 - Une popup déclenchée par un événement (level-up, récompense) n'interrompt pas une saisie : elle attend dans une file (`pending_popups`) que l'utilisateur revienne en mode Normal.

@@ -24,7 +24,7 @@ pub fn parse(input: &str) -> Result<Command, String> {
             category: rest.join(" "),
             confirmed: false,
         }),
-        ("add", []) => Ok(Command::OpenForm(FormKind::AddApp)),
+        ("add", []) => Ok(Command::OpenForm(FormKind::Add)),
         ("add", [name, target]) => Ok(Command::Add {
             name: name.clone(),
             target: target.clone(),
@@ -37,11 +37,14 @@ pub fn parse(input: &str) -> Result<Command, String> {
             category: Some(category.clone()),
             watch_exe: None,
         }),
-        ("move", [app]) => Ok(Command::OpenForm(FormKind::MoveApp { app: app.clone() })),
+        ("move", [app]) => Ok(Command::OpenForm(FormKind::Move { app: app.clone() })),
         ("move", [app, category]) => Ok(Command::Move {
             app: app.clone(),
             category: category.clone(),
         }),
+        ("edit", [_, ..]) => Ok(Command::OpenForm(FormKind::Edit {
+            app: rest.join(" "),
+        })),
         ("stats", []) => Ok(Command::Stats { app: None }),
         ("stats", [_, ..]) => Ok(Command::Stats {
             app: Some(rest.join(" ")),
@@ -181,10 +184,16 @@ mod tests {
                     category: s("Dev"),
                 },
             ),
-            ("add", Command::OpenForm(FormKind::AddApp)),
+            ("add", Command::OpenForm(FormKind::Add)),
+            (
+                "edit Windows Terminal",
+                Command::OpenForm(FormKind::Edit {
+                    app: s("Windows Terminal"),
+                }),
+            ),
             (
                 "move Hades",
-                Command::OpenForm(FormKind::MoveApp { app: s("Hades") }),
+                Command::OpenForm(FormKind::Move { app: s("Hades") }),
             ),
             (
                 "rm Windows Terminal",
@@ -285,6 +294,7 @@ mod tests {
             ("add Code", "Usage : add [<nom> <cible> [catégorie]]"),
             ("move", "Usage : move <app> [catégorie]"),
             ("rm", "Usage : rm <app>"),
+            ("edit", "Usage : edit <app>"),
             ("quit now", "Usage : quit"),
             ("clear", "Usage : clear sessions|stats"),
             ("clear apps", "Usage : clear sessions|stats"),

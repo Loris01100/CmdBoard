@@ -17,7 +17,7 @@ fn keys() -> [(String, String); 11] {
         ("j/k ↑↓".into(), t!("help.navigate")),
         ("Tab ←→ h/l".into(), t!("help.panel")),
         (t!("keys.enter"), t!("help.launch")),
-        ("a / m / d".into(), t!("help.edit")),
+        ("a / e / m / d".into(), t!("help.edit")),
         ("s".into(), t!("help.sort")),
         ("/".into(), t!("help.search")),
         ("Tab s d f".into(), t!("help.storage")),

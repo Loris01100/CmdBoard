@@ -90,6 +90,24 @@ impl Database {
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// Replaces an app's details. Its id stays, so sessions, XP and rewards are kept.
+    pub fn update_app(&self, app_id: i64, app: &NewApp) -> anyhow::Result<()> {
+        self.conn
+            .execute(
+                "UPDATE apps SET name = ?2, launch_target = ?3, watch_exe = ?4, category_id = ?5
+                 WHERE id = ?1",
+                params![
+                    app_id,
+                    app.name,
+                    app.launch_target,
+                    app.watch_exe,
+                    app.category_id
+                ],
+            )
+            .with_context(|| t!("error.cannot_edit_app", name = app.name))?;
+        Ok(())
+    }
+
     pub fn move_app(&self, app_id: i64, category_id: i64) -> anyhow::Result<()> {
         self.conn
             .execute(

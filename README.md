@@ -50,7 +50,7 @@ Run `:update` inside CmdBoard. If you installed it with the MSI, run the new MSI
 | `Enter` | Launch the selected app |
 | `/` | Search apps in every category |
 | `:` | Command line |
-| `a` / `m` / `d` | Add / move / remove (an app, or an empty category) |
+| `a` / `e` / `m` / `d` | Add / edit / move / remove (an app, or an empty category) |
 | `s` | Change the sort order (name, XP, recent, time) |
 | `1`–`5` | Dashboard, Stats, Rewards, Storage, Optimize |
 | `0` / `?` | Help |
@@ -64,6 +64,7 @@ Each screen lists its own keys in the help (`?`).
 | `:launch <app>` (`:l`) | Launch an app |
 | `:add [<name> <target> [category]]` | Add an app (no arguments: opens the form) |
 | `:move <app> [category]` (`:mv`) | Move an app to another category |
+| `:edit <app>` | Change an app's name, target, category or process, keeping its history |
 | `:rm <app>` | Remove an app and its history |
 | `:rmcat <category>` | Remove an empty category |
 | `:stats [app]` | Stats for every app, or one |

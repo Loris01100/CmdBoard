@@ -47,7 +47,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             ("j/k".into(), "hint.navigate"),
             ("Tab".into(), "hint.panel"),
             (enter, "hint.launch"),
-            ("a/m/d".into(), "hint.edit"),
+            ("a/e/m/d".into(), "hint.edit"),
             ("/".into(), "hint.search"),
             (":".into(), "hint.command"),
             ("q".into(), "hint.quit"),

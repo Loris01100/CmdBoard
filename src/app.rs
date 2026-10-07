@@ -938,11 +938,14 @@ impl App {
                     app: self.selected_app()?.name.clone(),
                 },
             },
-            KeyCode::Char('a') => Command::OpenForm(FormKind::AddApp),
+            KeyCode::Char('a') => Command::OpenForm(FormKind::Add),
             KeyCode::Char('s') => Command::Sort {
                 by: Some(self.sort.next()),
             },
-            KeyCode::Char('m') => Command::OpenForm(FormKind::MoveApp {
+            KeyCode::Char('e') => Command::OpenForm(FormKind::Edit {
+                app: self.selected_app()?.name.clone(),
+            }),
+            KeyCode::Char('m') => Command::OpenForm(FormKind::Move {
                 app: self.selected_app()?.name.clone(),
             }),
             KeyCode::Char('d') => match self.focus {
@@ -1521,6 +1524,13 @@ impl App {
                 category,
                 watch_exe,
             } => return self.add_app(name, target, category, watch_exe),
+            Command::Edit {
+                app,
+                name,
+                target,
+                category,
+                watch_exe,
+            } => return self.edit_app(&app, name, target, &category, watch_exe),
             Command::Move { app, category } => {
                 let (id, name) = {
                     let entry = self.app_named(&app)?;
@@ -1835,6 +1845,39 @@ impl App {
         )))
     }
 
+    /// Same checks as `add_app`. The app keeps its id, so its history stays.
+    fn edit_app(
+        &mut self,
+        app: &str,
+        name: String,
+        target: String,
+        category: &str,
+        watch_exe: Option<String>,
+    ) -> anyhow::Result<Option<Message>> {
+        let id = self.app_named(app)?.id;
+        // Another app with that name; changing only the case of its own name is fine.
+        if self.find_app(&name).is_some_and(|other| other.id != id) {
+            bail!(t!("error.app_exists", name));
+        }
+        launch::check_target(&target)?;
+        let (category_id, created) = self.category_or_create(category)?;
+        self.db.update_app(
+            id,
+            &NewApp {
+                watch_exe: watch_exe.or_else(|| launch::watch_exe_for(&target)),
+                name: name.clone(),
+                launch_target: target,
+                category_id,
+            },
+        )?;
+        self.reload()?;
+        self.select_app(id);
+        Ok(Some((
+            t!("action.edited", name, note = created_note(created)),
+            MsgKind::Success,
+        )))
+    }
+
     fn remove_category(
         &mut self,
         category: &str,
@@ -1868,14 +1911,28 @@ impl App {
 
     fn open_form(&mut self, kind: FormKind) -> anyhow::Result<()> {
         let form = match kind {
-            FormKind::AddApp => {
+            FormKind::Add => {
                 let category = self.selected_category().map_or("", |c| c.name.as_str());
                 let picker = Picker::new(category);
                 self.mode = Mode::Popup(Popup::Picker(picker));
                 self.start_shortcut_scan();
                 return Ok(());
             }
-            FormKind::MoveApp { app } => {
+            FormKind::Edit { app } => {
+                let entry = self.app_named(&app)?;
+                let category = self
+                    .categories
+                    .iter()
+                    .find(|c| c.id == entry.category_id)
+                    .map_or("", |c| c.name.as_str());
+                Form::edit_app(
+                    &entry.name,
+                    &entry.launch_target,
+                    category,
+                    entry.watch_exe.as_deref(),
+                )
+            }
+            FormKind::Move { app } => {
                 let entry = self.app_named(&app)?;
                 let category = self
                     .categories
@@ -2480,6 +2537,56 @@ mod tests {
         press(&mut app, KeyCode::Enter);
         assert_eq!(app.selected_category().unwrap().name, "Outils");
         assert_eq!(app.selected_app().unwrap().name, "Steam");
+    }
+
+    #[test]
+    fn edit_form_changes_app_and_keeps_history() {
+        let mut app = App::with_defaults();
+        let steam = steam_id(&app);
+        play(&mut app, steam, 600);
+        let before = app.find_app_by_id(steam).unwrap().clone();
+
+        press(&mut app, KeyCode::Char('e'));
+        assert_eq!(form(&app).fields[1].input.text(), "steam://open/main");
+        assert_eq!(form(&app).fields[2].input.text(), "Jeux");
+        assert_eq!(form(&app).fields[3].input.text(), "steam.exe");
+        type_text(&mut app, " Deck");
+        for _ in 0..3 {
+            press(&mut app, KeyCode::Tab);
+        }
+        for _ in 0.."steam.exe".len() {
+            press(&mut app, KeyCode::Backspace);
+        }
+        press(&mut app, KeyCode::Enter); // last field: submit
+
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(message_kind(&app), Some(MsgKind::Success));
+        let after = app.selected_app().unwrap();
+        assert_eq!((after.id, after.name.as_str()), (steam, "Steam Deck"));
+        assert_eq!(after.watch_exe, None); // empty, and a URI gives no exe
+        assert_eq!(
+            (after.total_secs, after.total_xp),
+            (before.total_secs, before.total_xp)
+        );
+    }
+
+    #[test]
+    fn edit_refuses_a_taken_name_but_allows_a_new_case() {
+        let mut app = App::with_defaults();
+        let edit = |name: &str| Command::Edit {
+            app: "steam".into(),
+            name: name.into(),
+            target: "steam://open/main".into(),
+            category: "Jeux".into(),
+            watch_exe: Some("steam.exe".into()),
+        };
+        app.execute(edit("Windows Terminal"));
+        assert_eq!(message_kind(&app), Some(MsgKind::Error));
+        assert!(app.find_app("Windows Terminal").unwrap().id != steam_id(&app));
+
+        app.execute(edit("STEAM"));
+        assert_eq!(message_kind(&app), Some(MsgKind::Success));
+        assert_eq!(app.find_app("steam").unwrap().name, "STEAM");
     }
 
     #[test]
@@ -3426,9 +3533,9 @@ mod tests {
         app.show(Screen::Storage); // already scanning: no second thread
 
         app.open_folder(Some(dir.clone()), None);
-        app.execute(Command::OpenForm(FormKind::AddApp)); // the picker scans the installed apps
+        app.execute(Command::OpenForm(FormKind::Add)); // the picker scans the installed apps
         assert!(app.scan_running);
-        app.execute(Command::OpenForm(FormKind::AddApp)); // already scanning: no second thread
+        app.execute(Command::OpenForm(FormKind::Add)); // already scanning: no second thread
 
         let wait = Duration::from_secs(60);
         while app.storage_scanning

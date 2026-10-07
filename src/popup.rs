@@ -62,8 +62,14 @@ impl Picker {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FormKind {
-    AddApp,
-    MoveApp { app: String },
+    Add,
+    Move {
+        app: String,
+    },
+    /// Same fields as `Add`, pre-filled with what `app` has now.
+    Edit {
+        app: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,7 +98,7 @@ pub struct Form {
     pub error: Option<String>,
 }
 
-// Field order of the "add app" form.
+// Field order of the "add app" and "edit app" forms.
 const NAME: usize = 0;
 const TARGET: usize = 1;
 const CATEGORY: usize = 2;
@@ -102,7 +108,7 @@ impl Form {
     /// Add-app form; `category` pre-fills the category field.
     pub fn add_app(category: &str) -> Self {
         Self::new(
-            FormKind::AddApp,
+            FormKind::Add,
             vec![
                 Field::new(t!("form.name"), "", true),
                 Field::new(t!("form.target"), "", true),
@@ -126,10 +132,22 @@ impl Form {
         form
     }
 
+    /// Edit form for an app, pre-filled with its current details.
+    pub fn edit_app(app: &str, target: &str, category: &str, watch_exe: Option<&str>) -> Self {
+        let mut form = Self::add_app(category);
+        form.kind = FormKind::Edit {
+            app: app.to_string(),
+        };
+        form.fields[NAME].input.set(app);
+        form.fields[TARGET].input.set(target);
+        form.fields[PROCESS].input.set(watch_exe.unwrap_or(""));
+        form
+    }
+
     /// Move form for `app`, pre-filled with its current category.
     pub fn move_app(app: &str, category: &str) -> Self {
         Self::new(
-            FormKind::MoveApp {
+            FormKind::Move {
                 app: app.to_string(),
             },
             vec![Field::new(t!("form.category"), category, true)],
@@ -147,16 +165,18 @@ impl Form {
 
     pub fn title(&self) -> String {
         match &self.kind {
-            FormKind::AddApp => t!("form.add_title"),
-            FormKind::MoveApp { app } => t!("form.move_title", app),
+            FormKind::Add => t!("form.add_title"),
+            FormKind::Move { app } => t!("form.move_title", app),
+            FormKind::Edit { app } => t!("form.edit_title", app),
         }
     }
 
     /// Greyed text shown in an empty field.
     pub fn placeholder(&self, index: usize) -> Option<String> {
-        match (&self.kind, index) {
-            (FormKind::AddApp, TARGET) => Some(t!("form.target_placeholder")),
-            (FormKind::AddApp, PROCESS) => {
+        let app_fields = matches!(self.kind, FormKind::Add | FormKind::Edit { .. });
+        match index {
+            TARGET if app_fields => Some(t!("form.target_placeholder")),
+            PROCESS if app_fields => {
                 let target = self.fields[TARGET].input.text();
                 Some(match launch::watch_exe_for(target) {
                     Some(exe) => t!("form.process_auto", exe),
@@ -169,13 +189,14 @@ impl Form {
 
     /// What the focused field is for, shown under the fields.
     pub fn help(&self) -> Option<String> {
-        Some(match (&self.kind, self.focused) {
-            (FormKind::AddApp, NAME) => t!("form.help_name"),
-            (FormKind::AddApp, TARGET) => t!("form.help_target"),
-            (FormKind::AddApp, CATEGORY) | (FormKind::MoveApp { .. }, _) => {
-                t!("form.help_category")
-            }
-            (FormKind::AddApp, PROCESS) => t!("form.help_process"),
+        if matches!(self.kind, FormKind::Move { .. }) {
+            return Some(t!("form.help_category"));
+        }
+        Some(match self.focused {
+            NAME => t!("form.help_name"),
+            TARGET => t!("form.help_target"),
+            CATEGORY => t!("form.help_category"),
+            PROCESS => t!("form.help_process"),
             _ => return None,
         })
     }
@@ -208,15 +229,22 @@ impl Form {
         }
         let value = |i: usize| self.fields[i].input.text().trim().to_string();
         Ok(match &self.kind {
-            FormKind::AddApp => Command::Add {
+            FormKind::Add => Command::Add {
                 name: value(NAME),
                 target: value(TARGET),
                 category: Some(value(CATEGORY)),
                 watch_exe: Some(value(PROCESS)).filter(|p| !p.is_empty()),
             },
-            FormKind::MoveApp { app } => Command::Move {
+            FormKind::Move { app } => Command::Move {
                 app: app.clone(),
                 category: value(0),
+            },
+            FormKind::Edit { app } => Command::Edit {
+                app: app.clone(),
+                name: value(NAME),
+                target: value(TARGET),
+                category: value(CATEGORY),
+                watch_exe: Some(value(PROCESS)).filter(|p| !p.is_empty()),
             },
         })
     }
@@ -271,6 +299,29 @@ mod tests {
             form.build_command(),
             Ok(Command::Add { watch_exe: Some(exe), .. }) if exe == "Hades.exe"
         ));
+    }
+
+    #[test]
+    fn edit_form_starts_from_the_app_and_builds_command() {
+        let mut form = Form::edit_app("Hades", "steam://rungameid/1145360", "Jeux", None);
+        assert!(form.title().contains("Hades"));
+        assert_eq!(form.help(), Some(t!("form.help_name")));
+        assert_eq!(
+            form.placeholder(PROCESS),
+            Some(t!("form.process_placeholder"))
+        );
+        fill(&mut form, NAME, "Hades II");
+        fill(&mut form, PROCESS, "Hades2.exe");
+        assert_eq!(
+            form.build_command(),
+            Ok(Command::Edit {
+                app: "Hades".into(),
+                name: "Hades II".into(),
+                target: "steam://rungameid/1145360".into(),
+                category: "Jeux".into(),
+                watch_exe: Some("Hades2.exe".into()),
+            })
+        );
     }
 
     #[test]

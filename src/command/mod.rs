@@ -60,6 +60,15 @@ pub enum Command {
         app: String,
         category: String,
     },
+    /// Replaces an app's details, keeping its history. `watch_exe: None` derives the
+    /// process from the target when it is an exe, like `Add`.
+    Edit {
+        app: String,
+        name: String,
+        target: String,
+        category: String,
+        watch_exe: Option<String>,
+    },
     /// Destructive: without `confirmed`, opens a confirmation popup first.
     RemoveApp {
         app: String,
@@ -154,6 +163,10 @@ pub const COMMANDS: &[CommandHelp] = &[
     CommandHelp {
         name: "move",
         aliases: &["mv"],
+    },
+    CommandHelp {
+        name: "edit",
+        aliases: &[],
     },
     CommandHelp {
         name: "rm",
