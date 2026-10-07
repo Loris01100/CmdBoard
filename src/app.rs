@@ -2845,7 +2845,7 @@ mod tests {
         run(&mut app, "lang");
         assert_eq!(
             app.message.as_ref().unwrap().0,
-            "Langues : en, fr (actuelle : fr)"
+            "Langues : en, fr, pt (actuelle : fr)"
         );
         run(&mut app, "lang FR");
         assert_eq!(app.message.as_ref().unwrap().0, "Langue : Français");

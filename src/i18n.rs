@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub const LANGS: &[(&str, &str)] = &[
     ("en", include_str!("../locales/en.toml")),
     ("fr", include_str!("../locales/fr.toml")),
+    ("pt", include_str!("../locales/pt.toml")),
 ];
 
 /// Index of English in `LANGS`, the fallback for missing keys.

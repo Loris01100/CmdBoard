@@ -404,7 +404,7 @@ usage = "sort [name|xp|recent|time]"
 summary = "Orders the apps (saved). Without arguments: current order"
 
 [cmd.lang]
-usage = "lang [en|fr]"
+usage = "lang [en|fr|pt]"
 summary = "Switches language (saved). Without arguments: lists the languages"
 
 [cmd.group]

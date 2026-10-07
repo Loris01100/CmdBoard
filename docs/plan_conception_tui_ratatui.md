@@ -68,7 +68,8 @@ themes/                  // thèmes intégrés au binaire (include_str!)
 └── terminal.toml        // 16 couleurs ANSI, repli sans truecolor
 locales/                 // textes de l'interface, intégrés au binaire (include_str!)
 ├── en.toml              // référence : toute autre langue a exactement ces clés
-└── fr.toml
+├── fr.toml
+└── pt.toml              // portugais du Brésil (Windows donne `pt` pour pt-BR comme pt-PT)
 .github/workflows/release.yml   // généré par `dist init`
 wix/main.wxs                    // installeur MSI, généré par `dist init`
 ```

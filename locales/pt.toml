@@ -1,0 +1,490 @@
+# Textos da interface em português (do Brasil). As chaves são as mesmas de en.toml, que
+# é a referência (um teste verifica). `{nome}` é substituído por um valor.
+
+language = "Português"
+pair = "{label}: {value}"
+cancelled = "Cancelado"
+never = "nunca"
+new_category = " (nova categoria)"
+app_count = "{count} app(s)"
+
+[screen]
+dashboard = "Painel"
+stats = "Estatísticas"
+rewards = "Recompensas"
+storage = "Armazenamento"
+optimize = "Otimizar"
+help = "Ajuda"
+
+[size]
+decimal = ","
+kb = "{n} KB"
+mb = "{n} MB"
+gb = "{n} GB"
+tb = "{n} TB"
+
+[sort]
+name = "nome"
+xp = "XP"
+recent = "recente"
+time = "tempo"
+list = "Ordens: {list} (atual: {current})"
+set = "Ordem: {label}"
+not_saved = "ordem aplicada mas não salva"
+unknown_config = "config.toml: ordem desconhecida: {name}"
+
+[theme]
+list = "Temas: {list} (atual: {current})"
+set = "Tema: {name}"
+not_saved = "tema aplicado mas não salvo"
+file_error = "tema {name}.toml: {error}"
+error = "tema {name}: {error}"
+unknown = "tema desconhecido (:theme para a lista)"
+missing_name = "nome ausente"
+missing_slots = "seção [slots] ausente"
+unknown_slot = "slot desconhecido: {name}"
+missing_slot = "slot ausente: {name}"
+slot_error = "slot {name}: {error}"
+color_expected = "cor esperada"
+section_expected = "[{name}]: seção esperada"
+palette_color_expected = "paleta {name}: cor esperada"
+palette_invalid = "paleta {name}: cor inválida “{raw}”"
+unknown_color = "cor desconhecida “{name}”"
+style_expected = "cor ou { fg, bg, bold… } esperado"
+invalid_key = "chave inválida: {name}"
+
+[lang]
+list = "Idiomas: {list} (atual: {current})"
+set = "Idioma: {name}"
+not_saved = "idioma aplicado mas não salvo"
+unknown = "idioma desconhecido: {code} (:lang para a lista)"
+unknown_config = "config.toml: idioma desconhecido: {code}"
+
+[update]
+failed = "Atualização: {error}"
+up_to_date = "O CmdBoard está atualizado (v{version})"
+use_winget = "v{version} disponível. Instalado com MSI/winget: execute “winget upgrade CmdBoard”"
+installed = "Atualizado para v{version}: reinicie o CmdBoard"
+running = "verificação de atualização já em andamento"
+unavailable = "atualização indisponível"
+searching = "Procurando atualização…"
+unreachable = "não foi possível acessar o GitHub"
+install_failed = "a atualização falhou"
+available = "v{version} disponível "
+
+[session]
+started = "Sessão iniciada: {name}"
+ended = "Sessão encerrada: {name} ({minutes} min, +{xp} XP)"
+too_short = "Sessão curta demais, não registrada: {name}"
+recovered = "{count} sessão(ões) interrompida(s) recuperada(s)"
+rule_error = "regra “{code}”: {error}"
+none_running = "nenhuma sessão em andamento "
+
+[action]
+launched = "Iniciado: {name}"
+added = "Adicionado: {name}{note}"
+moved = "Movido: {name} → {category}{note}"
+removed = "Removido: {name}"
+category_removed = "Categoria removida: {name}"
+group_saved = "Grupo :{name} salvo: {list}"
+exported = "{apps} app(s) e {sessions} sessão(ões) exportados para {path}"
+imported = "{apps} novo(s) app(s) e {sessions} sessão(ões) importados"
+confirm_remove_app = "Remover “{name}”? O tempo de jogo, o XP e as recompensas serão perdidos."
+confirm_remove_category = "Remover a categoria “{name}”?"
+confirm_clear_sessions = "Apagar o histórico de sessões? As estatísticas são mantidas."
+sessions_cleared = "Histórico apagado: {count} sessão(ões)"
+confirm_clear_stats = "Apagar todas as estatísticas? Sessões, tempo de jogo e sequência recomeçam; XP e recompensas são mantidos."
+stats_cleared = "Estatísticas apagadas: {count} sessão(ões) excluída(s)"
+
+[error]
+app_exists = "“{name}” já existe"
+no_category = "nenhuma categoria selecionada: informe uma"
+category_not_empty = "“{name}” ainda contém {count} app(s): mova-os ou remova-os antes"
+unknown_app = "app desconhecido: {name}"
+unknown_category = "categoria desconhecida: {name}"
+unknown_command = "comando desconhecido: {name}"
+cannot_read = "não foi possível ler {path}"
+bad_backup = "{path} não é uma exportação do CmdBoard"
+backup_version = "formato de exportação {version} não suportado por esta versão"
+cannot_write = "não foi possível gravar {path}"
+cannot_create = "não foi possível criar {path}"
+cannot_open = "não foi possível abrir {path}"
+no_appdata = "pasta %APPDATA% não encontrada"
+db_too_new = "banco de dados na versão {version}, criado por um CmdBoard mais recente (esta versão conhece {known})"
+migration_failed = "a migração {number} falhou"
+cannot_add_category = "não foi possível adicionar a categoria “{name}”"
+category_has_apps = "a categoria ainda contém apps"
+cannot_add_app = "não foi possível adicionar “{name}”"
+cannot_move_app = "não foi possível mover o app"
+cannot_launch = "não foi possível iniciar {target}"
+no_target = "nenhum destino de execução"
+file_not_found = "arquivo não encontrado: {target}"
+
+[parse]
+empty = "Comando vazio"
+unknown = "Comando desconhecido: {name} (:help para a lista)"
+bad_sort = "Ordem desconhecida: {name} (uso: {usage})"
+usage = "Uso: {usage}"
+unclosed_quote = "Aspas não fechadas"
+
+[alias]
+skipped = "commands.toml: alias ignorado(s): {list}"
+missing_argument = "argumento ${number} ausente"
+reserved = "“{name}” é um comando embutido"
+bad_name = "“{name}”: o nome de um alias é uma única palavra"
+
+[rule]
+empty = "regra vazia"
+condition_expected = "condição esperada: <variável> <operador> <número>"
+unknown_variable = "variável desconhecida: {name} (conhecidas: {list})"
+bad_number = "número inválido: {text}"
+unexpected_char = "caractere inesperado: {char}"
+
+[seed]
+games = "Jogos"
+tools = "Ferramentas"
+notepad = "Bloco de Notas"
+calculator = "Calculadora"
+explorer = "Explorador de Arquivos"
+
+[form]
+add_title = "Adicionar um app"
+move_title = "Mover “{app}”"
+name = "Nome"
+target = "Destino"
+category = "Categoria"
+process = "Processo"
+target_placeholder = 'C:\…\jogo.exe, notepad.exe ou steam://…'
+process_auto = "auto: {exe}"
+process_placeholder = "exe a monitorar, ex.: Hades.exe"
+help_name = "Nome exibido no CmdBoard."
+help_target = "O que é iniciado: um .exe ou atalho .lnk, um nome no PATH ou um link steam://…"
+help_category = "Uma categoria existente, ou uma nova que será criada."
+help_process = "Exe monitorado para contar o tempo de jogo (XP). Vazio: obtido do destino. Para um link steam://…, o exe do jogo (ex.: Hades.exe)."
+required = "{label}: campo obrigatório"
+footer = "  * obrigatório · Enter no último campo: enviar"
+
+[picker]
+search = "Buscar: "
+scanning = "Procurando apps instalados…"
+none_installed = "Nenhum app encontrado no Menu Iniciar"
+no_match = "Nenhum app correspondente: Tab para digitar"
+footer = "  {count} app(s) · Enter: preencher · Tab: digitar"
+
+[popup]
+continue = "Enter para continuar"
+reward_title = "Recompensa"
+reward_unlocked = "Recompensa desbloqueada!"
+level_up_title = "Subiu de nível"
+level_up = "{icon}  Subiu de nível!  {icon}"
+app_level = " chega ao nível {level}"
+profile_level = "Perfil: nível {level}"
+confirm_title = "Confirmar"
+yes = " sim   "
+no = " não"
+
+[dashboard]
+details = "Detalhes"
+no_app = "Nenhum aplicativo"
+level = "Nível {level}"
+total_time = "Tempo total: {time}"
+last = "Última vez: {last}"
+rewards = "Recompensas: {icon} {count}"
+target = "Destino: {target}"
+process = "Processo: {exe}"
+activity = "Atividade"
+activity_session = "{name} {time} (+{xp} XP)"
+no_activity = "Nenhuma atividade ainda"
+
+[apps]
+title = "Aplicativos · {sort}"
+search_title = "Busca ({count})"
+name = "Nome"
+level = "Nív"
+xp = "XP"
+time = "Tempo"
+categories = "Categorias"
+
+[profile]
+title = "Perfil"
+level = "Nív {level} "
+stats = " │ Sequência {days}d │ XP hoje: +{xp}"
+
+[ago]
+now = "agora mesmo"
+minutes = "há {count} min"
+hours = "há {count} h"
+yesterday = "ontem"
+days = "há {count} d"
+
+[command_line]
+title = "Comando"
+search = "Busca"
+search_placeholder = "o nome de um app, mesmo aproximado"
+
+[rewards]
+title = "Recompensas ({unlocked}/{total})"
+name = "Nome"
+description = "Descrição"
+unlocked = "Desbloqueada"
+none = "Nenhuma recompensa definida"
+detail = "Detalhe"
+for_app = "para {app}"
+per_app = "uma vez por app"
+global = "global"
+locked = "bloqueada"
+condition = "Condição: "
+unlocked_on = "Desbloqueada: "
+
+[storage]
+disks = "Discos"
+disk_usage = "{used} / {total} · {free} livres"
+all_disks = "todos os discos"
+biggest_first = "maiores primeiro"
+smallest_first = "menores primeiro"
+programs = "Programas · {drive} · {order} ({count})"
+scanning = "Lendo os programas instalados…"
+none = "Nenhum programa"
+name = "Nome"
+size = "Tamanho"
+drive = "Disco"
+publisher = "Editor"
+unknown_program = "programa desconhecido: {name}"
+confirm_uninstall = "Desinstalar “{name}”? O desinstalador dele será iniciado."
+uninstalling = "Desinstalador de {name} iniciado (4 para atualizar ao terminar)"
+uninstall_failed = "não foi possível iniciar o desinstalador de {name} (recusado ou ausente)"
+drives = "discos"
+folders = "Pastas · {dir} · {order} ({count}){measuring}"
+measuring = " · medindo {count} pasta(s)…"
+listing = "Lendo a pasta…"
+empty_folder = "Pasta vazia"
+program = "Programa"
+confirm_trash = "Enviar “{path}” para a Lixeira?"
+trashing = "Enviando {path} para a Lixeira…"
+trashed = "Enviado para a Lixeira: {path}"
+trash_failed = "não foi possível enviar {path} para a Lixeira"
+unavailable = "Lixeira indisponível"
+
+[stats]
+one_app = " {name} (:stats para ver todos)"
+all_apps = " Todos os apps"
+summary = "  ·  {count} sessão(ões)  ·  {total} no total  ·  mais longa: {longest}  ·  hoje: {today}"
+by_category = "Tempo por categoria · s: por app"
+by_app = "Tempo por app · s: por categoria"
+others = "Outros"
+no_sessions = "Nenhuma sessão"
+activity = "Atividade ({weeks} semanas)"
+weekdays = "Se Te Qa Qi Sx Sá Do"
+sessions = "Sessões ({count})"
+started = "Início"
+app = "App"
+duration = "Duração"
+xp = "XP"
+
+[keys]
+enter = "Enter"
+confirm_keys = "Enter/y"
+
+[hint]
+confirm = "enviar"
+cancel = "cancelar"
+history = "histórico"
+complete = "completar"
+choose = "escolher"
+go_to_app = "ir ao app"
+yes = "confirmar"
+continue = "continuar"
+fill = "preencher"
+manual = "digitar"
+field = "campo"
+next_or_submit = "próximo / enviar"
+navigate = "navegar"
+panel = "painel"
+launch = "iniciar"
+edit = "adic./mover/rem."
+search = "buscar"
+command = "comando"
+screens = "telas"
+disk = "disco"
+order = "ordem"
+uninstall = "desinstalar"
+folders = "pastas"
+programs = "programas"
+open = "abrir"
+parent = "voltar"
+delete = "excluir"
+run = "executar"
+level = "leve/pesado"
+switch = "alternar"
+windows_page = "página do Windows"
+quit = "sair"
+
+[help]
+keys = "Teclas"
+commands = "Comandos"
+alias = " alias"
+navigate = "navegar"
+panel = "trocar de painel"
+launch = "iniciar o app selecionado"
+edit = "adicionar / mover / remover (app ou categoria vazia)"
+sort = "mudar a ordem dos apps (nome, XP, recente, tempo); Estatísticas: pizza por categoria ou por app"
+search = "buscar um app em todas as categorias (Enter: ir até ele)"
+command = "linha de comando (↑↓ histórico, Tab completar, Esc cancelar)"
+screens = "Painel, Estatísticas, Recompensas, Armazenamento, Otimizar; 0 ou ?: Ajuda"
+storage = "Armazenamento: Tab/←→ disco, s menores/maiores primeiro, d/Del desinstalar, f pastas (Enter abrir, ← voltar, d Lixeira)"
+optimize = "Otimizar: Tab testes ↔ Jogos, Enter executa o teste ou alterna a configuração, n leve/pesado, o página do Windows da configuração"
+quit = "sair"
+
+[optimize]
+system = "Sistema"
+cpu = "Processador"
+cpu_value = "{name} · {cores} núcleos / {threads} threads"
+ram = "Memória"
+benches = "Testes · {level} (n para mudar)"
+light = "leve"
+heavy = "pesado"
+test = "Teste"
+result = "Resultado"
+level = "Nível"
+cpu_single = "Processador (1 núcleo)"
+cpu_multi = "Processador (todos os núcleos)"
+memory = "Memória (cópia)"
+disk = "Disco (pasta temporária)"
+running = "em execução…"
+busy = "um teste já está em execução"
+ops = "{n} M op/s"
+per_sec = "{size}/s"
+disk_score = "gravação {write} · leitura {read}"
+no_memory = "memória insuficiente"
+no_space = "espaço livre insuficiente"
+gaming = "Jogos"
+game_mode = "Modo de Jogo"
+recording = "Gravação em segundo plano"
+gpu_scheduling = "Agendamento de GPU (admin)"
+on = "ativado"
+off = "desativado"
+switched = "{name}: {state}"
+set_failed = "não foi possível alterar a configuração"
+open_failed = "não foi possível abrir as configurações do Windows"
+
+[cmd.launch]
+usage = "launch <app>"
+summary = "Inicia um app"
+
+[cmd.add]
+usage = "add [<nome> <destino> [categoria]]"
+summary = "Adiciona um app (exe ou URI). Sem argumentos: abre o formulário"
+
+[cmd.move]
+usage = "move <app> [categoria]"
+summary = "Move um app. Sem categoria: abre o formulário"
+
+[cmd.rm]
+usage = "rm <app>"
+summary = "Remove um app e seu histórico, após confirmação"
+
+[cmd.clear]
+usage = "clear sessions|stats"
+summary = "Apaga o histórico de sessões, ou todas as estatísticas, após confirmação"
+
+[cmd.rmcat]
+usage = "rmcat <categoria>"
+summary = "Remove uma categoria vazia, após confirmação"
+
+[cmd.stats]
+usage = "stats [app]"
+summary = "Estatísticas de todos os apps, ou de um"
+
+[cmd.theme]
+usage = "theme [nome]"
+summary = "Troca o tema (salvo). Sem nome: lista os temas"
+
+[cmd.sort]
+usage = "sort [name|xp|recent|time]"
+summary = "Ordena os apps (salvo). Sem argumentos: ordem atual"
+
+[cmd.lang]
+usage = "lang [en|fr|pt]"
+summary = "Troca o idioma (salvo). Sem argumentos: lista os idiomas"
+
+[cmd.group]
+usage = "group <nome> <app>, <app>…"
+summary = "Cria (ou substitui) um alias :<nome> que inicia esses apps"
+
+[cmd.export]
+usage = "export [arquivo]"
+summary = 'Salva apps e sessões em JSON (padrão: Documents\cmdboard-<data>.json)'
+
+[cmd.import]
+usage = "import <arquivo>"
+summary = "Mescla uma exportação: adiciona os apps e sessões ausentes, não exclui nada"
+
+[cmd.uninstall]
+usage = "uninstall <programa>"
+summary = "Inicia o desinstalador de um programa, após confirmação (tela Armazenamento)"
+
+[cmd.update]
+usage = "update"
+summary = "Instala a versão mais recente (MSI/winget: winget upgrade CmdBoard)"
+
+[cmd.help]
+usage = "help [comando]"
+summary = "Mostra a ajuda, ou o uso de um comando"
+
+[cmd.quit]
+usage = "quit"
+summary = "Sai do CmdBoard"
+
+# Recompensas iniciais (migrações v2 e v3), por `rewards.code`. O banco guarda o texto
+# em francês; este é exibido no lugar.
+[starter_rewards.premiers_pas]
+name = "Primeiros passos"
+description = "Terminar uma primeira sessão"
+
+[starter_rewards.marathon]
+name = "Maratona"
+description = "Jogar 3 h seguidas"
+
+[starter_rewards.noctambule]
+name = "Coruja"
+description = "Iniciar uma sessão entre meia-noite e 5 h"
+
+[starter_rewards.habitue]
+name = "Frequentador"
+description = "Passar 10 h em um app"
+
+[starter_rewards.passionne]
+name = "Apaixonado"
+description = "Passar 50 h em um app"
+
+[starter_rewards.veteran]
+name = "Veterano"
+description = "Chegar ao nível 5 em um app"
+
+[starter_rewards.regulier]
+name = "Constante"
+description = "Jogar 3 dias seguidos"
+
+[starter_rewards.assidu]
+name = "Assíduo"
+description = "Jogar 7 dias seguidos"
+
+[starter_rewards.touche_a_tout]
+name = "Pau para toda obra"
+description = "Iniciar 5 apps diferentes em 7 dias"
+
+[starter_rewards.centurion]
+name = "Centurião"
+description = "Passar 100 h no total"
+
+[starter_rewards.expert]
+name = "Especialista"
+description = "Chegar ao nível global 10"
+
+[starter_rewards.inarretable]
+name = "Imparável"
+description = "Jogar 30 dias seguidos"
+
+[starter_rewards.legende]
+name = "Lenda"
+description = "Jogar 365 dias seguidos"
