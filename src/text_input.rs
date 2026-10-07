@@ -117,6 +117,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn editing_keys_move_and_delete() {
+        let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        let mut input = TextInput::new("abc");
+        for code in [KeyCode::Home, KeyCode::Right, KeyCode::Delete] {
+            assert!(input.handle_key(key(code)));
+        }
+        assert_eq!(input.text(), "ac");
+        assert!(input.handle_key(key(KeyCode::End)));
+        assert!(input.handle_key(key(KeyCode::Right))); // stays at the end
+        assert!(input.handle_key(key(KeyCode::Left)));
+        assert!(input.handle_key(key(KeyCode::Backspace)));
+        assert_eq!(input.text(), "c");
+        assert!(!input.handle_key(key(KeyCode::F(1))));
+    }
+
+    #[test]
     fn edits_around_the_cursor_with_accents() {
         let mut input = TextInput::new("catégrie");
         input.left();

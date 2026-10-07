@@ -92,6 +92,19 @@ impl CommandLine {
 mod tests {
     use super::*;
 
+    #[test]
+    fn history_is_bounded_and_empty_history_does_nothing() {
+        let mut line = CommandLine::default();
+        line.history_prev();
+        line.history_next();
+        assert!(line.input.is_empty());
+        for i in 0..=HISTORY_LIMIT {
+            type_and_submit(&mut line, &format!("help {i}"));
+        }
+        assert_eq!(line.history.len(), HISTORY_LIMIT);
+        assert_eq!(line.history[0], "help 1"); // the oldest went
+    }
+
     fn type_and_submit(line: &mut CommandLine, text: &str) {
         text.chars().for_each(|c| line.input.insert(c));
         line.submit();

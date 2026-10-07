@@ -102,7 +102,8 @@ fn cpu(threads: usize, duration: Duration) -> f64 {
                 s.spawn(move || {
                     let mut x = seed + 0x9E37_79B9_7F4A_7C15;
                     let mut done = 0;
-                    while start.elapsed() < duration {
+                    // At least one batch, even if the thread started after `duration`.
+                    loop {
                         for _ in 0..STEPS {
                             x ^= x << 13;
                             x ^= x >> 7;
@@ -110,8 +111,10 @@ fn cpu(threads: usize, duration: Duration) -> f64 {
                         }
                         std::hint::black_box(x);
                         done += STEPS;
+                        if start.elapsed() >= duration {
+                            break done;
+                        }
                     }
-                    done
                 })
             })
             .collect();
@@ -296,6 +299,42 @@ fn set_dword(path: &str, name: &str, value: u32) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disk_benchmark_writes_and_reads_back() {
+        let Ok(Score::Disk { write, read }) = disk(8 << 20) else {
+            panic!("disk benchmark failed");
+        };
+        assert!(write > 0.0 && read > 0.0);
+        assert!(!std::env::temp_dir().join("cmdboard-bench.tmp").exists());
+        assert!(disk(u64::MAX / 4).is_err()); // never that much free space
+    }
+
+    #[test]
+    fn gaming_settings_describe_themselves() {
+        use std::collections::HashSet;
+        let labels: HashSet<String> = Gaming::ALL.iter().map(|g| g.label()).collect();
+        let pages: HashSet<&str> = Gaming::ALL.iter().map(|g| g.page()).collect();
+        assert_eq!((labels.len(), pages.len()), (3, 3));
+        assert!(pages.iter().all(|p| p.starts_with("ms-settings:")));
+        for g in Gaming::ALL {
+            g.enabled(); // reads the registry, whatever the answer
+        }
+        assert!(!Gaming::GpuScheduling.switchable());
+        assert!(Gaming::GpuScheduling.set(true).is_err());
+    }
+
+    #[test]
+    fn registry_dword_round_trip() {
+        use windows_sys::Win32::System::Registry::RegDeleteTreeW;
+        const KEY: &str = r"Software\CmdBoard-tests";
+        set_dword(KEY, "value", 7).unwrap();
+        assert_eq!(dword(HKEY_CURRENT_USER, KEY, "value"), Some(7));
+        assert_eq!(dword(HKEY_CURRENT_USER, KEY, "missing"), None);
+        // SAFETY: a nul-terminated key name under HKCU.
+        unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, programs::wide(KEY).as_ptr()) };
+        assert_eq!(dword(HKEY_CURRENT_USER, KEY, "value"), None);
+    }
 
     #[test]
     fn cpu_and_memory_measure_something() {

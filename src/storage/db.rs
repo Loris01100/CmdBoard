@@ -215,6 +215,11 @@ mod tests {
     use super::*;
 
     #[test]
+    fn data_dir_is_under_appdata() {
+        assert!(data_dir().unwrap().ends_with("CmdBoard"));
+    }
+
+    #[test]
     fn every_version_migrates_to_latest() {
         // Start from each historical version, built by replaying the earlier migrations.
         for start in 0..=MIGRATIONS.len() {

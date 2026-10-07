@@ -486,39 +486,40 @@ impl App {
     ) -> anyhow::Result<()> {
         while !self.should_quit {
             terminal.draw(|f| ui::draw(f, self))?;
-            match events.recv()? {
-                AppEvent::Key(key) => self.on_key(key),
-                AppEvent::Tick => self.on_tick(),
-                AppEvent::SessionStarted { app_id } => self.on_session_start(app_id),
-                AppEvent::SessionEnded { app_id, secs } => self.on_session_end(app_id, secs),
-                AppEvent::UpdateFinished { action, result } => {
-                    self.on_update_finished(action, result)
-                }
-                AppEvent::StorageScanned { disks, programs } => {
-                    self.on_storage_scanned(disks, programs)
-                }
-                AppEvent::FolderListed { dir, entries } => self.on_folder_listed(&dir, entries),
-                AppEvent::FolderProgress { path, percent } => {
-                    self.on_folder_progress(path, percent)
-                }
-                AppEvent::FolderSized { path, size } => self.on_folder_sized(path, size),
-                AppEvent::Trashed { path, result } => self.on_trashed(&path, result),
-                AppEvent::BenchFinished {
-                    bench,
-                    heavy,
-                    result,
-                } => self.on_bench_finished(bench, heavy, result),
-                AppEvent::ShortcutsScanned(found) => {
-                    self.scan_running = false;
-                    self.shortcuts = found;
-                    // The list changed: back to the best match.
-                    if let Mode::Popup(Popup::Picker(picker)) = &mut self.mode {
-                        picker.selected = 0;
-                    }
+            self.handle(events.recv()?);
+        }
+        self.end_all_sessions()
+    }
+
+    /// Routes one event from the event, tracker or a short-lived thread.
+    pub fn handle(&mut self, event: AppEvent) {
+        match event {
+            AppEvent::Key(key) => self.on_key(key),
+            AppEvent::Tick => self.on_tick(),
+            AppEvent::SessionStarted { app_id } => self.on_session_start(app_id),
+            AppEvent::SessionEnded { app_id, secs } => self.on_session_end(app_id, secs),
+            AppEvent::UpdateFinished { action, result } => self.on_update_finished(action, result),
+            AppEvent::StorageScanned { disks, programs } => {
+                self.on_storage_scanned(disks, programs)
+            }
+            AppEvent::FolderListed { dir, entries } => self.on_folder_listed(&dir, entries),
+            AppEvent::FolderProgress { path, percent } => self.on_folder_progress(path, percent),
+            AppEvent::FolderSized { path, size } => self.on_folder_sized(path, size),
+            AppEvent::Trashed { path, result } => self.on_trashed(&path, result),
+            AppEvent::BenchFinished {
+                bench,
+                heavy,
+                result,
+            } => self.on_bench_finished(bench, heavy, result),
+            AppEvent::ShortcutsScanned(found) => {
+                self.scan_running = false;
+                self.shortcuts = found;
+                // The list changed: back to the best match.
+                if let Mode::Popup(Popup::Picker(picker)) = &mut self.mode {
+                    picker.selected = 0;
                 }
             }
         }
-        self.end_all_sessions()
     }
 
     pub fn on_update_finished(
@@ -2970,5 +2971,513 @@ mod tests {
         let mut app = App::with_defaults();
         press(&mut app, KeyCode::Char('q'));
         assert!(app.should_quit);
+    }
+
+    #[test]
+    fn ctrl_c_quits_from_any_mode() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char(':'));
+        app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn screens_and_sorts_have_distinct_labels() {
+        use std::collections::HashSet;
+        let screens = [
+            Screen::Dashboard,
+            Screen::Stats,
+            Screen::Rewards,
+            Screen::Storage,
+            Screen::Optimize,
+            Screen::Help,
+        ];
+        let titles: HashSet<String> = screens.into_iter().map(Screen::title).collect();
+        assert_eq!(titles.len(), screens.len());
+        let labels: HashSet<String> = AppSort::ALL.into_iter().map(AppSort::label).collect();
+        assert_eq!(labels.len(), AppSort::ALL.len());
+    }
+
+    #[test]
+    fn sort_by_time_from_config_and_listed() {
+        let mut app = App::with_defaults();
+        let notepad = app.find_app("Bloc-notes").unwrap().id;
+        play(&mut app, notepad, 600);
+        assert_eq!(app.init_sort(None), None);
+        assert_eq!(app.init_sort(Some("TIME")), None);
+        assert_eq!(app.sort, AppSort::Time);
+        assert_eq!(app.apps[0].name, "Bloc-notes");
+
+        run(&mut app, "sort");
+        let (text, kind) = app.message.clone().unwrap();
+        assert_eq!(kind, MsgKind::Info);
+        assert!(text.contains("name, xp, recent, time"), "{text}");
+    }
+
+    #[test]
+    fn sort_is_saved_to_config() {
+        let dir = std::env::temp_dir().join(format!("cmdboard-app-sort-{}", std::process::id()));
+        let mut app = App::with_defaults();
+        app.init_theme(&dir, None);
+        run(&mut app, "sort recent");
+        let (config, _) = config::Config::load(&dir.join("config.toml"));
+        assert_eq!(config.sort.as_deref(), Some("recent"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn events_are_routed_to_their_handler() {
+        use crate::launcher::folders::Entry;
+        let mut app = App::with_defaults();
+        let steam = steam_id(&app);
+        app.handle(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('2'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(app.screen, Screen::Stats);
+        app.handle(AppEvent::Tick);
+        assert_eq!(app.frame_count, 1);
+
+        app.handle(AppEvent::SessionStarted { app_id: steam });
+        assert_eq!(app.active_sessions.len(), 1);
+        app.handle(AppEvent::SessionEnded {
+            app_id: steam,
+            secs: 5,
+        });
+        assert!(app.active_sessions.is_empty());
+
+        app.handle(AppEvent::UpdateFinished {
+            action: update::Action::Check,
+            result: Ok(update::Outcome::Available {
+                version: "9.9.9".into(),
+                managed: false,
+            }),
+        });
+        assert_eq!(app.update_available.as_deref(), Some("9.9.9"));
+
+        let disk = Disk {
+            letter: 'C',
+            total: 100,
+            free: 40,
+        };
+        app.handle(AppEvent::StorageScanned {
+            disks: vec![disk],
+            programs: Vec::new(),
+        });
+        assert_eq!(app.disks.len(), 1);
+
+        app.handle(AppEvent::BenchFinished {
+            bench: Bench::Memory,
+            heavy: true,
+            result: Err("x".into()),
+        });
+        assert_eq!(app.bench_results[&Bench::Memory], (true, Err("x".into())));
+
+        // The drives list, then events for it.
+        app.toggle_folders();
+        let drive = PathBuf::from(r"C:\");
+        assert_eq!(app.visible_entries()[0].size, Some(60));
+        app.handle(AppEvent::FolderListed {
+            dir: drive.clone(),
+            entries: Vec::<Entry>::new(),
+        }); // not the shown folder: ignored
+        app.handle(AppEvent::FolderProgress {
+            path: drive.clone(),
+            percent: 40,
+        });
+        assert_eq!(app.folders.as_ref().unwrap().progress[&drive], 40);
+        app.handle(AppEvent::FolderSized {
+            path: drive.clone(),
+            size: 70,
+        });
+        assert_eq!(app.visible_entries()[0].size, Some(70));
+        app.handle(AppEvent::Trashed {
+            path: drive,
+            result: Err("refusé".into()),
+        });
+        assert_eq!(
+            app.message.as_ref().unwrap(),
+            &("refusé".into(), MsgKind::Error)
+        );
+
+        let mut picker = Picker::new("Jeux");
+        picker.selected = 3;
+        app.mode = Mode::Popup(Popup::Picker(picker));
+        app.scan_running = true;
+        app.handle(AppEvent::ShortcutsScanned(vec![Shortcut {
+            name: "Hades".into(),
+            target: "hades.exe".into(),
+            watch_exe: None,
+        }]));
+        assert!(!app.scan_running);
+        assert_eq!(app.shortcuts.len(), 1);
+        assert!(matches!(&app.mode, Mode::Popup(Popup::Picker(p)) if p.selected == 0));
+    }
+
+    #[test]
+    fn install_outcomes_show_a_message() {
+        use update::{Action, Outcome};
+        let mut app = App::with_defaults();
+        app.update_available = Some("9.9.9".into());
+        app.on_update_finished(Action::Install, Ok(Outcome::UpToDate));
+        assert_eq!(app.update_available, None);
+        assert_eq!(message_kind(&app), Some(MsgKind::Info));
+        app.on_update_finished(Action::Install, Err("offline".into()));
+        assert_eq!(message_kind(&app), Some(MsgKind::Error));
+
+        app.update_running = true;
+        run(&mut app, "update");
+        assert_eq!(message_kind(&app), Some(MsgKind::Error));
+        assert!(app.update_running);
+    }
+
+    #[test]
+    fn running_sessions_checkpoint_every_minute() {
+        let mut app = App::with_defaults();
+        let steam = steam_id(&app);
+        app.on_session_start(steam);
+        let long_ago = Instant::now()
+            .checked_sub(Duration::from_secs(120))
+            .unwrap();
+        let session = app.active_sessions.get_mut(&steam).unwrap();
+        session.started = long_ago;
+        session.last_checkpoint = long_ago;
+        app.on_tick();
+        assert!(app.active_sessions[&steam].last_checkpoint > long_ago);
+
+        // A crash now: the checkpointed time is recovered at the next start.
+        app.active_sessions.clear();
+        app.close_orphan_sessions().unwrap();
+        assert_eq!(app.find_app("Steam").unwrap().total_secs, 120);
+    }
+
+    #[test]
+    fn orphan_recovery_reports_nothing_or_broken_rules() {
+        let mut app = App::with_defaults();
+        app.close_orphan_sessions().unwrap();
+        assert_eq!(app.message, None); // nothing was left open
+
+        app.db
+            .execute_for_tests("UPDATE rewards SET rule = 'hours >= 1' WHERE code = 'marathon'");
+        let id = app
+            .db
+            .start_session(steam_id(&app), unix_now() - 600)
+            .unwrap();
+        app.db.checkpoint_session(id, 600).unwrap();
+        app.close_orphan_sessions().unwrap();
+        let (text, kind) = app.message.clone().unwrap();
+        assert_eq!(kind, MsgKind::Error);
+        assert!(text.contains("marathon"), "{text}");
+    }
+
+    #[test]
+    fn xp_display_without_animation_and_unknown_app() {
+        let mut app = App::with_defaults();
+        assert_eq!(app.shown_profile_xp(), (app.profile.level, app.profile.xp));
+        app.on_xp_changed(9_999, 0, 0, 500);
+        assert!(app.xp_anims.is_empty() && app.profile_anim.is_none());
+        assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn search_keys_move_and_backspace_leaves() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char('/'));
+        press(&mut app, KeyCode::Tab);
+        assert_eq!(app.app_state.selected(), Some(1));
+        press(&mut app, KeyCode::BackTab);
+        press(&mut app, KeyCode::Up); // wraps
+        assert_eq!(app.app_state.selected(), Some(app.apps.len() - 1));
+        press(&mut app, KeyCode::Backspace); // empty query: leaves the search
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(app.selected_app().unwrap().name, "Steam");
+    }
+
+    #[test]
+    fn command_line_keys() {
+        let mut app = App::with_defaults();
+        run(&mut app, "sort");
+        press(&mut app, KeyCode::Char(':'));
+        press(&mut app, KeyCode::Up);
+        press(&mut app, KeyCode::Down); // past the newest: empty again
+        assert!(app.command_line.input.is_empty());
+        press(&mut app, KeyCode::Backspace); // empty line: leaves
+        assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn keys_map_to_commands_per_screen() {
+        let mut app = App::with_defaults();
+        let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
+        let cases = [
+            (KeyCode::Char('1'), Some(Command::Show(Screen::Dashboard))),
+            (KeyCode::Char('2'), Some(Command::Show(Screen::Stats))),
+            (KeyCode::Char('z'), None),
+        ];
+        for (code, expected) in cases {
+            assert_eq!(app.key_to_command(key(code)), expected, "{code:?}");
+        }
+        app.focus = Focus::Apps;
+        assert_eq!(
+            app.key_to_command(key(KeyCode::Enter)),
+            Some(Command::Launch {
+                app: "Steam".into()
+            })
+        );
+
+        app.screen = Screen::Stats;
+        assert_eq!(
+            app.key_to_command(key(KeyCode::Char('s'))),
+            Some(Command::ToggleStatsPie)
+        );
+        assert_eq!(app.key_to_command(key(KeyCode::Char('a'))), None);
+        app.screen = Screen::Storage;
+        assert_eq!(app.key_to_command(key(KeyCode::Char('x'))), None);
+
+        app.screen = Screen::Optimize;
+        app.gaming = vec![(Gaming::GameMode, true)];
+        assert_eq!(
+            app.key_to_command(key(KeyCode::Enter)),
+            Some(Command::Bench(Bench::ALL[0]))
+        );
+        assert_eq!(app.key_to_command(key(KeyCode::Char('x'))), None);
+        app.gaming_focus = true;
+        assert_eq!(
+            app.key_to_command(key(KeyCode::Enter)),
+            Some(Command::ToggleGaming(Gaming::GameMode))
+        );
+        assert_eq!(
+            app.key_to_command(key(KeyCode::Char('o'))),
+            Some(Command::OpenGamingPage(Gaming::GameMode))
+        );
+    }
+
+    #[test]
+    fn folder_browser_without_threads() {
+        use crate::launcher::folders::Entry;
+        let mut app = App::with_defaults();
+        app.disks = vec![Disk {
+            letter: 'C',
+            total: 100,
+            free: 40,
+        }];
+        app.programs = vec![Program {
+            name: "Hades".into(),
+            publisher: None,
+            size: None,
+            drive: Some('C'),
+            location: Some(r"C:\Games\Hades".into()),
+            uninstall: "x.exe".into(),
+        }];
+        let dir = PathBuf::from(r"C:\Games");
+        let entry = |name: &str, is_dir: bool, size: Option<u64>| Entry {
+            name: name.into(),
+            path: dir.join(name),
+            is_dir,
+            size,
+        };
+        app.on_folder_listed(&dir, Vec::new()); // no browser open: ignored
+        app.screen = Screen::Storage;
+        app.open_folder(Some(dir.clone()), None);
+        app.on_folder_listed(
+            &dir,
+            vec![
+                entry("Hades", true, None),
+                entry("notes.txt", false, Some(10)),
+            ],
+        );
+        let names = |app: &App| -> Vec<String> {
+            app.visible_entries()
+                .iter()
+                .map(|e| e.name.clone())
+                .collect()
+        };
+        assert_eq!(names(&app), ["notes.txt", "Hades"]); // unmeasured last
+
+        let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(
+            app.key_to_command(key(KeyCode::Char('d'))),
+            Some(Command::Uninstall {
+                program: "Hades".into(),
+                confirmed: false
+            })
+        );
+        press(&mut app, KeyCode::Char('k'));
+        assert_eq!(
+            app.key_to_command(key(KeyCode::Delete)),
+            Some(Command::Trash {
+                path: dir.join("notes.txt"),
+                confirmed: false
+            })
+        );
+        assert_eq!(
+            app.key_to_command(key(KeyCode::Char('s'))),
+            Some(Command::ToggleStorageOrder)
+        );
+        assert_eq!(app.key_to_command(key(KeyCode::Char('x'))), None);
+
+        app.on_folder_sized(dir.join("Hades"), 100);
+        assert_eq!(names(&app), ["Hades", "notes.txt"]);
+        assert_eq!(app.selected_entry().unwrap().name, "notes.txt"); // followed it
+
+        app.execute(Command::Trash {
+            path: dir.join("notes.txt"),
+            confirmed: true,
+        }); // no event channel in tests
+        assert_eq!(message_kind(&app), Some(MsgKind::Error));
+        app.on_trashed(&dir.join("notes.txt"), Ok(()));
+        assert_eq!(message_kind(&app), Some(MsgKind::Success));
+        assert_eq!(names(&app), ["Hades"]);
+        assert!(app.folder_sizes.contains_key(&dir.join("Hades")));
+
+        press(&mut app, KeyCode::Left); // C:\
+        press(&mut app, KeyCode::Left); // the drives
+        assert_eq!(app.folders.as_ref().unwrap().dir, None);
+        assert_eq!(app.key_to_command(key(KeyCode::Char('d'))), None);
+        press(&mut app, KeyCode::Char('f'));
+        assert!(app.folders.is_none());
+    }
+
+    #[test]
+    fn storage_selection_and_unplugged_drive() {
+        let mut app = App::with_defaults();
+        let program = |name: &str| Program {
+            name: name.into(),
+            publisher: None,
+            size: Some(1),
+            drive: Some('C'),
+            location: None,
+            uninstall: "x.exe".into(),
+        };
+        app.storage_disk = Some('D');
+        app.on_storage_scanned(
+            vec![Disk {
+                letter: 'C',
+                total: 100,
+                free: 40,
+            }],
+            vec![program("Alpha"), program("Beta")],
+        );
+        assert_eq!(app.storage_disk, None); // D: is gone
+        press(&mut app, KeyCode::Char('4'));
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.storage_state.selected(), Some(1));
+    }
+
+    #[test]
+    fn threads_report_through_the_event_channel() {
+        let dir = std::env::temp_dir().join(format!("cmdboard-app-threads-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("sub").join("a.bin"), [0u8; 300]).unwrap();
+
+        let mut app = App::with_defaults();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let config = config::Config {
+            update_check: false,
+            ..Default::default()
+        };
+        app.attach_events(tx, &config);
+        assert!(app.storage_scanning && !app.update_running);
+        app.show(Screen::Storage); // already scanning: no second thread
+
+        app.open_folder(Some(dir.clone()), None);
+        app.execute(Command::OpenForm(FormKind::AddApp)); // the picker scans the installed apps
+        assert!(app.scan_running);
+        app.execute(Command::OpenForm(FormKind::AddApp)); // already scanning: no second thread
+
+        let wait = Duration::from_secs(60);
+        while app.storage_scanning
+            || app.scan_running
+            || app.folder_sizes.get(&dir.join("sub")) != Some(&300)
+        {
+            app.handle(rx.recv_timeout(wait).unwrap());
+        }
+        assert_eq!(app.visible_entries()[0].name, "sub");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn popup_keys_cancel_or_wait() {
+        let mut app = App::with_defaults();
+        press(&mut app, KeyCode::Char('a'));
+        press(&mut app, KeyCode::Esc); // closes the picker
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(message_kind(&app), Some(MsgKind::Info));
+
+        run(&mut app, "rm steam");
+        press(&mut app, KeyCode::Char('x')); // neither yes nor no
+        assert!(matches!(app.mode, Mode::Popup(Popup::Confirm { .. })));
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Tab);
+        press(&mut app, KeyCode::Tab);
+        assert_eq!(app.focus, Focus::Categories);
+    }
+
+    #[test]
+    fn clear_commands_ask_first() {
+        let mut app = App::with_defaults();
+        let steam = steam_id(&app);
+        play(&mut app, steam, 600);
+        run(&mut app, "clear sessions");
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(message_kind(&app), Some(MsgKind::Success));
+        assert!(
+            app.activity
+                .iter()
+                .all(|a| !matches!(a, Activity::Session { .. }))
+        );
+
+        run(&mut app, "clear stats");
+        press(&mut app, KeyCode::Char('y'));
+        assert_eq!(message_kind(&app), Some(MsgKind::Success));
+        assert_eq!(app.stats.session_count, 0);
+    }
+
+    #[test]
+    fn export_then_import() {
+        let path =
+            std::env::temp_dir().join(format!("cmdboard-app-export-{}.json", std::process::id()));
+        let mut app = App::with_defaults();
+        app.execute(Command::Export {
+            path: Some(path.display().to_string()),
+        });
+        assert_eq!(
+            message_kind(&app),
+            Some(MsgKind::Success),
+            "{:?}",
+            app.message
+        );
+        app.execute(Command::Import {
+            path: path.display().to_string(),
+        });
+        assert_eq!(
+            message_kind(&app),
+            Some(MsgKind::Success),
+            "{:?}",
+            app.message
+        );
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn stats_of_a_removed_app_fall_back_to_all() {
+        let mut app = App::with_defaults();
+        run(&mut app, "stats steam");
+        assert!(app.stats_app.is_some());
+        app.db.delete_app(steam_id(&app)).unwrap();
+        app.reload().unwrap();
+        assert_eq!(app.stats_app, None);
+    }
+
+    #[test]
+    fn no_category_selected() {
+        let mut app = App::with_defaults();
+        app.cat_state.select(None);
+        assert!(app.visible_apps().is_empty());
+        run(&mut app, "add Paint mspaint.exe");
+        assert_eq!(message_kind(&app), Some(MsgKind::Error));
+        app.select_app(9_999); // unknown: nothing changes
+        assert_eq!(app.cat_state.selected(), None);
     }
 }

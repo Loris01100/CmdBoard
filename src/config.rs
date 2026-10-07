@@ -100,6 +100,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn unreadable_config_is_reported() {
+        let dir = std::env::temp_dir().join(format!("cmdboard-config-dir-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (config, warning) = Config::load(&dir); // a folder, not a file
+        assert_eq!(config, Config::default());
+        assert!(warning.unwrap().starts_with("config.toml"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn saves_and_loads_keeping_other_keys() {
         let dir = std::env::temp_dir().join(format!("cmdboard-config-{}", std::process::id()));
         let path = dir.join("config.toml");

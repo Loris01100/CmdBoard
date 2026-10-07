@@ -200,6 +200,36 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_export_path_is_dated_json() {
+        let db = Database::open_in_memory().unwrap();
+        let path = db.default_export_path().unwrap();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(
+            name.starts_with("cmdboard-") && name.ends_with(".json"),
+            "{name}"
+        );
+        assert_eq!(name.len(), "cmdboard-yyyy-mm-dd.json".len());
+    }
+
+    #[test]
+    fn sessions_of_unknown_apps_are_skipped() {
+        let file =
+            std::env::temp_dir().join(format!("cmdboard-backup-ghost-{}.json", std::process::id()));
+        let json = r#"{"version":1,"exported_at":0,"apps":[],"sessions":[
+            {"app":"Ghost","started_at":1,"ended_at":601,"duration_s":600,"xp_gained":10}]}"#;
+        std::fs::write(&file, json).unwrap();
+        let db = Database::open_in_memory().unwrap();
+        assert_eq!(
+            db.import_from(&file).unwrap(),
+            Imported {
+                apps: 0,
+                sessions: 0
+            }
+        );
+        std::fs::remove_file(&file).unwrap();
+    }
     use crate::storage::models::NewApp;
 
     fn db_with_session(app: &str, category: &str, started_at: i64, xp: u32) -> Database {

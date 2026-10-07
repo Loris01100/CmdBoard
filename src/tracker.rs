@@ -105,6 +105,26 @@ fn diff(previous: &HashSet<i64>, current: &HashSet<i64>) -> (Vec<i64>, Vec<i64>)
 mod tests {
     use super::*;
 
+    #[test]
+    fn thread_reports_start_and_end_of_a_running_exe() {
+        // This test binary is a running process the tracker can watch.
+        let exe = std::env::current_exe().unwrap();
+        let exe = exe.file_name().unwrap().to_string_lossy().into_owned();
+        let (events, rx) = mpsc::channel();
+        let tracker = spawn(events);
+        tracker.send(vec![watched(7, &exe)]).unwrap();
+        let wait = Duration::from_secs(30);
+        assert!(matches!(
+            rx.recv_timeout(wait).unwrap(),
+            AppEvent::SessionStarted { app_id: 7 }
+        ));
+        tracker.send(Vec::new()).unwrap();
+        assert!(matches!(
+            rx.recv_timeout(wait).unwrap(),
+            AppEvent::SessionEnded { app_id: 7, .. }
+        ));
+    }
+
     fn watched(app_id: i64, exe: &str) -> Watched {
         Watched {
             app_id,

@@ -300,6 +300,29 @@ mod tests {
     }
 
     #[test]
+    fn wrong_value_types_are_reported() {
+        let cases = [
+            "name = 3\n[slots]\n".to_string(),
+            "name = \"T\"\nslots = 1\n".to_string(),
+            with_slots("").replace("leaf = \"#00ff00\"", "leaf = 1"),
+            with_slots("title = 3\n"),
+        ];
+        for text in cases {
+            assert!(Theme::parse(&text).is_err(), "{text}");
+        }
+        let theme = Theme::parse(&with_slots("title = { fg = \"leaf\", bold = false }\n")).unwrap();
+        assert_eq!(theme.title, Style::new().fg(Color::Rgb(0, 255, 0)));
+    }
+
+    #[test]
+    fn unreadable_user_theme_is_reported() {
+        let dir = std::env::temp_dir().join(format!("cmdboard-themes-dir-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("odd.toml")).unwrap(); // a folder, not a file
+        assert!(load("odd", Some(&dir)).unwrap_err().contains("odd"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn every_builtin_theme_resolves() {
         for (name, _) in BUILTIN {
             let theme = load(name, None).unwrap_or_else(|e| panic!("{name}: {e}"));

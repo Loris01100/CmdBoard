@@ -177,6 +177,31 @@ fn substitute(body: &str, args: &[String]) -> Result<String, String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn broken_or_unreadable_files_are_reported() {
+        let dir = std::env::temp_dir().join(format!("cmdboard-alias-io-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (aliases, warning) = Aliases::load(&dir); // a folder, not a file
+        assert_eq!(aliases, Aliases::default());
+        assert!(warning.unwrap().starts_with("commands.toml"));
+        assert!(Aliases::save(&dir, "x", "sort xp").is_err());
+
+        let file = dir.join("commands.toml");
+        std::fs::write(&file, "[alias\n").unwrap();
+        let (aliases, warning) = Aliases::load(&file);
+        assert_eq!(aliases, Aliases::default());
+        assert!(warning.unwrap().starts_with("commands.toml"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn unclosed_quote_and_lone_dollar() {
+        let a = aliases();
+        assert!(matches!(a.expand("gaming \"oops"), Some(Err(_))));
+        let a = Aliases::parse("[alias]\ncost = \"echo $x\"").unwrap().0;
+        assert_eq!(a.expand("cost"), Some(Ok(vec!["echo $x".into()])));
+    }
+
     fn aliases() -> Aliases {
         Aliases::parse(
             r#"

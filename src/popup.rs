@@ -226,6 +226,28 @@ impl Form {
 mod tests {
     use super::*;
 
+    #[test]
+    fn titles_and_help_follow_the_form_and_field() {
+        let mut form = Form::add_app("Jeux");
+        let mut helps: Vec<String> = [NAME, TARGET, CATEGORY, PROCESS]
+            .into_iter()
+            .map(|i| {
+                form.focused = i;
+                form.help().unwrap()
+            })
+            .collect();
+        helps.dedup();
+        assert_eq!(helps.len(), 4);
+        form.focused = 9;
+        assert_eq!(form.help(), None);
+        assert_eq!(form.placeholder(NAME), None);
+
+        let moving = Form::move_app("Hades", "Jeux");
+        assert!(moving.title().contains("Hades"));
+        assert_ne!(moving.title(), form.title());
+        assert_eq!(moving.help(), Some(t!("form.help_category")));
+    }
+
     fn fill(form: &mut Form, index: usize, text: &str) {
         form.fields[index].input.set(text);
     }

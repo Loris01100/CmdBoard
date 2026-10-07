@@ -123,6 +123,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn missing_or_cancelled_folders() {
+        let missing = Path::new(r"C:\cmdboard-does-not-exist");
+        assert!(list(missing).is_empty());
+        let (go, stop) = (AtomicBool::new(false), AtomicBool::new(true));
+        assert_eq!(dir_size_with_progress(missing, &go, |_| {}), Some(0));
+        assert_eq!(dir_size_with_progress(missing, &stop, |_| {}), None);
+        assert!(trash(missing).is_err());
+    }
+
+    #[test]
     fn lists_and_measures_a_folder() {
         let root = std::env::temp_dir().join(format!("cmdboard-folders-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);

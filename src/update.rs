@@ -105,6 +105,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn program_files_come_from_the_environment() {
+        let dirs = program_files();
+        assert!(!dirs.is_empty());
+        assert!(dirs.iter().all(|d| d.is_absolute()));
+    }
+
+    #[test]
     fn program_files_installs_are_managed() {
         let dirs = [
             PathBuf::from(r"C:\Program Files"),

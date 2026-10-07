@@ -311,6 +311,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn missing_folder_has_no_shortcut() {
+        let mut files = Vec::new();
+        walk(Path::new(r"C:\cmdboard-does-not-exist"), &mut files);
+        assert!(files.is_empty());
+    }
+
+    #[test]
     fn url_files_keep_app_uris_only() {
         let steam = "[{000214A0-0000-0000-C000-000000000046}]\r\n[InternetShortcut]\r\nIDList=\r\nURL=steam://rungameid/1145360\r\nIconIndex=0\r\n";
         assert_eq!(url_of(steam).as_deref(), Some("steam://rungameid/1145360"));

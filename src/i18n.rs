@@ -165,6 +165,25 @@ fn system() -> Option<String> {
 mod tests {
     use super::*;
 
+    /// Only French is set: the language is global and tests run in parallel.
+    #[test]
+    fn init_keeps_a_known_language_and_reads_windows() {
+        assert_eq!(init(Some("fr")), None);
+        assert_eq!(current(), "fr");
+        let code = system().unwrap();
+        assert!(
+            code.len() >= 2 && code.chars().all(|c| c.is_ascii_lowercase()),
+            "{code}"
+        );
+    }
+
+    #[test]
+    fn flatten_skips_non_text_values() {
+        let mut out = HashMap::new();
+        flatten("", "a = 1\n[b]\nc = \"x\"".parse().unwrap(), &mut out);
+        assert_eq!(out, HashMap::from([("b.c".to_string(), "x".to_string())]));
+    }
+
     /// `{placeholder}` names in a text, sorted.
     fn placeholders(text: &str) -> Vec<&str> {
         let mut names: Vec<&str> = text

@@ -183,6 +183,8 @@ mod tests {
             // && binds tighter: false || (true && true)
             ("level > 10 || session_hour < 5 && app_hours > 1", true),
             ("streak_days >= 1", false),
+            ("level < 4", true),
+            ("level <= 3", true),
         ];
         for (rule, expected) in cases {
             assert_eq!(evaluate(rule, &facts()), Ok(expected), "rule: {rule}");
