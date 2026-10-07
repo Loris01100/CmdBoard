@@ -5,6 +5,7 @@ edition = "2024"
 description = "Terminal dashboard to launch apps and track play time, with XP and rewards"
 repository = "https://github.com/Loris01100/CmdBoard"
 authors = ["Loris01100"]
+license = "MIT"
 
 [package.metadata.wix]
 upgrade-guid = "94256D30-D74C-400B-8D07-B858839C666B"

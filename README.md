@@ -109,3 +109,7 @@ cargo test
 ```
 
 Design notes (in French) are in [docs/plan_conception_tui_ratatui.md](docs/plan_conception_tui_ratatui.md).
+
+## License
+
+[MIT](LICENSE)
