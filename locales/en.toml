@@ -91,6 +91,10 @@ exported = "Exported {apps} app(s) and {sessions} session(s) to {path}"
 imported = "Imported {apps} new app(s) and {sessions} session(s)"
 confirm_remove_app = "Remove “{name}”? Its play time, XP and rewards will be lost."
 confirm_remove_category = "Remove the category “{name}”?"
+confirm_clear_sessions = "Clear the session history? Stats are kept."
+sessions_cleared = "History cleared: {count} session(s)"
+confirm_clear_stats = "Clear all stats? Sessions, play time and streak start over; XP and rewards are kept."
+stats_cleared = "Stats cleared: {count} session(s) deleted"
 
 [error]
 app_exists = "“{name}” already exists"
@@ -377,6 +381,10 @@ summary = "Moves an app. Without a category: opens the form"
 [cmd.rm]
 usage = "rm <app>"
 summary = "Removes an app and its history, after confirmation"
+
+[cmd.clear]
+usage = "clear sessions|stats"
+summary = "Clears the session history, or all stats, after confirmation"
 
 [cmd.rmcat]
 usage = "rmcat <category>"

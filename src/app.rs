@@ -1659,6 +1659,30 @@ impl App {
                 programs::uninstall(found)?;
                 return Ok(Some((t!("storage.uninstalling", name), MsgKind::Info)));
             }
+            Command::ClearSessions { confirmed } => {
+                if !confirmed {
+                    self.mode = Mode::Popup(Popup::Confirm {
+                        message: t!("action.confirm_clear_sessions"),
+                        command: Command::ClearSessions { confirmed: true },
+                    });
+                    return Ok(None);
+                }
+                let count = self.db.hide_sessions()?;
+                self.reload()?;
+                return success(t!("action.sessions_cleared", count));
+            }
+            Command::ClearStats { confirmed } => {
+                if !confirmed {
+                    self.mode = Mode::Popup(Popup::Confirm {
+                        message: t!("action.confirm_clear_stats"),
+                        command: Command::ClearStats { confirmed: true },
+                    });
+                    return Ok(None);
+                }
+                let count = self.db.clear_sessions()?;
+                self.reload()?;
+                return success(t!("action.stats_cleared", count));
+            }
             Command::OpenForm(kind) => {
                 let form = match kind {
                     FormKind::AddApp => {

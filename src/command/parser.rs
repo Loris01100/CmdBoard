@@ -46,6 +46,12 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("stats", [_, ..]) => Ok(Command::Stats {
             app: Some(rest.join(" ")),
         }),
+        ("clear", [what]) if what.eq_ignore_ascii_case("sessions") => {
+            Ok(Command::ClearSessions { confirmed: false })
+        }
+        ("clear", [what]) if what.eq_ignore_ascii_case("stats") => {
+            Ok(Command::ClearStats { confirmed: false })
+        }
         ("theme", []) => Ok(Command::Theme { name: None }),
         ("theme", [name]) => Ok(Command::Theme {
             name: Some(name.clone()),
@@ -201,6 +207,11 @@ mod tests {
                     app: Some(s("Windows Terminal")),
                 },
             ),
+            (
+                "clear sessions",
+                Command::ClearSessions { confirmed: false },
+            ),
+            ("CLEAR Stats", Command::ClearStats { confirmed: false }),
             ("theme", Command::Theme { name: None }),
             (
                 "theme catppuccin-latte",
@@ -275,6 +286,8 @@ mod tests {
             ("move", "Usage : move <app> [catégorie]"),
             ("rm", "Usage : rm <app>"),
             ("quit now", "Usage : quit"),
+            ("clear", "Usage : clear sessions|stats"),
+            ("clear apps", "Usage : clear sessions|stats"),
             ("update now", "Usage : update"),
             ("import", "Usage : import <fichier>"),
             ("group streaming", "Usage : group <nom> <app>, <app>…"),

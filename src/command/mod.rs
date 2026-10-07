@@ -75,6 +75,14 @@ pub enum Command {
         program: String,
         confirmed: bool,
     },
+    /// Destructive: hides finished sessions from the history; stats still count them.
+    ClearSessions {
+        confirmed: bool,
+    },
+    /// Destructive: deletes finished sessions, so stats start over. App XP and rewards stay.
+    ClearStats {
+        confirmed: bool,
+    },
     OpenForm(FormKind),
     /// Selects an app in its category (Enter in the `/` search).
     Select {
@@ -157,6 +165,10 @@ pub const COMMANDS: &[CommandHelp] = &[
     },
     CommandHelp {
         name: "stats",
+        aliases: &[],
+    },
+    CommandHelp {
+        name: "clear",
         aliases: &[],
     },
     CommandHelp {

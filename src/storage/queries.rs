@@ -140,6 +140,23 @@ impl Database {
         Ok(true)
     }
 
+    /// Hides every finished session from the history; stats still count them.
+    /// Returns how many were hidden.
+    pub fn hide_sessions(&self) -> anyhow::Result<usize> {
+        Ok(self.conn.execute(
+            "UPDATE sessions SET hidden = 1 WHERE ended_at IS NOT NULL AND NOT hidden",
+            [],
+        )?)
+    }
+
+    /// Deletes every finished session, so stats start over; running ones stay.
+    /// App XP and rewards are kept. Returns how many were deleted.
+    pub fn clear_sessions(&self) -> anyhow::Result<usize> {
+        Ok(self
+            .conn
+            .execute("DELETE FROM sessions WHERE ended_at IS NOT NULL", [])?)
+    }
+
     /// Closes the sessions a crash left open, at their last checkpoint.
     /// Returns the kept ones, so they can still earn their XP.
     pub fn close_orphan_sessions(&self) -> anyhow::Result<Vec<ClosedSession>> {
@@ -351,7 +368,7 @@ impl Database {
             "SELECT a.name, strftime('%d/%m/%Y %H:%M', s.started_at, 'unixepoch', 'localtime'),
                 s.duration_s, s.xp_gained
              FROM sessions s JOIN apps a ON a.id = s.app_id
-             WHERE s.ended_at IS NOT NULL AND (?1 IS NULL OR s.app_id = ?1)
+             WHERE s.ended_at IS NOT NULL AND NOT s.hidden AND (?1 IS NULL OR s.app_id = ?1)
              ORDER BY s.started_at DESC, s.id DESC LIMIT ?2",
         )?;
         let sessions = stmt
@@ -787,6 +804,25 @@ mod tests {
             }]
         );
         assert_eq!(session_rows(&db), [(Some(1_600), 600), (Some(9_000), 120)]);
+    }
+
+    #[test]
+    fn clearing_history_then_stats_keeps_running_sessions_and_xp() {
+        let (db, _, app) = db_with_app();
+        let id = db.start_session(app, 1_000).unwrap();
+        db.end_session(id, 2_000, 1_000).unwrap();
+        db.add_session_xp(id, 120).unwrap();
+        db.start_session(app, 5_000).unwrap(); // still running
+
+        assert_eq!(db.hide_sessions().unwrap(), 1);
+        let stats = db.stats(None).unwrap();
+        assert!(stats.sessions.is_empty());
+        assert_eq!(stats.session_count, 1); // still counted
+
+        assert_eq!(db.clear_sessions().unwrap(), 1);
+        assert_eq!(session_rows(&db), [(None, 0)]);
+        assert_eq!(db.apps().unwrap()[0].total_xp, 120);
+        assert_eq!(db.stats(None).unwrap().session_count, 0);
     }
 
     #[test]

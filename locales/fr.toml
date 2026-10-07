@@ -91,6 +91,10 @@ exported = "Exporté : {apps} app(s) et {sessions} session(s) vers {path}"
 imported = "Importé : {apps} nouvelle(s) app(s) et {sessions} session(s)"
 confirm_remove_app = "Supprimer « {name} » ? Son temps de jeu, son XP et ses récompenses seront perdus."
 confirm_remove_category = "Supprimer la catégorie « {name} » ?"
+confirm_clear_sessions = "Effacer l'historique des sessions ? Les stats sont conservées."
+sessions_cleared = "Historique effacé : {count} session(s)"
+confirm_clear_stats = "Effacer toutes les stats ? Les sessions, le temps de jeu et la série repartent de zéro ; l'XP et les récompenses sont conservées."
+stats_cleared = "Stats effacées : {count} session(s) supprimée(s)"
 
 [error]
 app_exists = "« {name} » existe déjà"
@@ -377,6 +381,10 @@ summary = "Déplace une app. Sans catégorie : ouvre le formulaire"
 [cmd.rm]
 usage = "rm <app>"
 summary = "Supprime une app et son historique, après confirmation"
+
+[cmd.clear]
+usage = "clear sessions|stats"
+summary = "Efface l'historique des sessions, ou toutes les stats, après confirmation"
 
 [cmd.rmcat]
 usage = "rmcat <catégorie>"

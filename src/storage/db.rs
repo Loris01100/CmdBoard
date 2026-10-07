@@ -80,6 +80,8 @@ const MIGRATIONS: &[&str] = &[
     "INSERT INTO rewards (code, name, description, rule, scope) VALUES
         ('inarretable', 'Inarrêtable', 'Jouer 30 jours de suite', 'streak_days >= 30', 'global'),
         ('legende', 'Légende', 'Jouer 365 jours de suite', 'streak_days >= 365', 'global');",
+    // v4: `:clear sessions` hides sessions from the history; stats still count them.
+    "ALTER TABLE sessions ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;",
 ];
 
 pub struct Database {
