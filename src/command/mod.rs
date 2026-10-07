@@ -119,8 +119,10 @@ pub enum Command {
         apps: Vec<String>,
     },
     /// Writes apps and sessions to a JSON file; `None` picks a dated file in Documents.
+    /// Destructive when the file exists: without `confirmed`, asks before replacing it.
     Export {
         path: Option<String>,
+        confirmed: bool,
     },
     /// Merges a file written by `Export`: adds what is missing, never deletes.
     Import {

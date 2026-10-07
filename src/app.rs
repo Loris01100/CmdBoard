@@ -1693,11 +1693,22 @@ impl App {
                     list = names.join(", ")
                 ));
             }
-            Command::Export { path } => {
+            Command::Export { path, confirmed } => {
                 let path = match path {
                     Some(path) => PathBuf::from(path),
                     None => self.db.default_export_path()?,
                 };
+                if path.exists() && !confirmed {
+                    self.mode = Mode::Popup(Popup::Confirm {
+                        message: t!("action.confirm_overwrite", path = path.display()),
+                        // The resolved path, so the dated default cannot change meanwhile.
+                        command: Command::Export {
+                            path: Some(path.display().to_string()),
+                            confirmed: true,
+                        },
+                    });
+                    return Ok(None);
+                }
                 let (apps, sessions) = self.db.export_to(&path)?;
                 return success(t!("action.exported", apps, sessions, path = path.display()));
             }
@@ -3590,15 +3601,30 @@ mod tests {
         let path =
             std::env::temp_dir().join(format!("cmdboard-app-export-{}.json", std::process::id()));
         let mut app = App::with_defaults();
-        app.execute(Command::Export {
+        let export = |confirmed| Command::Export {
             path: Some(path.display().to_string()),
-        });
+            confirmed,
+        };
+        app.execute(export(false));
         assert_eq!(
             message_kind(&app),
             Some(MsgKind::Success),
             "{:?}",
             app.message
         );
+
+        // The file exists now: asks before replacing it, and leaves it alone on Esc.
+        std::fs::write(&path, "keep me").unwrap();
+        app.execute(export(false));
+        assert!(matches!(
+            &app.mode,
+            Mode::Popup(Popup::Confirm { command, .. }) if *command == export(true)
+        ));
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "keep me");
+        app.execute(export(true));
+        assert_eq!(message_kind(&app), Some(MsgKind::Success));
+        assert_ne!(std::fs::read_to_string(&path).unwrap(), "keep me");
         app.execute(Command::Import {
             path: path.display().to_string(),
         });

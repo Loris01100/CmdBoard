@@ -79,7 +79,7 @@ Each screen lists its own keys in the help (`?`).
 | `:help [command]` (`:h`, `:?`) | Help, or a command's usage |
 | `:quit` (`:q`) | Quit |
 
-Destructive commands always ask for confirmation. Paths with spaces go in double quotes: `:add Notes "C:\Program Files\Notes\notes.exe" Tools`.
+Destructive commands always ask for confirmation, and so does `:export` when the file already exists. Paths with spaces go in double quotes: `:add Notes "C:\Program Files\Notes\notes.exe" Tools`.
 
 ## Configuration
 

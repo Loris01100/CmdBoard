@@ -85,9 +85,13 @@ pub fn parse(input: &str) -> Result<Command, String> {
                 apps,
             })
         }
-        ("export", []) => Ok(Command::Export { path: None }),
+        ("export", []) => Ok(Command::Export {
+            path: None,
+            confirmed: false,
+        }),
         ("export", [_, ..]) => Ok(Command::Export {
             path: Some(rest.join(" ")),
+            confirmed: false,
         }),
         ("import", [_, ..]) => Ok(Command::Import {
             path: rest.join(" "),
@@ -249,11 +253,18 @@ mod tests {
                     apps: vec![s("OBS"), s("Windows Terminal"), s("Spotify")],
                 },
             ),
-            ("export", Command::Export { path: None }),
+            (
+                "export",
+                Command::Export {
+                    path: None,
+                    confirmed: false,
+                },
+            ),
             (
                 r"export D:\Mes sauvegardes\cmdboard.json",
                 Command::Export {
                     path: Some(s(r"D:\Mes sauvegardes\cmdboard.json")),
+                    confirmed: false,
                 },
             ),
             (

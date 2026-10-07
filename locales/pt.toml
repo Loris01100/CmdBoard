@@ -96,6 +96,7 @@ confirm_remove_category = "Remover a categoria “{name}”?"
 confirm_clear_sessions = "Apagar o histórico de sessões? As estatísticas são mantidas."
 sessions_cleared = "Histórico apagado: {count} sessão(ões)"
 confirm_clear_stats = "Apagar todas as estatísticas? Sessões, tempo de jogo e sequência recomeçam; XP e recompensas são mantidos."
+confirm_overwrite = "“{path}” já existe. Substituí-lo?"
 stats_cleared = "Estatísticas apagadas: {count} sessão(ões) excluída(s)"
 
 [error]
