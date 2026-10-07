@@ -280,13 +280,24 @@ jobs:
           # Write and read notes from a file to avoid quoting breaking things
           echo "$ANNOUNCEMENT_BODY" > $RUNNER_TEMP/notes.txt
 
-          # Commits since the previous version tag (all of them for the first release)
+          # Commits since the previous version tag (all of them for the first release),
+          # grouped by their "type :" prefix
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$RELEASE_COMMIT^" 2>/dev/null || true)
+          COMMITS=$(git log --no-merges --pretty='%s (%h)' "${PREVIOUS_TAG:+$PREVIOUS_TAG..}$RELEASE_COMMIT")
+          # "### Title", then the commits matching the pattern (grep flags, sed script)
+          section() {
+            LINES=$(printf '%s\n' "$COMMITS" | grep -iE $3 "$2" || true)
+            if [ -n "$LINES" ]; then
+              printf '\n### %s\n\n' "$1"
+              printf '%s\n' "$LINES" | sed -E "$4"
+            fi
+          }
           {
             echo
             echo "## Commits"
-            echo
-            git log --no-merges --pretty='- %s (%h)' "${PREVIOUS_TAG:+$PREVIOUS_TAG..}$RELEASE_COMMIT"
+            section "Features" '^feat(ure)? *:' '' 's/^[A-Za-z]+ *: *(.)/- \u\1/'
+            section "Fixes" '^fix *:' '' 's/^[A-Za-z]+ *: *(.)/- \u\1/'
+            section "Other" '^(feat(ure)?|fix) *:' -v 's/^/- /'
             if [ -n "$PREVIOUS_TAG" ]; then
               echo
               echo "**Full changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$PREVIOUS_TAG...$RELEASE_TAG"

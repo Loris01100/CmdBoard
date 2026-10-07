@@ -620,7 +620,7 @@ Publier une version :
 
 1. Monter `version` dans `Cargo.toml`.
 2. `git tag v0.2.0` puis `git push --tags`.
-3. La CI construit le `.zip`, le `.msi` et `cmdboard-installer.ps1`, puis crée la GitHub Release. Ses notes se terminent par la liste des commits depuis le tag `v*` précédent (tous pour la première version) et un lien de comparaison, ajoutés dans `release.yml` (job `host`, checkout complet `fetch-depth: 0`).
+3. La CI construit le `.zip`, le `.msi` et `cmdboard-installer.ps1`, puis crée la GitHub Release. Ses notes se terminent par la liste des commits depuis le tag `v*` précédent (tous pour la première version), rangés par préfixe (`feat :`/`feature :` → Features, `fix :` → Fixes, le reste → Other) et un lien de comparaison, ajoutés dans `release.yml` (job `host`, checkout complet `fetch-depth: 0`).
 
 Installation par l'utilisateur :
 
