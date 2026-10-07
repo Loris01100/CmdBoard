@@ -650,7 +650,7 @@ Deux canaux, selon le mode d'installation :
 
 Le téléchargement tourne dans un thread temporaire qui renvoie `AppEvent::UpdateFinished` : l'UI ne bloque jamais. Une vérification passive au démarrage (au plus une fois par jour, désactivable dans `config.toml`) affiche « vX.Y disponible » dans la barre de statut, sans rien installer.
 
-**winget** : publier le MSI dans [winget-pkgs](https://github.com/microsoft/winget-pkgs) avec `wingetcreate`, puis automatiser chaque release avec l'action GitHub `winget-releaser`. winget voit alors passer les nouvelles versions sans intervention.
+**winget** : identifiant `Loris01100.CmdBoard`, installeur = le MSI (`InstallerType: wix`, `Scope: machine`, commande `cmdboard`). La première version est soumise à la main dans [winget-pkgs](https://github.com/microsoft/winget-pkgs) (`wingetcreate submit` sur un manifeste validé par `winget validate`). Ensuite, le job `winget` de `release.yml` (action `winget-releaser`, épinglée par SHA) ouvre la PR de chaque nouvelle version après le job `host`. Il exige un fork de `winget-pkgs` sur le compte `Loris01100` et le secret `WINGET_TOKEN` (PAT classique, portée `public_repo`) ; sans le secret, ou pour une préversion, il ne fait rien.
 
 ### Points d'attention
 
@@ -665,4 +665,4 @@ CmdBoard est Windows uniquement (`.lnk`, `%APPDATA%`, URI des launchers). winget
 
 ## Prochaine étape
 
-Les étapes 1 à 11 sont faites. Étape 12 en cours : `dist init` (`dist-workspace.toml`, `.github/workflows/release.yml`, `wix/main.wxs`), `:update` et la vérification passive quotidienne (`src/update.rs`, clés `update_check` et `last_update_check` dans `config.toml`) sont en place. `self_update` est en 1.x : il faut les features `github` et `ureq` en plus de celles de la section 17, et l'archive est choisie par son nom exact (`cmdboard-x86_64-pc-windows-msvc.zip`), sans quoi le `.msi` ou le `.sha256` pourraient correspondre. `v0.1.0` et `v0.2.0` sont publiées. Reste : le manifeste winget.
+Les étapes 1 à 11 sont faites. Étape 12 en cours : `dist init` (`dist-workspace.toml`, `.github/workflows/release.yml`, `wix/main.wxs`), `:update` et la vérification passive quotidienne (`src/update.rs`, clés `update_check` et `last_update_check` dans `config.toml`) sont en place. `self_update` est en 1.x : il faut les features `github` et `ureq` en plus de celles de la section 17, et l'archive est choisie par son nom exact (`cmdboard-x86_64-pc-windows-msvc.zip`), sans quoi le `.msi` ou le `.sha256` pourraient correspondre. `v0.1.0` et `v0.2.0` sont publiées. Le manifeste winget de `v0.2.0` est validé et le job `winget` de `release.yml` automatise les versions suivantes. Reste : soumettre ce premier manifeste à `winget-pkgs`, créer le fork et le secret `WINGET_TOKEN`, puis attendre la fusion de la PR.

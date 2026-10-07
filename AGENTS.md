@@ -6,7 +6,7 @@ CmdBoard is a Windows-only Rust/ratatui dashboard for launching apps, tracking u
 
 Read [the design plan](docs/plan_conception_tui_ratatui.md) before implementing a feature. Update it in the same change when behavior, architecture, keybindings, or data diverge. Sections 1–7 cover state and commands, 8–10 the UI, 11–12 sessions and rewards, 15 tests, and 18 distribution. The plan is written in French; write updates to it in French.
 
-Steps 1–11 are complete; step 12 is in progress. v0.1.0 and v0.2.0 are released; only the winget manifest remains. Check the plan and code for current implementation details rather than duplicating a feature inventory here.
+Steps 1–11 are complete; step 12 is in progress. v0.1.0 and v0.2.0 are released; the winget release job is in place and only the first winget-pkgs submission remains. Check the plan and code for current implementation details rather than duplicating a feature inventory here.
 
 ## Architecture
 

@@ -306,6 +306,27 @@ jobs:
 
           gh release create "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" $PRERELEASE_FLAG --title "$ANNOUNCEMENT_TITLE" --notes-file "$RUNNER_TEMP/notes.txt" artifacts/*
 
+  # Opens the winget-pkgs PR for the new MSI. Needs the WINGET_TOKEN secret (classic PAT,
+  # public_repo scope) and a fork of microsoft/winget-pkgs; skipped without the secret.
+  winget:
+    needs:
+      - plan
+      - host
+    if: ${{ needs.host.result == 'success' && !fromJson(needs.host.outputs.val).announcement_is_prerelease }}
+    runs-on: "windows-latest"
+    permissions:
+      "contents": "read"
+    env:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+    steps:
+      - if: env.WINGET_TOKEN != ''
+        uses: vedantmgoyal9/winget-releaser@c4f385af3b963eb724738ac0578b14eec7bebcc1 # v2
+        with:
+          identifier: Loris01100.CmdBoard
+          installers-regex: '\.msi$'
+          release-tag: ${{ needs.plan.outputs.tag }}
+          token: ${{ secrets.WINGET_TOKEN }}
+
   announce:
     needs:
       - plan
