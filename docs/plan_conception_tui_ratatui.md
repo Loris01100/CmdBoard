@@ -193,7 +193,6 @@ pub enum Command {
     Add { name: String, target: String, category: Option<String> },  // catégorie créée si absente
     Move { app: String, category: String },                          // idem
     Help { command: Option<String> },
-    Xp { app: String, amount: i64 },   // ajuste l'XP à la main (négatif : en retire)
     Stats { app: Option<String> },     // écran Stats, filtré sur une app ou non
     Select { app: String },            // touche seulement : Entrée dans la recherche `/`
     Quit,
@@ -216,7 +215,6 @@ La table `COMMANDS` (`command/mod.rs`) décrit chaque commande (nom, alias, usag
 | `move` | `mv` | `move <app> [catégorie]` (sans catégorie : formulaire) |
 | `rm` | `delete` | `rm <app>` (confirmation, supprime aussi sessions et récompenses) |
 | `rmcat` | | `rmcat <catégorie>` (catégorie vide uniquement, confirmation) |
-| `xp` | | `xp <app> <montant>` (montant en dernier, signé ; l'XP ne descend pas sous 0) |
 | `stats` | | `stats [app]` (sans argument : toutes les apps ; avec : filtre jusqu'au prochain `:stats`) |
 | `theme` | | `theme [nom]` (sans nom : liste les thèmes et l'actuel ; nom complété par Tab) |
 | `group` | | `group <nom> <app>, <app>…` (apps séparées par des virgules, sans guillemets ; écrit l'alias `<nom> = "launch A; launch B"` dans `commands.toml`, le remplace s'il existe, et le recharge aussitôt) |
@@ -235,7 +233,7 @@ Noms d'apps et de catégories insensibles à la casse. `:add` déduit `watch_exe
 - La saisie s'affiche dans un cadre « Commande » (bordure de focus) qui s'ouvre au-dessus de la barre de statut, sur tous les écrans, avec un texte d'exemple quand la ligne est vide et un défilement horizontal qui garde le curseur visible. Hors saisie, cette zone se réduit à une ligne de message.
 - Historique avec flèches haut/bas (100 entrées, sans doublon consécutif, en mémoire seulement).
 - Édition : `←→`, `Home`/`End`, `Backspace`/`Suppr`. `Backspace` sur une ligne vide ou `Esc` referment la ligne.
-- Autocomplétion avec Tab (`command/complete.rs`, fonction pure) : nom de commande ou d'alias en premier mot (suivi d'un espace), puis selon la commande : app (`launch`, `rm`, `stats`, `xp`, reste de la ligne), catégorie (`rmcat`, 2e argument de `move`, 3e de `add`), commande (`help`). Candidats classés par `fuzzy-matcher` (`src/fuzzy.rs`, partagé avec la recherche), mis entre guillemets s'ils contiennent un espace. `Tab` répété passe au suivant, `Shift-Tab` au précédent, toute autre touche repart de zéro. Les candidats s'affichent sur la bordure basse du cadre, le courant en surbrillance.
+- Autocomplétion avec Tab (`command/complete.rs`, fonction pure) : nom de commande ou d'alias en premier mot (suivi d'un espace), puis selon la commande : app (`launch`, `rm`, `stats`, reste de la ligne), catégorie (`rmcat`, 2e argument de `move`, 3e de `add`), commande (`help`). Candidats classés par `fuzzy-matcher` (`src/fuzzy.rs`, partagé avec la recherche), mis entre guillemets s'ils contiennent un espace. `Tab` répété passe au suivant, `Shift-Tab` au précédent, toute autre touche repart de zéro. Les candidats s'affichent sur la bordure basse du cadre, le courant en surbrillance.
 - Ligne de message : cyan (info), vert (succès), rouge (erreur). Effacée à la touche suivante.
 - `:help` ouvre l'écran d'aide, `:help <commande>` affiche l'usage dans la ligne de message.
 
@@ -295,7 +293,7 @@ Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le pa
 - **Formulaires** : `Form` = liste de champs (`TextInput`, partagé avec la ligne de commande) avec un champ focalisé. La validation produit une `Command` (`Add`, `Move`) exécutée par le chemin habituel. En cas d'erreur (champ requis, nom déjà pris, fichier introuvable), le formulaire reste ouvert et affiche l'erreur ; le premier champ requis vide reçoit le focus.
 - **Choix de l'app** (`Popup::Picker`) : `a` et `:add` sans argument ouvrent d'abord une liste filtrable (fuzzy) des apps installées, lue par `launcher/scan.rs` dans les bibliothèques Steam (`libraryfolders.vdf` puis `appmanifest_*.acf` complètement installés : cible `steam://rungameid/<id>`, process = le plus gros exe du dossier du jeu, jusqu'à trois niveaux) et Epic (manifests `.item` de `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests`, hors DLC : cible `com.epicgames.launcher://apps/...?action=launch`, process = `LaunchExecutable`), puis dans les raccourcis `.lnk` et `.url` du menu Démarrer et du Bureau. À nom égal, l'entrée de bibliothèque l'emporte. Le scan tourne dans un thread temporaire (`AppEvent::ShortcutsScanned`) à chaque ouverture ; les trois sources et la lecture des fichiers sont parallélisées avec rayon (ordre conservé, donc la priorité des bibliothèques aussi). Les apps déjà ajoutées sont masquées. `Entrée` ouvre le formulaire pré-rempli (cible = le `.lnk`, qui garde ses arguments ; process = l'exe pointé par le raccourci), focus sur la catégorie. `Tab`, ou `Entrée` sans résultat, ouvre le formulaire vide avec la recherche comme nom.
 - Formulaire d'ajout : Nom*, Cible*, Catégorie* (pré-remplie avec la catégorie sélectionnée), Process (vide : déduit de la cible, affiché en grisé « auto : X.exe »). Une ligne d'aide sous les champs explique le champ actif, notamment à quoi sert Process (l'exe surveillé pour compter le temps de jeu).
-- **Level-up** : ouverte quand une app ou le profil gagne un niveau (fin de session ou `:xp`). Bordure qui alterne de couleur à chaque `Tick`. `Entrée`, `Esc` ou `Espace` la ferment.
+- **Level-up** : ouverte quand une app ou le profil gagne un niveau (fin de session). Bordure qui alterne de couleur à chaque `Tick`. `Entrée`, `Esc` ou `Espace` la ferment.
 - **Récompense débloquée** : une popup par récompense, après celle de level-up, mêmes touches et même clignotement.
 - Une popup déclenchée par un événement (level-up, récompense) n'interrompt pas une saisie : elle attend dans une file (`pending_popups`) que l'utilisateur revienne en mode Normal.
 - Les popups se dessinent par-dessus l'écran courant (`Clear` puis cadre centré).
@@ -495,7 +493,7 @@ code = "marathon", scope = "app", rule = "session_minutes >= 180"
 | `total_hours`, `total_sessions` | cumul toutes apps |
 | `apps_this_week` | apps différentes sur 7 jours |
 
-**Évaluation** : après chaque session gardée (fin normale, sortie de CmdBoard, orpheline au démarrage), une fois l'XP attribuée pour que les niveaux comptent. `storage` calcule les faits (`session_facts`) et la liste des récompenses encore à débloquer pour l'app (`pending_rewards`), `core::rewards::evaluate` tranche, `storage` enregistre. Une règle cassée n'empêche pas les autres : l'erreur s'affiche dans la ligne de message. `:xp` ne déclenche pas d'évaluation.
+**Évaluation** : après chaque session gardée (fin normale, sortie de CmdBoard, orpheline au démarrage), une fois l'XP attribuée pour que les niveaux comptent. `storage` calcule les faits (`session_facts`) et la liste des récompenses encore à débloquer pour l'app (`pending_rewards`), `core::rewards::evaluate` tranche, `storage` enregistre. Une règle cassée n'empêche pas les autres : l'erreur s'affiche dans la ligne de message.
 
 ---
 
@@ -518,7 +516,7 @@ Cas Steam / Epic / Battle.net : la commande de lancement (URI) et le process sur
 
 Pilotées par `Tick` et un compteur `frame_count` dans `App` :
 
-- Barre d'XP qui se remplit progressivement après une session (ou `:xp`) : `App` garde une `XpAnim { from, to, start }` par app et une pour le profil. Le rendu en déduit le total affiché à partir de `frame_count` (8 ticks, soit 2 s, avec ralenti en fin de course), en repassant par `level_from_total`, donc le niveau affiché monte en même temps que la barre.
+- Barre d'XP qui se remplit progressivement après une session : `App` garde une `XpAnim { from, to, start }` par app et une pour le profil. Le rendu en déduit le total affiché à partir de `frame_count` (8 ticks, soit 2 s, avec ralenti en fin de course), en repassant par `level_from_total`, donc le niveau affiché monte en même temps que la barre.
 - Popups de level-up et de récompense dont la bordure et le titre alternent entre `warning` et `success` à chaque `Tick`.
 - Spinner pendant l'import des raccourcis.
 - Chrono de session en direct dans le header.

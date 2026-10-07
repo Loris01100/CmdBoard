@@ -29,7 +29,7 @@ struct BackupApp {
     category: String,
     launch_target: String,
     watch_exe: Option<String>,
-    /// Includes XP given by hand with `:xp`, which no session accounts for.
+    /// Includes XP no session accounts for (given by hand in older versions).
     total_xp: u32,
 }
 
@@ -235,7 +235,7 @@ mod tests {
         let file = dir.join("export.json");
 
         let old_pc = db_with_session("Hades", "Jeux", 1_000, 50);
-        old_pc.set_app_xp(old_pc.apps().unwrap()[0].id, 80).unwrap(); // + :xp by hand
+        old_pc.set_app_xp(old_pc.apps().unwrap()[0].id, 80).unwrap(); // + XP no session accounts for
         assert_eq!(old_pc.export_to(&file).unwrap(), (1, 1));
 
         // The new PC already has Hades (other session) and lacks the "Jeux" category.

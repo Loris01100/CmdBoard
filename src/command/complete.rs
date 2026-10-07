@@ -54,7 +54,7 @@ pub fn complete(line: &str, sources: &Sources) -> Option<Completion> {
 
     match command {
         // These take the rest of the line as one name: no quotes needed.
-        "launch" | "rm" | "stats" | "xp" => whole(line, rest_start, Kind::App, sources),
+        "launch" | "rm" | "stats" => whole(line, rest_start, Kind::App, sources),
         "rmcat" => whole(line, rest_start, Kind::Category, sources),
         "uninstall" => whole(line, rest_start, Kind::Program, sources),
         "help" => whole(line, rest_start, Kind::Command, sources),

@@ -42,14 +42,6 @@ pub fn parse(input: &str) -> Result<Command, String> {
             app: app.clone(),
             category: category.clone(),
         }),
-        // The amount comes last, so the app name needs no quotes either.
-        ("xp", [app @ .., amount]) if !app.is_empty() => match amount.parse() {
-            Ok(amount) => Ok(Command::Xp {
-                app: app.join(" "),
-                amount,
-            }),
-            Err(_) => Err(t!("parse.bad_amount", amount, usage = help.usage())),
-        },
         ("stats", []) => Ok(Command::Stats { app: None }),
         ("stats", [_, ..]) => Ok(Command::Stats {
             app: Some(rest.join(" ")),
@@ -202,27 +194,6 @@ mod tests {
                     confirmed: false,
                 },
             ),
-            (
-                "xp Windows Terminal 250",
-                Command::Xp {
-                    app: s("Windows Terminal"),
-                    amount: 250,
-                },
-            ),
-            (
-                "xp Steam -40",
-                Command::Xp {
-                    app: s("Steam"),
-                    amount: -40,
-                },
-            ),
-            (
-                "xp Steam +40",
-                Command::Xp {
-                    app: s("Steam"),
-                    amount: 40,
-                },
-            ),
             ("stats", Command::Stats { app: None }),
             (
                 "stats Windows Terminal",
@@ -303,11 +274,6 @@ mod tests {
             ("add Code", "Usage : add [<nom> <cible> [catégorie]]"),
             ("move", "Usage : move <app> [catégorie]"),
             ("rm", "Usage : rm <app>"),
-            ("xp 50", "Usage : xp <app> <montant>"),
-            (
-                "xp Steam lots",
-                "Montant invalide : lots (usage : xp <app> <montant>)",
-            ),
             ("quit now", "Usage : quit"),
             ("update now", "Usage : update"),
             ("import", "Usage : import <fichier>"),

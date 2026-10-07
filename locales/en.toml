@@ -86,7 +86,6 @@ added = "Added: {name}{note}"
 moved = "Moved: {name} → {category}{note}"
 removed = "Removed: {name}"
 category_removed = "Category removed: {name}"
-xp = "{name}: {change} XP (total {total})"
 group_saved = "Group :{name} saved: {list}"
 exported = "Exported {apps} app(s) and {sessions} session(s) to {path}"
 imported = "Imported {apps} new app(s) and {sessions} session(s)"
@@ -120,7 +119,6 @@ file_not_found = "file not found: {target}"
 [parse]
 empty = "Empty command"
 unknown = "Unknown command: {name} (:help for the list)"
-bad_amount = "Invalid amount: {amount} (usage: {usage})"
 bad_sort = "Unknown sort: {name} (usage: {usage})"
 usage = "Usage: {usage}"
 unclosed_quote = "Unclosed quote"
@@ -399,10 +397,6 @@ summary = "Orders the apps (saved). Without arguments: current order"
 [cmd.lang]
 usage = "lang [en|fr]"
 summary = "Switches language (saved). Without arguments: lists the languages"
-
-[cmd.xp]
-usage = "xp <app> <amount>"
-summary = "Adds (or removes, if negative) XP to an app"
 
 [cmd.group]
 usage = "group <name> <app>, <app>…"

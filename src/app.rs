@@ -1680,24 +1680,6 @@ impl App {
                 };
                 self.mode = Mode::Popup(Popup::Form(form));
             }
-            Command::Xp { app, amount } => {
-                let (id, name, before) = {
-                    let entry = self.app_named(&app)?;
-                    (entry.id, entry.name.clone(), entry.total_xp)
-                };
-                let profile_before = self.profile.total_xp;
-                let after = xp::apply_delta(before, amount);
-                self.db.set_app_xp(id, after)?;
-                self.reload()?;
-                self.on_xp_changed(id, before, profile_before, after.saturating_sub(before));
-                let change = after as i64 - before as i64;
-                return success(t!(
-                    "action.xp",
-                    name,
-                    change = format!("{change:+}"),
-                    total = after
-                ));
-            }
             Command::Select { app } => {
                 let id = self.app_named(&app)?.id;
                 self.screen = Screen::Dashboard;
@@ -2665,9 +2647,9 @@ mod tests {
 
     #[test]
     fn alias_runs_its_commands_in_order() {
-        let mut app = with_aliases("[alias]\nboost = \"xp $1 50; stats $1\"");
+        let mut app = with_aliases("[alias]\nboost = \"sort xp; stats $1\"");
         run(&mut app, "boost bloc-notes");
-        assert_eq!(app.find_app("Bloc-notes").unwrap().total_xp, 50);
+        assert_eq!(app.sort, AppSort::Xp);
         assert_eq!(app.screen, Screen::Stats);
         assert_eq!(app.stats_app, Some(app.find_app("Bloc-notes").unwrap().id));
 
@@ -2679,7 +2661,7 @@ mod tests {
         run(&mut app, "help boost");
         assert_eq!(
             app.message.as_ref().unwrap().0,
-            "alias boost : xp $1 50; stats $1"
+            "alias boost : sort xp; stats $1"
         );
     }
 
@@ -2707,9 +2689,8 @@ mod tests {
 
     #[test]
     fn alias_stops_at_first_error_or_confirmation() {
-        let mut app = with_aliases(
-            "[alias]\nbad = \"xp nope 5; xp steam 5\"\nclean = \"rm steam; xp steam 5\"",
-        );
+        let mut app =
+            with_aliases("[alias]\nbad = \"stats nope; sort xp\"\nclean = \"rm steam; sort xp\"");
         run(&mut app, "bad");
         assert_eq!(message_kind(&app), Some(MsgKind::Error));
         assert!(
@@ -2717,13 +2698,13 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .0
-                .starts_with("xp nope 5 : app inconnue")
+                .starts_with("stats nope : app inconnue")
         );
-        assert_eq!(app.find_app("Steam").unwrap().total_xp, 0);
+        assert_eq!(app.sort, AppSort::Name);
 
         run(&mut app, "clean");
         assert!(matches!(app.mode, Mode::Popup(Popup::Confirm { .. })));
-        assert_eq!(app.find_app("Steam").unwrap().total_xp, 0);
+        assert_eq!(app.sort, AppSort::Name);
     }
 
     #[test]
@@ -2821,37 +2802,14 @@ mod tests {
     fn level_up_waits_while_typing() {
         let mut app = App::with_defaults();
         press(&mut app, KeyCode::Char(':'));
-        app.execute(Command::Xp {
-            app: "Steam".into(),
-            amount: 100,
-        });
+        let id = steam_id(&app);
+        app.db.set_app_xp(id, 100).unwrap();
+        app.reload().unwrap();
+        app.on_xp_changed(id, 0, 0, 100);
         assert_eq!(app.mode, Mode::Command); // not interrupted
         press(&mut app, KeyCode::Esc);
         app.on_tick();
         assert!(matches!(app.mode, Mode::Popup(Popup::LevelUp(_))));
-    }
-
-    #[test]
-    fn xp_command_adds_and_removes() {
-        let mut app = App::with_defaults();
-        run(&mut app, "xp windows terminal 250");
-        assert_eq!(app.find_app("Windows Terminal").unwrap().total_xp, 250);
-        assert!(matches!(
-            &app.mode,
-            Mode::Popup(Popup::LevelUp(LevelUp {
-                app_level: Some(2),
-                ..
-            }))
-        ));
-        press(&mut app, KeyCode::Esc);
-
-        run(&mut app, "xp windows terminal -1000");
-        assert_eq!(
-            app.message.as_ref().unwrap().0,
-            "Windows Terminal : -250 XP (total 0)"
-        );
-        assert_eq!(app.find_app("Windows Terminal").unwrap().total_xp, 0);
-        assert_eq!(app.mode, Mode::Normal); // going down is no level-up
     }
 
     #[test]

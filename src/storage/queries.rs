@@ -181,7 +181,8 @@ impl Database {
         Ok(())
     }
 
-    /// Overwrites an app's XP (`:xp`), outside of any session.
+    /// Overwrites an app's XP, outside of any session.
+    #[cfg(test)]
     pub fn set_app_xp(&self, app_id: i64, total_xp: u32) -> anyhow::Result<()> {
         self.conn.execute(
             "UPDATE apps SET total_xp = ?2 WHERE id = ?1",

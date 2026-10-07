@@ -86,7 +86,6 @@ added = "Ajouté : {name}{note}"
 moved = "Déplacé : {name} → {category}{note}"
 removed = "Supprimé : {name}"
 category_removed = "Catégorie supprimée : {name}"
-xp = "{name} : {change} XP (total {total})"
 group_saved = "Groupe :{name} enregistré : {list}"
 exported = "Exporté : {apps} app(s) et {sessions} session(s) vers {path}"
 imported = "Importé : {apps} nouvelle(s) app(s) et {sessions} session(s)"
@@ -120,7 +119,6 @@ file_not_found = "fichier introuvable : {target}"
 [parse]
 empty = "Commande vide"
 unknown = "Commande inconnue : {name} (:help pour la liste)"
-bad_amount = "Montant invalide : {amount} (usage : {usage})"
 bad_sort = "Tri inconnu : {name} (usage : {usage})"
 usage = "Usage : {usage}"
 unclosed_quote = "Guillemet non fermé"
@@ -399,10 +397,6 @@ summary = "Trie les apps (mémorisé). Sans argument : tri actuel"
 [cmd.lang]
 usage = "lang [en|fr]"
 summary = "Change de langue (mémorisée). Sans argument : liste les langues"
-
-[cmd.xp]
-usage = "xp <app> <montant>"
-summary = "Ajoute (ou retire, si négatif) de l'XP à une app"
 
 [cmd.group]
 usage = "group <nom> <app>, <app>…"

@@ -47,11 +47,6 @@ pub fn streak_days(days: &[i64], today: i64) -> u32 {
     streak
 }
 
-/// Adds a signed amount to a total, without going below zero.
-pub fn apply_delta(total_xp: u32, delta: i64) -> u32 {
-    (total_xp as i64 + delta).clamp(0, u32::MAX as i64) as u32
-}
-
 /// Value of an animated counter going from `from` to `to` over `frames` ticks,
 /// `elapsed` ticks after it started. Eases out: fast at first, slowing at the end.
 pub fn animate(from: u32, to: u32, elapsed: u64, frames: u64) -> u32 {
@@ -73,12 +68,6 @@ mod tests {
         assert_eq!(xp_for_session(5, 0), 5);
         assert_eq!(xp_for_session(42, 1), 47);
         assert_eq!(xp_for_session(60, 30), 95); // streak bonus capped at 7 days
-    }
-
-    #[test]
-    fn delta_never_goes_negative() {
-        assert_eq!(apply_delta(50, 25), 75);
-        assert_eq!(apply_delta(50, -80), 0);
     }
 
     #[test]

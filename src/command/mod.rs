@@ -96,11 +96,6 @@ pub enum Command {
     Lang {
         code: Option<String>,
     },
-    /// Adds (or removes, if negative) XP to an app by hand, outside of any session.
-    Xp {
-        app: String,
-        amount: i64,
-    },
     /// Saves an alias launching these apps in order (`commands.toml`).
     Group {
         name: String,
@@ -174,10 +169,6 @@ pub const COMMANDS: &[CommandHelp] = &[
     },
     CommandHelp {
         name: "lang",
-        aliases: &[],
-    },
-    CommandHelp {
-        name: "xp",
         aliases: &[],
     },
     CommandHelp {
