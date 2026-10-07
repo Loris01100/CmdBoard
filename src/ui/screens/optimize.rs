@@ -134,7 +134,7 @@ fn draw_gaming(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_stateful_widget(table, area, &mut state);
 }
 
-fn format_score(score: Score) -> String {
+pub fn format_score(score: Score) -> String {
     let rate = |bytes: f64| t!("optimize.per_sec", size = format_size(bytes as u64));
     match score {
         Score::Ops(millions) => t!("optimize.ops", n = format!("{millions:.0}")),

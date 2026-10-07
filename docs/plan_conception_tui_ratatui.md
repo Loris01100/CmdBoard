@@ -314,7 +314,7 @@ Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le pa
 │             │                               │ Dernière: hier    │
 │             │                               │ Récompenses: 🏆 3 │
 ├ Profil : Niv 23 ████████░░ | Streak 5j | XP du jour: +120 ──────┤
-├ Dernières récompenses ──────────────────────────────────────────┤
+├ Activité : ▶ Hades 1h (+90 XP) · hier   🏆 Marathon   ⚡ CPU… ◀──┤
 ├ Message / ligne de commande ────────────────────────────────────┤
 └ Barre de statut : raccourcis contextuels ───────────────────────┘
 ```
@@ -324,7 +324,7 @@ let rows = Layout::vertical([
     Constraint::Length(1),   // header
     Constraint::Min(10),     // corps
     Constraint::Length(3),   // profil
-    Constraint::Length(3),   // récompenses
+    Constraint::Length(3),   // activité (bandeau défilant)
     Constraint::Length(1),   // ligne de commande / message
     Constraint::Length(1),   // statut
 ]).split(area);
@@ -335,6 +335,8 @@ let cols = Layout::horizontal([
     Constraint::Min(25),         // détails
 ]).split(rows[1]);
 ```
+
+Le panneau **Activité** mélange les 10 derniers événements, du plus récent au plus ancien : sessions terminées non masquées (app, durée, XP, il y a combien de temps) et récompenses débloquées (`Database::activity`, rechargé à chaque `reload()`, une récompense avant la session qui l'a débloquée), puis le dernier résultat réussi de chaque benchmark de la session en cours (`bench_results`, non enregistré). S'il dépasse la largeur, il défile de droite à gauche en boucle, d'une cellule par `Tick` (`frame_count`), sans état supplémentaire ; sinon il reste fixe.
 
 ### Autres écrans
 
@@ -349,7 +351,7 @@ let cols = Layout::horizontal([
 
 - Moins de ~90 colonnes : masquer le panneau Détails.
 - Moins de 60 colonnes : catégories (5 lignes) au-dessus des apps.
-- Moins de 24 lignes : masquer « Dernières récompenses » ; moins de 18 : masquer aussi le profil. Les listes gardent la place.
+- Moins de 24 lignes : masquer « Activité » ; moins de 18 : masquer aussi le profil. Les listes gardent la place.
 - Stats : graphiques masqués sous 18 lignes de corps, temps par catégorie masqué sous 60 colonnes. Rewards : panneau Détail masqué sous 12 lignes.
 
 ---

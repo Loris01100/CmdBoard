@@ -192,8 +192,9 @@ last = "Last played: {last}"
 rewards = "Rewards: 🏆 {count}"
 target = "Target: {target}"
 process = "Process: {exe}"
-no_rewards = "No rewards yet"
-recent_rewards = "Recent rewards"
+activity = "Activity"
+activity_session = "{name} {time} (+{xp} XP)"
+no_activity = "No activity yet"
 
 [apps]
 title = "Applications · {sort}"

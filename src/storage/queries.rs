@@ -7,8 +7,8 @@ use rusqlite::params;
 
 use super::db::Database;
 use super::models::{
-    ACTIVITY_DAYS, AppEntry, Category, ClosedSession, NewApp, Profile, Reward, RewardView,
-    SessionRow, Stats, Unlock,
+    ACTIVITY_DAYS, Activity, AppEntry, Category, ClosedSession, NewApp, Profile, Reward,
+    RewardView, SessionRow, Stats, Unlock,
 };
 use crate::core::{rewards::Facts, xp};
 use crate::i18n;
@@ -250,23 +250,52 @@ impl Database {
         })
     }
 
-    /// Latest unlocked rewards, newest first, as "Name (App)" or "Name" for global ones.
-    pub fn recent_rewards(&self, limit: u32) -> anyhow::Result<Vec<String>> {
+    /// Latest finished sessions (not hidden) and unlocked rewards, newest first.
+    /// A reward comes before the session that unlocked it.
+    pub fn activity(&self, limit: u32) -> anyhow::Result<Vec<Activity>> {
         let mut stmt = self.conn.prepare(
-            "SELECT r.code, r.name, a.name FROM unlocked_rewards u
+            "SELECT r.code, r.name, a.name, u.unlocked_at FROM unlocked_rewards u
              JOIN rewards r ON r.id = u.reward_id
              LEFT JOIN apps a ON a.id = u.app_id
              ORDER BY u.unlocked_at DESC, u.id DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map([limit], |r| {
+        let rewards = stmt.query_map([limit], |r| {
             let reward = i18n::reward_text(&r.get::<_, String>(0)?, "name", r.get(1)?);
             let app: Option<String> = r.get(2)?;
-            Ok(match app {
+            let name = match app {
                 Some(app) => format!("{reward} ({app})"),
                 None => reward,
+            };
+            Ok(Activity::Reward {
+                name,
+                at: r.get(3)?,
             })
         })?;
-        Ok(rows.collect::<Result<_, _>>()?)
+        let mut events = rewards.collect::<Result<Vec<_>, _>>()?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT a.name, s.duration_s, s.xp_gained, s.ended_at FROM sessions s
+             JOIN apps a ON a.id = s.app_id
+             WHERE s.ended_at IS NOT NULL AND NOT s.hidden
+             ORDER BY s.ended_at DESC, s.id DESC LIMIT ?1",
+        )?;
+        let sessions = stmt.query_map([limit], |r| {
+            Ok(Activity::Session {
+                app: r.get(0)?,
+                secs: r.get::<_, i64>(1)? as u64,
+                xp: r.get(2)?,
+                at: r.get(3)?,
+            })
+        })?;
+        for session in sessions {
+            events.push(session?);
+        }
+        // Stable: at the same time, the reward stays first.
+        events.sort_by_key(|e| match e {
+            Activity::Session { at, .. } | Activity::Reward { at, .. } => std::cmp::Reverse(*at),
+        });
+        events.truncate(limit as usize);
+        Ok(events)
     }
 
     /// What reward rules can test about a closed session. Returns the session's app too.
@@ -597,7 +626,39 @@ mod tests {
         assert_eq!(hades.last_played, Some(20_000));
         assert_eq!((hades.level, hades.xp), (2, 50));
         assert_eq!(hades.rewards, 1);
-        assert_eq!(db.recent_rewards(3).unwrap(), ["Fan (Hades)"]);
+        let fan = Activity::Reward {
+            name: "Fan (Hades)".into(),
+            at: 20_000,
+        };
+        assert_eq!(db.activity(1).unwrap(), [fan]);
+    }
+
+    #[test]
+    fn activity_mixes_sessions_and_rewards_newest_first() {
+        let (db, _, app) = db_with_app();
+        session(&db, app, 1_000, 600, 10);
+        db.hide_sessions().unwrap();
+        session(&db, app, 2_000, 600, 10);
+        session(&db, app, 3_000, 1_200, 20);
+        let premiers_pas = reward_id(&db, "premiers_pas");
+        db.unlock_reward(premiers_pas, None, 1, 2_000).unwrap();
+
+        let session = |secs, xp, at| Activity::Session {
+            app: "Hades".into(),
+            secs,
+            xp,
+            at,
+        };
+        let reward = Activity::Reward {
+            name: "Premiers pas".into(),
+            at: 2_000,
+        };
+        // The hidden session is left out; the reward precedes its session.
+        assert_eq!(
+            db.activity(5).unwrap(),
+            [session(1_200, 20, 3_000), reward, session(600, 10, 2_000)]
+        );
+        assert_eq!(db.activity(1).unwrap().len(), 1);
     }
 
     fn reward_id(db: &Database, code: &str) -> i64 {

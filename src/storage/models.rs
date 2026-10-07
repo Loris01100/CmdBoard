@@ -97,6 +97,20 @@ pub struct SessionRow {
     pub xp: u32,
 }
 
+/// An event of the dashboard activity ticker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Activity {
+    Session {
+        app: String,
+        secs: u64,
+        xp: u32,
+        /// When it ended.
+        at: i64,
+    },
+    /// "Name (App)", or "Name" for a global reward.
+    Reward { name: String, at: i64 },
+}
+
 /// A session closed by `close_orphan_sessions`, still to be awarded its XP.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClosedSession {

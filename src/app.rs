@@ -38,7 +38,7 @@ use crate::optimize::{self, Bench, Gaming, Score};
 use crate::popup::{Form, FormKind, LevelUp, Picker, Popup, RewardUnlocked};
 use crate::storage::{
     Database,
-    models::{AppEntry, Category, NewApp, Profile, RewardView, Stats},
+    models::{Activity, AppEntry, Category, NewApp, Profile, RewardView, Stats},
     unix_now,
 };
 use crate::text_input::TextInput;
@@ -230,7 +230,8 @@ pub struct App {
     pub categories: Vec<Category>,
     pub apps: Vec<AppEntry>,
     pub profile: Profile,
-    pub recent_rewards: Vec<String>,
+    /// Latest sessions and rewards, for the dashboard ticker.
+    pub activity: Vec<Activity>,
     /// Every reward, for the Rewards screen.
     pub rewards: Vec<RewardView>,
     pub reward_state: TableState,
@@ -323,7 +324,7 @@ impl App {
             categories: Vec::new(),
             apps: Vec::new(),
             profile: Profile::default(),
-            recent_rewards: Vec::new(),
+            activity: Vec::new(),
             rewards: Vec::new(),
             reward_state: TableState::default(),
             stats: Stats::default(),
@@ -379,7 +380,7 @@ impl App {
         self.apps = self.db.apps()?;
         self.sort.apply(&mut self.apps);
         self.profile = self.db.profile()?;
-        self.recent_rewards = self.db.recent_rewards(3)?;
+        self.activity = self.db.activity(10)?;
         if self
             .stats_app
             .is_some_and(|id| self.find_app_by_id(id).is_none())
@@ -2594,7 +2595,10 @@ mod tests {
         );
         assert!(unlocked(&app, "Centurion").is_empty());
         assert_eq!(app.find_app("Steam").unwrap().rewards, 1);
-        assert_eq!(app.recent_rewards[0], "Marathon (Bloc-notes)");
+        assert!(matches!(
+            &app.activity[0],
+            Activity::Reward { name, .. } if name == "Marathon (Bloc-notes)"
+        ));
     }
 
     #[test]

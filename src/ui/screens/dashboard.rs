@@ -7,9 +7,11 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::storage::unix_now;
+use crate::optimize::Bench;
+use crate::storage::{models::Activity, unix_now};
 use crate::ui::{
     layout,
+    screens::optimize::format_score,
     widgets::{
         app_table, category_list, command_line, format_ago, format_clock, format_duration,
         profile_panel, status_bar, xp_bar,
@@ -28,8 +30,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
     if let Some(profile) = areas.profile {
         profile_panel::render(frame, profile, app);
     }
-    if let Some(rewards) = areas.rewards {
-        render_recent_rewards(frame, rewards, app);
+    if let Some(activity) = areas.activity {
+        render_activity(frame, activity, app);
     }
     command_line::render(frame, areas.command, app);
     status_bar::render(frame, areas.status, app);
@@ -128,21 +130,137 @@ fn render_details(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(rest_text), rest);
 }
 
-fn render_recent_rewards(frame: &mut Frame, area: Rect, app: &App) {
+/// Space between two events of the ticker.
+const GAP: &str = "     ";
+
+/// Latest sessions and rewards, then this run's benchmarks. When they do not fit, they
+/// scroll right to left in a loop, one cell per tick.
+fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let text = if app.recent_rewards.is_empty() {
-        Line::styled(t!("dashboard.no_rewards"), theme.muted())
-    } else {
-        Line::from(
-            app.recent_rewards
-                .iter()
-                .map(|r| format!("🏆 {r}"))
-                .collect::<Vec<_>>()
-                .join("   "),
-        )
-    };
-    frame.render_widget(
-        Paragraph::new(text).block(theme.panel(&t!("dashboard.recent_rewards"), false)),
-        area,
-    );
+    let block = theme.panel(&t!("dashboard.activity"), false);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let now = unix_now();
+    let mut spans = Vec::new();
+    for event in &app.activity {
+        let at = match event {
+            Activity::Session { app, secs, xp, at } => {
+                spans.push(Span::styled("▶ ", Style::new().fg(theme.success)));
+                spans.push(Span::raw(t!(
+                    "dashboard.activity_session",
+                    name = app,
+                    time = format_duration(*secs),
+                    xp
+                )));
+                at
+            }
+            Activity::Reward { name, at } => {
+                spans.push(Span::styled("🏆 ", Style::new().fg(theme.warning)));
+                spans.push(Span::styled(name.clone(), theme.title));
+                at
+            }
+        };
+        spans.push(Span::styled(
+            format!(" · {}", format_ago(now - at)),
+            theme.muted(),
+        ));
+        spans.push(Span::raw(GAP));
+    }
+    for bench in Bench::ALL {
+        if let Some((_, Ok(score))) = app.bench_results.get(&bench) {
+            spans.push(Span::styled("⚡ ", Style::new().fg(theme.info)));
+            spans.push(Span::raw(format!(
+                "{} {}",
+                bench.label(),
+                format_score(*score)
+            )));
+            spans.push(Span::raw(GAP));
+        }
+    }
+    if spans.is_empty() {
+        let empty = Paragraph::new(t!("dashboard.no_activity")).style(theme.muted());
+        frame.render_widget(empty, inner);
+        return;
+    }
+
+    let cycle = Line::from(spans.clone()).width();
+    if cycle - GAP.len() <= inner.width as usize {
+        frame.render_widget(Paragraph::new(Line::from(spans)), inner);
+        return;
+    }
+    // Enough copies to fill the panel from any offset within one cycle.
+    let copies = inner.width as usize / cycle + 2;
+    let offset = (app.frame_count % cycle as u64) as u16;
+    let looped: Vec<_> = spans
+        .iter()
+        .cycle()
+        .take(spans.len() * copies)
+        .cloned()
+        .collect();
+    let ticker = Paragraph::new(Line::from(looped)).scroll((0, offset));
+    frame.render_widget(ticker, inner);
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::app::App;
+    use crate::optimize::{Bench, Score};
+    use crate::storage::{models::Activity, unix_now};
+    use ratatui::{Terminal, backend::TestBackend};
+
+    /// The rows of the dashboard, as text.
+    fn rows(app: &App) -> Vec<String> {
+        let mut terminal = Terminal::new(TestBackend::new(80, 30)).unwrap();
+        terminal.draw(|f| crate::ui::draw(f, app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        (0..30)
+            .map(|y| (0..80).map(|x| buffer[(x, y)].symbol()).collect())
+            .collect()
+    }
+
+    /// The row under the "Activité" title.
+    fn ticker(app: &App) -> String {
+        let rows = rows(app);
+        let title = rows.iter().position(|r| r.contains("Activité")).unwrap();
+        rows[title + 1].clone()
+    }
+
+    #[test]
+    fn activity_scrolls_only_when_too_long() {
+        let mut app = App::with_defaults();
+        app.activity.clear();
+        assert!(ticker(&app).contains("Aucune activité"));
+
+        app.activity = vec![Activity::Reward {
+            name: "Marathon (Hades)".into(),
+            at: unix_now(),
+        }];
+        app.on_bench_finished(Bench::CpuSingle, false, Ok(Score::Ops(1234.0)));
+        let still = ticker(&app);
+        assert!(still.contains("Marathon (Hades)") && still.contains("1234 M op/s"));
+        app.frame_count = 5;
+        assert_eq!(ticker(&app), still, "fits: does not move");
+
+        for i in 0..5 {
+            app.activity.push(Activity::Session {
+                app: format!("Application numéro {i}"),
+                secs: 5_400,
+                xp: 90,
+                at: unix_now() - 7_200,
+            });
+        }
+        // Past the leading 🏆, which holds for a tick as it is two cells wide.
+        app.frame_count = 3;
+        let start = ticker(&app);
+        app.frame_count = 4;
+        let next = ticker(&app);
+        assert_ne!(next, start, "too long: scrolls each tick");
+        // One cell to the left: the start without its first cell (│ border, then text).
+        let inner = |row: &str| row.chars().skip(1).take(70).collect::<String>();
+        assert_eq!(
+            inner(&next).chars().take(60).collect::<String>(),
+            inner(&start).chars().skip(1).take(60).collect::<String>()
+        );
+    }
 }
