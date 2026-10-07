@@ -1,7 +1,0 @@
-organization=loris01100
-projectKey=Loris01100_CmdBoard
-serverUrl=https://sonarcloud.io
-serverVersion=8.0.0.109679
-dashboardUrl=https://sonarcloud.io/dashboard?id=Loris01100_CmdBoard
-ceTaskId=AaEL6g_BzLKi2V2eOjgP
-ceTaskUrl=https://sonarcloud.io/api/ce/task?id=AaEL6g_BzLKi2V2eOjgP
