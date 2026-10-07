@@ -1,6 +1,11 @@
+use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{
+    Arc,
+    atomic::{self, AtomicBool},
+    mpsc::{Receiver, Sender},
+};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, bail};
@@ -24,6 +29,7 @@ use crate::event::AppEvent;
 use crate::fuzzy;
 use crate::i18n;
 use crate::launcher::{
+    folders::{self, Entry},
     launch,
     programs::{self, Disk, Program},
     scan::{self, Shortcut},
@@ -166,6 +172,21 @@ pub struct XpAnim {
     pub start: u64,
 }
 
+/// Folder browser of the Storage screen.
+#[derive(Debug)]
+pub struct Folders {
+    /// `None`: the list of drives.
+    pub dir: Option<PathBuf>,
+    pub entries: Vec<Entry>,
+    pub state: TableState,
+    /// Still reading `dir`.
+    pub listing: bool,
+    /// Entry to select once listed (the folder we came back from).
+    select: Option<PathBuf>,
+    /// Set when leaving `dir`: its measures stop.
+    cancel: Arc<AtomicBool>,
+}
+
 /// What a recorded session earned.
 #[derive(Debug, Clone, Default)]
 struct SessionOutcome {
@@ -264,6 +285,10 @@ pub struct App {
     /// Smallest programs first instead of biggest.
     pub storage_ascending: bool,
     pub storage_scanning: bool,
+    /// `Some`: the folder browser replaces the programs.
+    pub folders: Option<Folders>,
+    /// Folder sizes measured so far, kept while browsing back and forth.
+    folder_sizes: HashMap<PathBuf, u64>,
     pub should_quit: bool,
 }
 
@@ -313,6 +338,8 @@ impl App {
             storage_disk: None,
             storage_ascending: false,
             storage_scanning: false,
+            folders: None,
+            folder_sizes: HashMap::new(),
             should_quit: false,
         };
         app.reload()?;
@@ -442,6 +469,9 @@ impl App {
                 AppEvent::StorageScanned { disks, programs } => {
                     self.on_storage_scanned(disks, programs)
                 }
+                AppEvent::FolderListed { dir, entries } => self.on_folder_listed(&dir, entries),
+                AppEvent::FolderSized { path, size } => self.on_folder_sized(path, size),
+                AppEvent::Trashed { path, result } => self.on_trashed(&path, result),
                 AppEvent::ShortcutsScanned(found) => {
                     self.scan_running = false;
                     self.shortcuts = found;
@@ -854,9 +884,14 @@ impl App {
         })
     }
 
-    /// Storage screen: Tab/←→ pick the drive, `s` the order, `d`/Del uninstall.
+    /// Storage screen: Tab/←→ pick the drive, `s` the order, `d`/Del uninstall,
+    /// `f` the folder browser.
     fn storage_key(&self, key: KeyEvent) -> Option<Command> {
+        if self.folders.is_some() {
+            return self.folder_key(key);
+        }
         Some(match key.code {
+            KeyCode::Char('f') => Command::ToggleFolders,
             KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
                 Command::CycleDisk { forward: true }
             }
@@ -869,6 +904,32 @@ impl App {
                 Command::Uninstall {
                     program: self.visible_programs().get(i)?.name.clone(),
                     confirmed: false,
+                }
+            }
+            _ => return None,
+        })
+    }
+
+    /// Folder browser: Enter/→ open, Backspace/← back, `d`/Del to the Recycle Bin (or
+    /// uninstall, for a program's folder).
+    fn folder_key(&self, key: KeyEvent) -> Option<Command> {
+        Some(match key.code {
+            KeyCode::Char('f') => Command::ToggleFolders,
+            KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => Command::OpenFolder,
+            KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => Command::ParentFolder,
+            KeyCode::Char('s') => Command::ToggleStorageOrder,
+            KeyCode::Char('d') | KeyCode::Delete => {
+                self.folders.as_ref()?.dir.as_ref()?; // drives cannot be deleted
+                let entry = self.selected_entry()?;
+                match programs::installed_in(&self.programs, &entry.path) {
+                    Some(program) => Command::Uninstall {
+                        program: program.name.clone(),
+                        confirmed: false,
+                    },
+                    None => Command::Trash {
+                        path: entry.path.clone(),
+                        confirmed: false,
+                    },
                 }
             }
             _ => return None,
@@ -990,12 +1051,140 @@ impl App {
             .filter(|p| self.storage_disk.is_none() || p.drive == self.storage_disk)
             .collect();
         // `programs` is sorted by name and the sort is stable.
-        list.sort_by(|a, b| match (a.size, b.size) {
-            (Some(x), Some(y)) if self.storage_ascending => x.cmp(&y),
-            (Some(x), Some(y)) => y.cmp(&x),
-            (a, b) => b.is_some().cmp(&a.is_some()),
-        });
+        list.sort_by(|a, b| by_size(a.size, b.size, self.storage_ascending));
         list
+    }
+
+    /// Folder browser entries, by size like the programs (unmeasured last).
+    pub fn visible_entries(&self) -> Vec<&Entry> {
+        let Some(folders) = &self.folders else {
+            return Vec::new();
+        };
+        let mut list: Vec<&Entry> = folders.entries.iter().collect();
+        list.sort_by(|a, b| by_size(a.size, b.size, self.storage_ascending));
+        list
+    }
+
+    fn selected_entry(&self) -> Option<&Entry> {
+        let i = self.folders.as_ref()?.state.selected()?;
+        self.visible_entries().get(i).copied()
+    }
+
+    /// Selects the entry at `path`, else the first one.
+    fn select_entry(&mut self, path: Option<&Path>) {
+        let entries = self.visible_entries();
+        let index = path
+            .and_then(|p| entries.iter().position(|e| e.path == p))
+            .or((!entries.is_empty()).then_some(0));
+        if let Some(folders) = &mut self.folders {
+            folders.state.select(index);
+        }
+    }
+
+    /// Shows `dir` (`None`: the drives) and reads it in a short-lived thread. Stops the
+    /// measures of the folder being left.
+    fn open_folder(&mut self, dir: Option<PathBuf>, select: Option<PathBuf>) {
+        self.stop_measures();
+        let entries = match &dir {
+            Some(_) => Vec::new(),
+            None => self
+                .disks
+                .iter()
+                .map(|d| Entry {
+                    name: format!("{}:", d.letter),
+                    path: PathBuf::from(format!("{}:\\", d.letter)),
+                    is_dir: true,
+                    size: Some(d.total - d.free.min(d.total)),
+                })
+                .collect(),
+        };
+        self.folders = Some(Folders {
+            listing: dir.is_some(),
+            dir: dir.clone(),
+            entries,
+            state: TableState::default(),
+            select: select.clone(),
+            cancel: Arc::new(AtomicBool::new(false)),
+        });
+        self.select_entry(select.as_deref());
+        if let (Some(dir), Some(events)) = (dir, self.events.clone()) {
+            std::thread::spawn(move || {
+                let entries = folders::list(&dir);
+                let _ = events.send(AppEvent::FolderListed { dir, entries });
+            });
+        }
+    }
+
+    fn stop_measures(&self) {
+        if let Some(folders) = &self.folders {
+            folders.cancel.store(true, atomic::Ordering::Relaxed);
+        }
+    }
+
+    /// Fills in the sizes already known, then measures the other subfolders in a
+    /// short-lived thread, one `FolderSized` each.
+    pub fn on_folder_listed(&mut self, dir: &Path, mut entries: Vec<Entry>) {
+        let Some(folders) = &mut self.folders else {
+            return;
+        };
+        if folders.dir.as_deref() != Some(dir) {
+            return; // left meanwhile
+        }
+        entries.sort_by_cached_key(|e| e.name.to_lowercase());
+        for entry in entries.iter_mut().filter(|e| e.is_dir) {
+            entry.size = self.folder_sizes.get(&entry.path).copied();
+        }
+        let todo: Vec<PathBuf> = entries
+            .iter()
+            .filter(|e| e.is_dir && e.size.is_none())
+            .map(|e| e.path.clone())
+            .collect();
+        folders.entries = entries;
+        folders.listing = false;
+        let (select, cancel) = (folders.select.take(), folders.cancel.clone());
+        self.select_entry(select.as_deref());
+
+        let Some(events) = self.events.clone() else {
+            return;
+        };
+        std::thread::spawn(move || {
+            use rayon::prelude::*;
+            todo.into_par_iter().for_each(|path| {
+                if let Some(size) = folders::dir_size(&path, &cancel) {
+                    let _ = events.send(AppEvent::FolderSized { path, size });
+                }
+            });
+        });
+    }
+
+    /// Keeps the selection on the same entry while the list reorders.
+    pub fn on_folder_sized(&mut self, path: PathBuf, size: u64) {
+        let selected = self.selected_entry().map(|e| e.path.clone());
+        if let Some(folders) = &mut self.folders
+            && let Some(entry) = folders.entries.iter_mut().find(|e| e.path == path)
+        {
+            entry.size = Some(size);
+        }
+        self.folder_sizes.insert(path, size);
+        self.select_entry(selected.as_deref());
+    }
+
+    pub fn on_trashed(&mut self, path: &Path, result: Result<(), String>) {
+        let name = path.display();
+        self.message = Some(match result {
+            Ok(()) => {
+                // Its size, and the sizes of the folders holding it, are stale.
+                self.folder_sizes
+                    .retain(|p, _| !path.starts_with(p) && !p.starts_with(path));
+                let selected = self.selected_entry().map(|e| e.path.clone());
+                if let Some(folders) = &mut self.folders {
+                    folders.entries.retain(|e| e.path != path);
+                }
+                self.select_entry(selected.as_deref());
+                (t!("storage.trashed", path = name), MsgKind::Success)
+            }
+            Err(error) => (error, MsgKind::Error),
+        });
     }
 
     /// Installed apps matching the picker's query, best first, minus the ones already added.
@@ -1177,6 +1366,54 @@ impl App {
             Command::ToggleStorageOrder => {
                 self.storage_ascending = !self.storage_ascending;
                 self.reset_storage_selection();
+                self.select_entry(None);
+            }
+            Command::ToggleFolders => match self.folders {
+                Some(_) => {
+                    self.stop_measures();
+                    self.folders = None;
+                }
+                // Starts on the chosen drive, else on the list of drives.
+                None => {
+                    let root = self
+                        .storage_disk
+                        .map(|letter| PathBuf::from(format!("{letter}:\\")));
+                    self.open_folder(root, None);
+                }
+            },
+            Command::OpenFolder => {
+                if let Some(entry) = self.selected_entry().filter(|e| e.is_dir) {
+                    let path = entry.path.clone();
+                    self.open_folder(Some(path), None);
+                }
+            }
+            Command::ParentFolder => {
+                if let Some(dir) = self.folders.as_ref().and_then(|f| f.dir.clone()) {
+                    // `C:\` has no parent: back to the drives.
+                    self.open_folder(dir.parent().map(Path::to_path_buf), Some(dir));
+                }
+            }
+            Command::Trash { path, confirmed } => {
+                if !confirmed {
+                    self.mode = Mode::Popup(Popup::Confirm {
+                        message: t!("storage.confirm_trash", path = path.display()),
+                        command: Command::Trash {
+                            path,
+                            confirmed: true,
+                        },
+                    });
+                    return Ok(None);
+                }
+                let events = self
+                    .events
+                    .clone()
+                    .with_context(|| t!("storage.unavailable"))?;
+                let text = t!("storage.trashing", path = path.display());
+                std::thread::spawn(move || {
+                    let result = folders::trash(&path).map_err(|e| format!("{e:#}"));
+                    let _ = events.send(AppEvent::Trashed { path, result });
+                });
+                return Ok(Some((text, MsgKind::Info)));
             }
             Command::Quit => self.should_quit = true,
 
@@ -1581,6 +1818,14 @@ impl App {
                 self.stats_state.select(next);
                 return;
             }
+            Screen::Storage if self.folders.is_some() => {
+                let len = self.visible_entries().len();
+                if let Some(folders) = &mut self.folders {
+                    let next = step(folders.state.selected(), len, forward);
+                    folders.state.select(next);
+                }
+                return;
+            }
             Screen::Storage => {
                 let len = self.visible_programs().len();
                 let next = step(self.storage_state.selected(), len, forward);
@@ -1624,6 +1869,15 @@ fn created_note(created: bool) -> String {
         t!("new_category")
     } else {
         String::new()
+    }
+}
+
+/// Biggest first (or smallest, if `ascending`), unknown sizes always last.
+fn by_size(a: Option<u64>, b: Option<u64>, ascending: bool) -> Ordering {
+    match (a, b) {
+        (Some(x), Some(y)) if ascending => x.cmp(&y),
+        (Some(x), Some(y)) => y.cmp(&x),
+        (a, b) => b.is_some().cmp(&a.is_some()),
     }
 }
 
@@ -1736,6 +1990,7 @@ mod tests {
             publisher: None,
             size,
             drive: Some(drive),
+            location: None,
             uninstall: "x.exe".into(),
         };
         let disk = |letter| Disk {

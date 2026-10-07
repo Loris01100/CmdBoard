@@ -8,13 +8,15 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::launcher::programs::Disk;
+use crate::launcher::programs::{self, Disk};
 use crate::ui::{
     layout,
+    theme::Theme,
     widgets::{command_line, format_size, status_bar},
 };
 
-/// Space used on each drive, then the installed programs by size, on one drive or all.
+/// Space used on each drive, then the installed programs by size, on one drive or all,
+/// or (`f`) the folder browser.
 pub fn draw(frame: &mut Frame, app: &App) {
     let (body, command, status) = layout::screen(frame.area(), command_line::height(app));
     // On short terminals the programs keep the room and the drives go.
@@ -28,7 +30,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
     if disks_height > 0 {
         draw_disks(frame, disks_area, app);
     }
-    draw_programs(frame, programs_area, app);
+    if app.folders.is_some() {
+        draw_folders(frame, programs_area, app);
+    } else {
+        draw_programs(frame, programs_area, app);
+    }
     command_line::render(frame, command, app);
     status_bar::render(frame, status, app);
 }
@@ -126,10 +132,7 @@ fn draw_programs(frame: &mut Frame, area: Rect, app: &App) {
     ])
     .style(theme.title);
     let rows = programs.iter().map(|program| {
-        let size = match program.size {
-            Some(bytes) => Cell::from(Line::from(format_size(bytes)).alignment(Alignment::Right)),
-            None => Cell::from(Line::styled("—", theme.muted()).alignment(Alignment::Right)),
-        };
+        let size = size_cell(program.size, "—", theme);
         let drive = program.drive.map_or("—".into(), |d| format!("{d}:"));
         Row::new([
             Cell::from(program.name.as_str()),
@@ -157,6 +160,96 @@ fn draw_programs(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_stateful_widget(table, area, &mut state);
 }
 
+/// The browsed folder's files and subfolders by size. Subfolders show "…" until measured.
+fn draw_folders(frame: &mut Frame, area: Rect, app: &App) {
+    let theme = &app.theme;
+    let Some(folders) = &app.folders else {
+        return;
+    };
+    let entries = app.visible_entries();
+    let dir = match &folders.dir {
+        Some(dir) => dir.display().to_string(),
+        None => t!("storage.drives"),
+    };
+    let order = if app.storage_ascending {
+        t!("storage.smallest_first")
+    } else {
+        t!("storage.biggest_first")
+    };
+    let measuring = entries.iter().filter(|e| e.size.is_none()).count();
+    let measuring = match measuring {
+        0 => String::new(),
+        count => t!("storage.measuring", count),
+    };
+    let title = t!(
+        "storage.folders",
+        dir,
+        order,
+        count = entries.len(),
+        measuring
+    );
+    let block = theme.panel(&title, true);
+
+    if entries.is_empty() {
+        let text = if folders.listing {
+            t!("storage.listing")
+        } else {
+            t!("storage.empty_folder")
+        };
+        frame.render_widget(
+            Paragraph::new(Span::styled(text, theme.muted())).block(block),
+            area,
+        );
+        return;
+    }
+
+    let header = Row::new([
+        t!("storage.name"),
+        t!("storage.size"),
+        t!("storage.program"),
+    ])
+    .style(theme.title);
+    let rows = entries.iter().map(|entry| {
+        let name = if entry.is_dir {
+            format!("{}\\", entry.name.trim_end_matches('\\'))
+        } else {
+            entry.name.clone()
+        };
+        // A program's folder: `d` uninstalls it instead of deleting it.
+        let program = match folders.dir {
+            Some(_) => programs::installed_in(&app.programs, &entry.path)
+                .map_or(String::new(), |p| p.name.clone()),
+            None => String::new(),
+        };
+        Row::new([
+            Cell::from(name),
+            size_cell(entry.size, "…", theme),
+            Cell::from(Span::styled(program, theme.muted())),
+        ])
+    });
+    let widths = [
+        Constraint::Fill(2),
+        Constraint::Length(10),
+        Constraint::Fill(1),
+    ];
+    let table = Table::new(rows, widths)
+        .header(header)
+        .block(block)
+        .row_highlight_style(theme.highlight(true))
+        .highlight_symbol("> ");
+    let mut state = folders.state;
+    frame.render_stateful_widget(table, area, &mut state);
+}
+
+/// Right-aligned size, or `missing` greyed out.
+fn size_cell(size: Option<u64>, missing: &str, theme: &Theme) -> Cell<'static> {
+    let line = match size {
+        Some(bytes) => Line::from(format_size(bytes)),
+        None => Line::styled(missing.to_string(), theme.muted()),
+    };
+    Cell::from(line.alignment(Alignment::Right))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::app::{App, Screen};
@@ -180,6 +273,7 @@ mod tests {
             publisher: Some("Éditeur".into()),
             size: size.map(|mb| mb << 20),
             drive: Some(drive),
+            location: None,
             uninstall: "x.exe".into(),
         }
     }
@@ -215,5 +309,76 @@ mod tests {
         // Short and narrow: still renders, programs first.
         let text = screen(&app, 40, 10);
         assert!(!text.contains("95%") && text.contains("Blender"), "{text}");
+    }
+
+    #[test]
+    fn browses_folders() {
+        use crate::launcher::folders::Entry;
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let press = |app: &mut App, code| app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+        let mut app = App::with_defaults();
+        app.screen = Screen::Storage;
+        let gb = 1 << 30;
+        app.on_storage_scanned(
+            vec![Disk {
+                letter: 'C',
+                total: 100 * gb,
+                free: 40 * gb,
+            }],
+            Vec::new(),
+        );
+        press(&mut app, KeyCode::Char('f'));
+        let text = screen(&app, 110, 30);
+        assert!(text.contains("Dossiers · disques"), "{text}");
+        assert!(text.contains(r"C:\") && text.contains("60 Go"), "{text}");
+
+        press(&mut app, KeyCode::Enter);
+        assert!(screen(&app, 110, 30).contains("Lecture du dossier"));
+        let dir = std::path::PathBuf::from(r"C:\");
+        let entry = |name: &str, is_dir, size| Entry {
+            name: name.into(),
+            path: dir.join(name),
+            is_dir,
+            size,
+        };
+        app.on_folder_listed(
+            &dir,
+            vec![
+                entry("Dev", true, None),
+                entry("big.iso", false, Some(4 * gb)),
+            ],
+        );
+        let text = screen(&app, 110, 30);
+        assert!(text.contains("1 dossier(s) en cours de mesure"), "{text}");
+        assert!(text.contains(r"Dev\") && text.contains("…"), "{text}");
+
+        app.on_folder_sized(dir.join("Dev"), 9 * gb);
+        let names: Vec<_> = app
+            .visible_entries()
+            .iter()
+            .map(|e| e.name.clone())
+            .collect();
+        assert_eq!(names, ["Dev", "big.iso"]);
+        assert!(!screen(&app, 110, 30).contains("en cours de mesure"));
+
+        // The selection followed big.iso when Dev went first; `d` asks before trashing it.
+        press(&mut app, KeyCode::Char('d'));
+        let crate::app::Mode::Popup(crate::popup::Popup::Confirm { command, .. }) = &app.mode
+        else {
+            panic!("expected a confirmation, got {:?}", app.mode);
+        };
+        assert_eq!(
+            *command,
+            crate::command::Command::Trash {
+                path: dir.join("big.iso"),
+                confirmed: true
+            }
+        );
+        press(&mut app, KeyCode::Esc);
+
+        press(&mut app, KeyCode::Left); // back to the drives
+        assert!(screen(&app, 110, 30).contains("Dossiers · disques"));
+        press(&mut app, KeyCode::Char('f')); // back to the programs
+        assert!(screen(&app, 110, 30).contains("Programmes"));
     }
 }

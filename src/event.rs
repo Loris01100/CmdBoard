@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 
 use crate::launcher::{
+    folders::Entry,
     programs::{Disk, Program},
     scan::Shortcut,
 };
@@ -40,6 +41,21 @@ pub enum AppEvent {
     StorageScanned {
         disks: Vec<Disk>,
         programs: Vec<Program>,
+    },
+    /// What a folder holds (folder browser), its subfolders not measured yet.
+    FolderListed {
+        dir: std::path::PathBuf,
+        entries: Vec<Entry>,
+    },
+    /// One subfolder measured.
+    FolderSized {
+        path: std::path::PathBuf,
+        size: u64,
+    },
+    /// A file or folder sent to the Recycle Bin, or the error.
+    Trashed {
+        path: std::path::PathBuf,
+        result: Result<(), String>,
     },
 }
 

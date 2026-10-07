@@ -249,6 +249,17 @@ unknown_program = "unknown program: {name}"
 confirm_uninstall = "Uninstall “{name}”? Its own uninstaller will start."
 uninstalling = "Uninstaller of {name} started (4 to refresh once done)"
 uninstall_failed = "cannot start the uninstaller of {name} (refused or missing)"
+drives = "drives"
+folders = "Folders · {dir} · {order} ({count}){measuring}"
+measuring = " · measuring {count} folder(s)…"
+listing = "Reading the folder…"
+empty_folder = "Empty folder"
+program = "Program"
+confirm_trash = "Send “{path}” to the Recycle Bin?"
+trashing = "Sending {path} to the Recycle Bin…"
+trashed = "Sent to the Recycle Bin: {path}"
+trash_failed = "cannot send {path} to the Recycle Bin"
+unavailable = "Recycle Bin unavailable"
 
 [stats]
 one_app = " {name} (:stats to see all)"
@@ -293,6 +304,11 @@ screens = "screens"
 disk = "disk"
 order = "order"
 uninstall = "uninstall"
+folders = "folders"
+programs = "programs"
+open = "open"
+parent = "back"
+delete = "delete"
 quit = "quit"
 
 [help]
@@ -307,7 +323,7 @@ sort = "change the app order (name, XP, recent, time); Stats: pie per category o
 search = "search an app in every category (Enter: go there)"
 command = "command line (↑↓ history, Tab complete, Esc cancel)"
 screens = "Dashboard, Stats, Rewards, Storage, Help"
-storage = "Storage: Tab/←→ pick the disk, s smallest/biggest first, d/Del uninstall"
+storage = "Storage: Tab/←→ disk, s smallest/biggest first, d/Del uninstall, f folders (Enter open, ← back, d Recycle Bin)"
 quit = "quit"
 
 [cmd.launch]

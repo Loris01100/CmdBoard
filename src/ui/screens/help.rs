@@ -20,7 +20,7 @@ fn keys() -> [(String, String); 10] {
         ("a / m / d".into(), t!("help.edit")),
         ("s".into(), t!("help.sort")),
         ("/".into(), t!("help.search")),
-        ("Tab s d".into(), t!("help.storage")),
+        ("Tab s d f".into(), t!("help.storage")),
         (":".into(), t!("help.command")),
         ("1 2 3 4 5 ?".into(), t!("help.screens")),
         ("q  Ctrl-C".into(), t!("help.quit")),

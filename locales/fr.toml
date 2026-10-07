@@ -249,6 +249,17 @@ unknown_program = "programme inconnu : {name}"
 confirm_uninstall = "Désinstaller « {name} » ? Son propre désinstalleur va se lancer."
 uninstalling = "Désinstalleur de {name} lancé (4 pour actualiser une fois fini)"
 uninstall_failed = "impossible de lancer le désinstalleur de {name} (refusé ou introuvable)"
+drives = "disques"
+folders = "Dossiers · {dir} · {order} ({count}){measuring}"
+measuring = " · {count} dossier(s) en cours de mesure…"
+listing = "Lecture du dossier…"
+empty_folder = "Dossier vide"
+program = "Programme"
+confirm_trash = "Envoyer « {path} » à la corbeille ?"
+trashing = "Envoi de {path} à la corbeille…"
+trashed = "Envoyé à la corbeille : {path}"
+trash_failed = "impossible d'envoyer {path} à la corbeille"
+unavailable = "corbeille indisponible"
 
 [stats]
 one_app = " {name} (:stats pour tout voir)"
@@ -293,6 +304,11 @@ screens = "écrans"
 disk = "disque"
 order = "ordre"
 uninstall = "désinstaller"
+folders = "dossiers"
+programs = "programmes"
+open = "ouvrir"
+parent = "retour"
+delete = "supprimer"
 quit = "quitter"
 
 [help]
@@ -307,7 +323,7 @@ sort = "changer le tri des apps (nom, XP, récent, temps) ; Stats : camembert pa
 search = "chercher une app dans toutes les catégories (Entrée : y aller)"
 command = "ligne de commande (↑↓ historique, Tab compléter, Esc annuler)"
 screens = "Dashboard, Stats, Récompenses, Stockage, Aide"
-storage = "Stockage : Tab/←→ choisit le disque, s plus petits/plus gros d'abord, d/Suppr désinstalle"
+storage = "Stockage : Tab/←→ disque, s plus petits/plus gros d'abord, d/Suppr désinstalle, f dossiers (Entrée ouvre, ← remonte, d corbeille)"
 quit = "quitter"
 
 [cmd.launch]

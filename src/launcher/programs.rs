@@ -2,6 +2,7 @@
 //! keys Windows' "Apps & features" reads (`...\CurrentVersion\Uninstall`), which also hold
 //! their uninstall command.
 
+use std::path::Path;
 use std::ptr::{null, null_mut};
 
 use anyhow::bail;
@@ -30,6 +31,8 @@ pub struct Program {
     pub size: Option<u64>,
     /// Drive it is installed on, from its install folder or icon.
     pub drive: Option<char>,
+    /// Install folder, when the installer recorded it (`InstallLocation`).
+    pub location: Option<String>,
     /// Command line that starts the program's own uninstaller.
     pub uninstall: String,
 }
@@ -85,14 +88,20 @@ fn read_program(key: &Key, sub: &str) -> Option<Program> {
     if hidden {
         return None;
     }
-    let location = text("InstallLocation").or_else(|| text("DisplayIcon"));
+    let location =
+        text("InstallLocation").map(|l| l.trim_matches('"').trim_end_matches('\\').to_string());
+    let drive = location
+        .as_deref()
+        .or(text("DisplayIcon").as_deref())
+        .and_then(drive_of);
     Some(Program {
         name: text("DisplayName")?,
         publisher: text("Publisher"),
         size: key
             .dword(&sub, "EstimatedSize")
             .map(|kb| u64::from(kb) * 1024),
-        drive: location.as_deref().and_then(drive_of),
+        drive,
+        location,
         uninstall: text("UninstallString")?,
     })
 }
@@ -106,6 +115,17 @@ fn drive_of(path: &str) -> Option<char> {
         }
         _ => None,
     }
+}
+
+/// The program installed in `dir`, if any.
+pub fn installed_in<'a>(programs: &'a [Program], dir: &Path) -> Option<&'a Program> {
+    let dir = dir.to_string_lossy();
+    let dir = dir.trim_end_matches('\\');
+    programs.iter().find(|p| {
+        p.location
+            .as_deref()
+            .is_some_and(|l| l.eq_ignore_ascii_case(dir))
+    })
 }
 
 /// Starts the program's uninstaller through the shell, so Windows asks for admin rights
@@ -285,6 +305,27 @@ mod tests {
         for (command, expected) in cases {
             assert_eq!(split_command(command), expected, "{command}");
         }
+    }
+
+    #[test]
+    fn finds_the_program_of_a_folder() {
+        let program = |name: &str, location: Option<&str>| Program {
+            name: name.into(),
+            publisher: None,
+            size: None,
+            drive: Some('C'),
+            location: location.map(String::from),
+            uninstall: "x.exe".into(),
+        };
+        let programs = [
+            program("Nothing", None),
+            program("Git", Some(r"C:\Program Files\Git")),
+        ];
+        let found = |dir: &str| installed_in(&programs, Path::new(dir)).map(|p| p.name.as_str());
+        assert_eq!(found(r"c:\program files\git"), Some("Git"));
+        assert_eq!(found("C:\\Program Files\\Git\\"), Some("Git"));
+        assert_eq!(found(r"C:\Program Files\Git\bin"), None);
+        assert_eq!(found(r"C:\Program Files"), None);
     }
 
     #[test]

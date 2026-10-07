@@ -24,6 +24,17 @@ pub enum Command {
     },
     /// Storage screen: biggest programs first, or smallest first.
     ToggleStorageOrder,
+    /// Storage screen: folder browser instead of the programs, or back.
+    ToggleFolders,
+    /// Folder browser: opens the selected folder and measures what it holds.
+    OpenFolder,
+    /// Folder browser: back to the parent folder, then to the drives.
+    ParentFolder,
+    /// Destructive: sends a file or folder to the Recycle Bin, after confirmation.
+    Trash {
+        path: std::path::PathBuf,
+        confirmed: bool,
+    },
 
     // actions, also available from the command line
     Launch {
