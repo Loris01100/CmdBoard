@@ -4,9 +4,9 @@ CmdBoard is a Windows-only Rust/ratatui dashboard for launching apps, tracking u
 
 ## Source of truth
 
-Read [the design plan](docs/plan_conception_tui_ratatui.md) before implementing a feature. Update it in the same change when behavior, architecture, keybindings, or data diverge. Sections 1–7 cover state and commands, 8–10 the UI, 11–12 sessions and rewards, 15 tests, and 18 distribution.
+Read [the design plan](docs/plan_conception_tui_ratatui.md) before implementing a feature. Update it in the same change when behavior, architecture, keybindings, or data diverge. Sections 1–7 cover state and commands, 8–10 the UI, 11–12 sessions and rewards, 15 tests, and 18 distribution. The plan is written in French; write updates to it in French.
 
-Steps 1–11 are complete; step 12 is in progress. Release tooling and updates exist; publishing v0.1.0 and its winget manifest remain. Check the plan and code for current implementation details rather than duplicating a feature inventory here.
+Steps 1–11 are complete; step 12 is in progress. v0.1.0 and v0.2.0 are released; only the winget manifest remains. Check the plan and code for current implementation details rather than duplicating a feature inventory here.
 
 ## Architecture
 
@@ -35,11 +35,13 @@ Steps 1–11 are complete; step 12 is in progress. Release tooling and updates e
 
 ## Validation
 
-Run cargo fmt --check, cargo clippy --all-targets and appropriate cargo test checks before handing off code changes. The pre-commit hook and CI check formatting, linting and tests.
+Run cargo fmt --check, cargo clippy --all-targets and appropriate cargo test checks before handing off code changes. Keep clippy at zero warnings: CI runs it without -D warnings, so warnings do not fail the build. The pre-commit hook only checks formatting and needs git config core.hooksPath .githooks once per clone; CI runs formatting, clippy and tests.
 
 Use table-driven parser tests, in-memory SQLite tests (including migration upgrades), built-in theme parsing tests, and ratatui TestBackend for rendering. Verify behavior and boundary cases rather than duplicating implementation details in assertions.
 
-Useful commands: cargo run, cargo build, cargo test <name_substring>. Coverage uses cargo llvm-cov --lcov --output-path target/lcov.info followed by cargo sonar-scanner. Add dependencies with cargo add; plan versions are indicative.
+Useful commands: cargo run, cargo build, cargo test <name_substring>, and cargo run --example keys to print raw crossterm key events when debugging keyboard layouts. Coverage uses cargo llvm-cov --lcov --output-path target/lcov.info followed by cargo sonar-scanner. Add dependencies with cargo add; plan versions are indicative.
+
+Commit messages use a lowercase type, a space before the colon and a short summary: feat : …, fix : …, chore : …, docs : …, release : ….
 
 ## Releases
 
