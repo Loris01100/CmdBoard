@@ -37,7 +37,10 @@ windows-sys = { version = "0.61.2", features = ["Win32_Globalization"] }
 # The profile that 'dist' will build with
 [profile.dist]
 inherits = "release"
-lto = "thin"
+lto = "fat"
+codegen-units = 1
+strip = true
+# panic stays "unwind": a panic in a temporary scan thread must not kill the UI.
 
 [lints.clippy]
 redundant_closure_for_method_calls = "warn"
