@@ -54,7 +54,7 @@ fn render_reward(frame: &mut Frame, reward: &RewardUnlocked, app: &App) {
 
 /// Gold and green, alternating on each tick: the level-up and reward popups blink.
 fn blink(app: &App) -> ratatui::style::Color {
-    if app.frame_count % 2 == 0 {
+    if app.frame_count.is_multiple_of(2) {
         app.theme.warning
     } else {
         app.theme.success

@@ -197,7 +197,7 @@ impl Form {
     }
 
     /// Builds the command, or focuses the first empty required field.
-    pub fn to_command(&mut self) -> Result<Command, String> {
+    pub fn build_command(&mut self) -> Result<Command, String> {
         if let Some(i) = self
             .fields
             .iter()
@@ -236,7 +236,7 @@ mod tests {
         fill(&mut form, NAME, " Hades ");
         fill(&mut form, TARGET, "steam://rungameid/1145360");
         assert_eq!(
-            form.to_command(),
+            form.build_command(),
             Ok(Command::Add {
                 name: "Hades".into(),
                 target: "steam://rungameid/1145360".into(),
@@ -246,7 +246,7 @@ mod tests {
         );
         fill(&mut form, PROCESS, "Hades.exe");
         assert!(matches!(
-            form.to_command(),
+            form.build_command(),
             Ok(Command::Add { watch_exe: Some(exe), .. }) if exe == "Hades.exe"
         ));
     }
@@ -256,7 +256,7 @@ mod tests {
         let mut form = Form::add_app("Jeux");
         fill(&mut form, NAME, "Hades");
         form.focused = PROCESS;
-        assert_eq!(form.to_command(), Err("Cible : champ requis".into()));
+        assert_eq!(form.build_command(), Err("Cible : champ requis".into()));
         assert_eq!(form.focused, TARGET);
     }
 

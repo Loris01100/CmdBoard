@@ -969,7 +969,7 @@ impl App {
         let Mode::Popup(Popup::Form(form)) = &mut self.mode else {
             return;
         };
-        let command = match form.to_command() {
+        let command = match form.build_command() {
             Ok(command) => command,
             Err(e) => {
                 form.error = Some(e);

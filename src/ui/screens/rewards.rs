@@ -59,7 +59,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         .row_highlight_style(theme.highlight(true))
         .highlight_symbol("> ");
     // Rendering needs `&mut TableState`; work on a copy so `draw` stays pure.
-    let mut state = app.reward_state.clone();
+    let mut state = app.reward_state;
     frame.render_stateful_widget(table, list_area, &mut state);
 
     if detail_height > 0 {

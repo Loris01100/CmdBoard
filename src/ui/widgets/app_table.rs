@@ -54,6 +54,6 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         .highlight_symbol("> ");
 
     // Rendering needs `&mut TableState`; work on a copy so `draw` stays pure.
-    let mut state = app.app_state.clone();
+    let mut state = app.app_state;
     frame.render_stateful_widget(table, area, &mut state);
 }

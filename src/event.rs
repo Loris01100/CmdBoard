@@ -56,10 +56,10 @@ pub fn spawn(tx: Sender<AppEvent>) {
                 }
                 Err(_) => return,
             };
-            if let Some(event) = event {
-                if tx.send(event).is_err() {
-                    return;
-                }
+            if let Some(event) = event
+                && tx.send(event).is_err()
+            {
+                return;
             }
         }
     });

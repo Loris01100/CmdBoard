@@ -12,10 +12,10 @@ fn main() -> std::io::Result<()> {
     loop {
         let event = event::read()?;
         print!("{event:?}\r\n");
-        if let Event::Key(key) = event {
-            if key.code == KeyCode::Esc {
-                break;
-            }
+        if let Event::Key(key) = event
+            && key.code == KeyCode::Esc
+        {
+            break;
         }
     }
     terminal::disable_raw_mode()

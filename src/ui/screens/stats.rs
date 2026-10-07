@@ -318,7 +318,7 @@ fn render_sessions(frame: &mut Frame, area: Rect, app: &App) {
         .row_highlight_style(theme.highlight(true))
         .highlight_symbol("> ");
     // Rendering needs `&mut TableState`; work on a copy so `draw` stays pure.
-    let mut state = app.stats_state.clone();
+    let mut state = app.stats_state;
     frame.render_stateful_widget(table, area, &mut state);
 }
 

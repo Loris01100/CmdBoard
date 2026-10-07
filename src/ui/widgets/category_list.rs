@@ -20,6 +20,6 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         .highlight_symbol("> ");
 
     // Rendering needs `&mut ListState`; work on a copy so `draw` stays pure.
-    let mut state = app.cat_state.clone();
+    let mut state = app.cat_state;
     frame.render_stateful_widget(list, area, &mut state);
 }
