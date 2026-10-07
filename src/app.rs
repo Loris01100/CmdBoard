@@ -42,7 +42,7 @@ use crate::storage::{
     unix_now,
 };
 use crate::text_input::TextInput;
-use crate::tracker::Watched;
+use crate::tracker::{self, Watched};
 use crate::ui::{
     self,
     theme::{self, Theme},
@@ -164,7 +164,26 @@ pub struct ActiveSession {
     /// Row in `sessions`, open until the session ends.
     pub session_id: i64,
     pub started: Instant,
+    /// Time really played, as last reported by the tracker (idle time left out).
+    pub played: Duration,
+    /// The user has been idle long enough that time stopped counting.
+    pub idle: bool,
+    /// When `played` was reported.
+    reported: Instant,
     last_checkpoint: Instant,
+}
+
+impl ActiveSession {
+    /// Play time to display: the last report, plus the time since while it counts.
+    /// Capped at one poll, so the timer never runs ahead of the next report.
+    pub fn shown_secs(&self) -> u64 {
+        let since = if self.idle {
+            Duration::ZERO
+        } else {
+            self.reported.elapsed().min(tracker::POLL)
+        };
+        (self.played + since).as_secs()
+    }
 }
 
 /// An XP total moving from `from` to `to`, started at tick `start`.
@@ -497,6 +516,11 @@ impl App {
             AppEvent::Key(key) => self.on_key(key),
             AppEvent::Tick => self.on_tick(),
             AppEvent::SessionStarted { app_id } => self.on_session_start(app_id),
+            AppEvent::SessionProgress {
+                app_id,
+                played,
+                idle,
+            } => self.on_session_progress(app_id, played, idle),
             AppEvent::SessionEnded { app_id, secs } => self.on_session_end(app_id, secs),
             AppEvent::UpdateFinished { action, result } => self.on_update_finished(action, result),
             AppEvent::StorageScanned { disks, programs } => {
@@ -572,7 +596,7 @@ impl App {
                 continue;
             }
             session.last_checkpoint = Instant::now();
-            let secs = session.started.elapsed().as_secs();
+            let secs = session.played.as_secs();
             if let Err(e) = self.db.checkpoint_session(session.session_id, secs) {
                 self.message = Some((format!("{e:#}"), MsgKind::Error));
             }
@@ -595,6 +619,9 @@ impl App {
                     ActiveSession {
                         session_id,
                         started: now,
+                        played: Duration::ZERO,
+                        idle: false,
+                        reported: now,
                         last_checkpoint: now,
                     },
                 );
@@ -604,7 +631,16 @@ impl App {
         }
     }
 
-    /// `secs` is measured by the tracker, from detection to disappearance.
+    pub fn on_session_progress(&mut self, app_id: i64, played: Duration, idle: bool) {
+        if let Some(session) = self.active_sessions.get_mut(&app_id) {
+            session.played = played;
+            session.idle = idle;
+            session.reported = Instant::now();
+        }
+    }
+
+    /// `secs` is measured by the tracker, from detection to disappearance, idle time
+    /// left out.
     pub fn on_session_end(&mut self, app_id: i64, secs: u64) {
         let Some(session) = self.active_sessions.remove(&app_id) else {
             return;
@@ -732,7 +768,7 @@ impl App {
     fn end_all_sessions(&mut self) -> anyhow::Result<()> {
         let sessions: Vec<_> = self.active_sessions.drain().collect();
         for (_, session) in sessions {
-            self.finish_session(session.session_id, session.started.elapsed().as_secs())?;
+            self.finish_session(session.session_id, session.played.as_secs())?;
         }
         Ok(())
     }
@@ -3040,6 +3076,14 @@ mod tests {
 
         app.handle(AppEvent::SessionStarted { app_id: steam });
         assert_eq!(app.active_sessions.len(), 1);
+        app.handle(AppEvent::SessionProgress {
+            app_id: steam,
+            played: Duration::from_secs(90),
+            idle: true,
+        });
+        let session = app.active_sessions[&steam];
+        assert!(session.idle);
+        assert_eq!(session.shown_secs(), 90); // idle: the timer stands still
         app.handle(AppEvent::SessionEnded {
             app_id: steam,
             secs: 5,
@@ -3139,8 +3183,8 @@ mod tests {
         let long_ago = Instant::now()
             .checked_sub(Duration::from_secs(120))
             .unwrap();
+        app.on_session_progress(steam, Duration::from_secs(120), false);
         let session = app.active_sessions.get_mut(&steam).unwrap();
-        session.started = long_ago;
         session.last_checkpoint = long_ago;
         app.on_tick();
         assert!(app.active_sessions[&steam].last_checkpoint > long_ago);

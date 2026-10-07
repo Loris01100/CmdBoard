@@ -34,7 +34,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sysinfo = "0.39.6"
 toml = "1.1.6"
-windows-sys = { version = "0.61.2", features = ["Win32_Globalization", "Win32_System_Registry", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Globalization", "Win32_Security", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_XboxController", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 # The profile that 'dist' will build with
 [profile.dist]

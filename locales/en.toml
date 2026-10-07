@@ -78,6 +78,7 @@ ended = "Session ended: {name} ({minutes} min, +{xp} XP)"
 too_short = "Session too short, not recorded: {name}"
 recovered = "{count} interrupted session(s) recovered"
 rule_error = "rule “{code}”: {error}"
+idle = "paused"
 none_running = "no session running "
 
 [action]
@@ -97,6 +98,7 @@ confirm_clear_stats = "Clear all stats? Sessions, play time and streak start ove
 stats_cleared = "Stats cleared: {count} session(s) deleted"
 
 [error]
+already_running = "CmdBoard is already running in another window"
 app_exists = "“{name}” already exists"
 no_category = "no category selected: give one"
 category_not_empty = "“{name}” still holds {count} app(s): move or remove them first"

@@ -508,11 +508,12 @@ code = "marathon", scope = "app", rule = "session_minutes >= 180"
 1. À l'ajout d'une app, enregistrer `watch_exe`. Après chaque `reload()`, l'UI envoie la liste `(app_id, watch_exe)` au tracker.
 2. Le tracker interroge `sysinfo` toutes les 3 secondes, et tout de suite quand la liste change. Correspondance sur le nom de fichier de l'exe, sans tenir compte de la casse (`watch_exe` peut contenir un chemin complet). Une app tourne si au moins un de ses process tourne. Plusieurs apps peuvent surveiller le même exe.
 3. Process détecté : `SessionStarted`. L'UI insère une ligne `sessions` avec `ended_at = NULL`. Process disparu : `SessionEnded { secs }`, mesuré par le tracker. L'UI ferme la ligne (`ended_at`, `duration_s`). Le calcul de `xp_gained` suit la section 11.
-4. Les sessions de moins de 60 s (`MIN_SESSION_SECS`) sont supprimées au lieu d'être enregistrées.
-5. Toutes les 60 s, `on_tick` enregistre `duration_s` des sessions en cours (point de sauvegarde).
-6. Au démarrage, fermer les sessions orphelines (crash précédent) à leur dernier point de sauvegarde : `ended_at = started_at + duration_s`, ou suppression sous 60 s. Un crash perd donc au plus une minute.
-7. À la sortie de CmdBoard, les sessions en cours sont fermées normalement. Une app qui continue de tourner n'est plus suivie.
-8. Seules les sessions fermées (`ended_at` non NULL) comptent dans le temps total, la streak et l'XP du jour.
+4. **Temps réellement joué** : le tracker cumule lui-même le temps de chaque session, poll par poll, et l'envoie à chaque poll (`SessionProgress { played, idle }`) ; l'UI s'en sert pour le chrono du bandeau, les points de sauvegarde et la fermeture à la sortie. Un poll ne compte rien quand l'utilisateur est inactif : aucune entrée clavier / souris (`GetLastInputInfo`) ni manette XInput (changement de `dwPacketNumber`, Xbox et la plupart des autres via Steam Input) depuis `idle_minutes` minutes (`config.toml`, 10 par défaut, `0` désactive). Les entrées ne sont lues que si une session tourne. Jusqu'à `idle_minutes` d'inactivité comptent donc avant la pause. Un écart entre deux polls est plafonné à 10 s (`MAX_STEP`) : une mise en veille avec le jeu ouvert ne compte pas. En pause, le chrono s'arrête et affiche « en pause » (`session.idle`).
+5. Les sessions de moins de 60 s (`MIN_SESSION_SECS`) sont supprimées au lieu d'être enregistrées.
+6. Toutes les 60 s, `on_tick` enregistre `duration_s` des sessions en cours (point de sauvegarde).
+7. Au démarrage, fermer les sessions orphelines (crash précédent) à leur dernier point de sauvegarde : `ended_at = started_at + duration_s`, ou suppression sous 60 s. Un crash perd donc au plus une minute.
+8. À la sortie de CmdBoard, les sessions en cours sont fermées normalement. Une app qui continue de tourner n'est plus suivie.
+9. Seules les sessions fermées (`ended_at` non NULL) comptent dans le temps total, la streak et l'XP du jour.
 
 Cas Steam / Epic / Battle.net : la commande de lancement (URI) et le process surveillé sont différents, d'où les deux champs séparés.
 
@@ -539,6 +540,8 @@ Pilotées par `Tick` et un compteur `frame_count` dans `App` :
    - Steam : dossier lu dans `HKCU\Software\Valve\Steam\SteamPath` ; Epic : `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests`.
 3. Icônes impossibles dans un terminal : glyphe Nerd Font ou emoji par catégorie.
 4. Base de données dans `%APPDATA%` (crate `directories`).
+5. Une seule instance par session Windows (`src/instance.rs`, mutex nommé `Local\CmdBoard.SingleInstance`, pris dans `main.rs` avant d'ouvrir la base et tenu jusqu'à la sortie) : deux CmdBoard suivraient les mêmes process, enregistreraient chaque session deux fois et se fermeraient mutuellement leurs sessions comme orphelines. La seconde affiche `error.already_running` et quitte avant de prendre le terminal. Windows libère le mutex même après un crash.
+6. `config.toml` cassé : signalé au démarrage, et jamais réécrit. `config::save_value` refuse d'écrire dans un fichier illisible (comme `Aliases::save`), sinon la vérification de mise à jour quotidienne l'écraserait avec sa seule clé.
 
 ---
 

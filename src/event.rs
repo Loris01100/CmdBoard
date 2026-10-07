@@ -25,7 +25,14 @@ pub enum AppEvent {
     SessionStarted {
         app_id: i64,
     },
-    /// The watched process is gone after running `secs` seconds (sent by the tracker).
+    /// Time really played so far in a running session, and whether the user is idle
+    /// (sent by the tracker at every poll).
+    SessionProgress {
+        app_id: i64,
+        played: Duration,
+        idle: bool,
+    },
+    /// The watched process is gone after `secs` seconds of play (sent by the tracker).
     SessionEnded {
         app_id: i64,
         secs: u64,

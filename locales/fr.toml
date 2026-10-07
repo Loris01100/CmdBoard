@@ -78,6 +78,7 @@ ended = "Session terminée : {name} ({minutes} min, +{xp} XP)"
 too_short = "Session trop courte, non enregistrée : {name}"
 recovered = "{count} session(s) interrompue(s) récupérée(s)"
 rule_error = "règle « {code} » : {error}"
+idle = "en pause"
 none_running = "aucune session en cours "
 
 [action]
@@ -97,6 +98,7 @@ confirm_clear_stats = "Effacer toutes les stats ? Les sessions, le temps de jeu 
 stats_cleared = "Stats effacées : {count} session(s) supprimée(s)"
 
 [error]
+already_running = "CmdBoard est déjà ouvert dans une autre fenêtre"
 app_exists = "« {name} » existe déjà"
 no_category = "aucune catégorie sélectionnée : précisez-en une"
 category_not_empty = "« {name} » contient encore {count} app(s) : déplacez-les ou supprimez-les d'abord"

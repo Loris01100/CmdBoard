@@ -8,7 +8,7 @@ A terminal dashboard for Windows: launch your apps and games from one place, tra
 ## Features
 
 - **Launcher**: apps grouped into categories, launched with `Enter`. Accepts an `.exe`, a `.lnk` shortcut, a name on the `PATH` or a URI (`steam://…`). Adding an app suggests your installed Steam and Epic games and Start menu or desktop shortcuts.
-- **Session tracking**: CmdBoard watches the app's process and records how long each session lasts, even if you launched the app from somewhere else.
+- **Session tracking**: CmdBoard watches the app's process and records how long each session lasts, even if you launched the app from somewhere else. Time stops counting after 10 minutes without keyboard, mouse or controller input, and while the PC sleeps.
 - **XP and rewards**: 1 XP per minute of play (sessions of 5 minutes or more), a bonus for daily streaks, a level for each app plus an overall profile level, and unlockable rewards.
 - **Stats**: play time per app and per category.
 - **Storage**: disk usage, installed programs sorted by size with their uninstallers, and a folder explorer that measures folder sizes.
@@ -87,7 +87,7 @@ Everything lives in `%APPDATA%\CmdBoard`:
 | File | Content |
 |---|---|
 | `cmdboard.db` | Your apps, sessions, XP and rewards (SQLite) |
-| `config.toml` | Theme, sort order, language, `update_check = false` to turn off the update check |
+| `config.toml` | Theme, sort order, language, `update_check = false` to turn off the update check, `idle_minutes` (default 10, `0` to always count play time) |
 | `commands.toml` | Your aliases |
 | `themes\*.toml` | Your own themes. One with the same name as a built-in theme replaces it |
 

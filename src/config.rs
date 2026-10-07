@@ -1,6 +1,7 @@
 //! `%APPDATA%\CmdBoard\config.toml`: user preferences, plus when updates were last checked.
 
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::Context;
 
@@ -16,7 +17,12 @@ pub struct Config {
     pub update_check: bool,
     /// Unix seconds of the last passive update check.
     pub last_update_check: Option<i64>,
+    /// Minutes without keyboard, mouse or controller input after which play time stops
+    /// counting. `idle_minutes = 0` always counts it.
+    pub idle_minutes: u32,
 }
+
+const DEFAULT_IDLE_MINUTES: u32 = 10;
 
 impl Default for Config {
     fn default() -> Self {
@@ -26,11 +32,17 @@ impl Default for Config {
             lang: None,
             update_check: true,
             last_update_check: None,
+            idle_minutes: DEFAULT_IDLE_MINUTES,
         }
     }
 }
 
 impl Config {
+    /// After how long without input play time stops counting, `None` if it always counts.
+    pub fn idle_limit(&self) -> Option<Duration> {
+        (self.idle_minutes > 0).then(|| Duration::from_secs(u64::from(self.idle_minutes) * 60))
+    }
+
     /// A missing file is an empty config. A broken one too, plus a message to show.
     pub fn load(path: &Path) -> (Self, Option<String>) {
         let text = match std::fs::read_to_string(path) {
@@ -58,6 +70,11 @@ impl Config {
                 let last_update_check = table
                     .get("last_update_check")
                     .and_then(toml::Value::as_integer);
+                let idle_minutes = table
+                    .get("idle_minutes")
+                    .and_then(toml::Value::as_integer)
+                    .and_then(|m| u32::try_from(m).ok())
+                    .unwrap_or(DEFAULT_IDLE_MINUTES);
                 (
                     Self {
                         theme: text("theme"),
@@ -65,6 +82,7 @@ impl Config {
                         lang: text("lang"),
                         update_check,
                         last_update_check,
+                        idle_minutes,
                     },
                     None,
                 )
@@ -82,10 +100,20 @@ impl Config {
 }
 
 /// Sets one key in the file, keeping the others (including ones this version ignores).
+/// A file that cannot be read or parsed is left untouched, so a typo never wipes it.
 pub fn save_value(path: &Path, key: &str, value: impl Into<toml::Value>) -> anyhow::Result<()> {
     let mut table = match std::fs::read_to_string(path) {
-        Ok(text) => text.parse::<toml::Table>().unwrap_or_default(),
-        Err(_) => toml::Table::new(),
+        Ok(text) => text.parse::<toml::Table>().map_err(|e| {
+            anyhow::anyhow!(t!(
+                "pair",
+                label = "config.toml",
+                value = e.message().trim()
+            ))
+        })?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => toml::Table::new(),
+        Err(e) => {
+            return Err(e).with_context(|| t!("error.cannot_read", path = path.display()));
+        }
     };
     table.insert(key.into(), value.into());
     if let Some(dir) = path.parent() {
@@ -118,7 +146,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             &path,
-            "other = 3\ntheme = \"terminal\"\nupdate_check = false\n",
+            "other = 3\ntheme = \"terminal\"\nupdate_check = false\nidle_minutes = 0\n",
         )
         .unwrap();
         save_value(&path, "theme", "catppuccin-latte").unwrap();
@@ -132,6 +160,11 @@ mod tests {
             (config.update_check, config.last_update_check),
             (false, Some(1234))
         );
+        assert_eq!(config.idle_limit(), None);
+        assert_eq!(
+            Config::default().idle_limit(),
+            Some(Duration::from_secs(600))
+        );
         assert!(
             std::fs::read_to_string(&path)
                 .unwrap()
@@ -142,6 +175,10 @@ mod tests {
         let (config, warning) = Config::load(&path);
         assert_eq!(config, Config::default());
         assert!(warning.unwrap().starts_with("config.toml : "));
+
+        // Saving into a broken file fails and keeps it as the user wrote it.
+        assert!(save_value(&path, "last_update_check", 1_i64).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "theme = ");
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

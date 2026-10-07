@@ -53,23 +53,29 @@ fn session_line(app: &App) -> Line<'static> {
     let mut sessions: Vec<_> = app
         .active_sessions
         .iter()
-        .filter_map(|(id, s)| Some((app.apps.iter().find(|a| a.id == *id)?, s.started)))
+        .filter_map(|(id, s)| Some((app.apps.iter().find(|a| a.id == *id)?, s)))
         .collect();
     if sessions.is_empty() {
         return Line::styled(t!("session.none_running"), theme.muted());
     }
-    sessions.sort_by_key(|(_, started)| *started);
+    sessions.sort_by_key(|(_, session)| session.started);
     let mut spans = Vec::new();
-    for (entry, started) in sessions {
+    for (entry, session) in sessions {
         spans.push(Span::styled(
             format!("{} ", icons::SESSION),
             Style::new().fg(theme.success),
         ));
         spans.push(Span::raw(format!("{} ", entry.name)));
         spans.push(Span::styled(
-            format!("{}  ", format_clock(started.elapsed().as_secs())),
+            format!("{}  ", format_clock(session.shown_secs())),
             theme.title,
         ));
+        if session.idle {
+            spans.push(Span::styled(
+                format!("({})  ", t!("session.idle")),
+                theme.muted(),
+            ));
+        }
     }
     Line::from(spans)
 }

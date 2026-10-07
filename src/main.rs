@@ -7,6 +7,7 @@ mod config;
 mod core;
 mod event;
 mod fuzzy;
+mod instance;
 mod launcher;
 mod optimize;
 mod popup;
@@ -32,6 +33,11 @@ fn main() -> anyhow::Result<()> {
     // Before the database, so a new one gets its starter content in this language.
     warnings.extend(i18n::init(config.lang.as_deref()));
 
+    // Held until exit: a second CmdBoard would track every session twice.
+    let Some(_instance) = instance::acquire()? else {
+        anyhow::bail!(t!("error.already_running"));
+    };
+
     // Open the database before taking over the terminal, so errors print normally.
     let db = Database::open_default()?;
     let mut app = App::new(db)?;
@@ -47,7 +53,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let (tx, rx) = mpsc::channel();
-    app.attach_tracker(tracker::spawn(tx.clone()));
+    app.attach_tracker(tracker::spawn(tx.clone(), config.idle_limit()));
     app.attach_events(tx.clone(), &config);
     event::spawn(tx);
 
