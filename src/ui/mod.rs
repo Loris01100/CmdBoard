@@ -215,9 +215,9 @@ mod tests {
 
         // Storage: an empty drive, one drive's programs smallest first, then folders.
         app.screen = Screen::Storage;
-        app.storage_scanning = true;
+        app.storage.scanning = true;
         screen_text(&app, 120, 30);
-        app.on_storage_scanned(
+        app.storage.on_scanned(
             vec![Disk {
                 letter: 'C',
                 total: 0,
@@ -232,8 +232,8 @@ mod tests {
                 uninstall: "x.exe".into(),
             }],
         );
-        app.storage_disk = Some('C');
-        app.storage_ascending = true;
+        app.storage.disk = Some('C');
+        app.storage.ascending = true;
         assert!(screen_text(&app, 120, 30).contains("Hades"));
         app.execute(Command::ToggleFolders);
         let dir = std::path::PathBuf::from(r"C:\");
@@ -243,10 +243,11 @@ mod tests {
 
         // Optimization: a setting off, the gaming focus, every score kind.
         app.screen = Screen::Optimize;
-        app.gaming = vec![(Gaming::GameMode, false), (Gaming::Recording, true)];
-        app.gaming_focus = true;
-        app.on_bench_finished(Bench::Memory, false, Ok(Score::Bytes(1e9)));
-        app.on_bench_finished(
+        app.optimize.gaming = vec![(Gaming::GameMode, false), (Gaming::Recording, true)];
+        app.optimize.gaming_focus = true;
+        app.optimize
+            .on_finished(Bench::Memory, false, Ok(Score::Bytes(1e9)));
+        app.optimize.on_finished(
             Bench::Disk,
             false,
             Ok(Score::Disk {

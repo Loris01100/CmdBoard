@@ -20,8 +20,8 @@ use crate::ui::{
 pub fn draw(frame: &mut Frame, app: &App) {
     let (body, command, status) = layout::screen(frame.area(), command_line::height(app));
     // On short terminals the programs keep the room and the drives go.
-    let disks_height = if body.height >= 12 && !app.disks.is_empty() {
-        app.disks.len() as u16 + 2
+    let disks_height = if body.height >= 12 && !app.storage.disks.is_empty() {
+        app.storage.disks.len() as u16 + 2
     } else {
         0
     };
@@ -30,7 +30,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     if disks_height > 0 {
         draw_disks(frame, disks_area, app);
     }
-    if app.folders.is_some() {
+    if app.storage.folders.is_some() {
         draw_folders(frame, programs_area, app);
     } else {
         draw_programs(frame, programs_area, app);
@@ -44,8 +44,8 @@ fn draw_disks(frame: &mut Frame, area: Rect, app: &App) {
     let block = theme.panel(&t!("storage.disks"), false);
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let rows = Layout::vertical(vec![Constraint::Length(1); app.disks.len()]).split(inner);
-    for (disk, &row) in app.disks.iter().zip(rows.iter()) {
+    let rows = Layout::vertical(vec![Constraint::Length(1); app.storage.disks.len()]).split(inner);
+    for (disk, &row) in app.storage.disks.iter().zip(rows.iter()) {
         let [letter_area, gauge_area, text_area] = Layout::horizontal([
             Constraint::Length(6),
             Constraint::Min(10),
@@ -53,7 +53,7 @@ fn draw_disks(frame: &mut Frame, area: Rect, app: &App) {
         ])
         .spacing(1)
         .areas(row);
-        let chosen = app.storage_disk == Some(disk.letter);
+        let chosen = app.storage.disk == Some(disk.letter);
         let letter = format!("{} {}:", if chosen { ">" } else { " " }, disk.letter);
         let letter_style = if chosen { theme.title } else { Style::new() };
         frame.render_widget(
@@ -98,12 +98,12 @@ fn used_ratio(disk: &Disk) -> f64 {
 
 fn draw_programs(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let programs = app.visible_programs();
-    let drive = match app.storage_disk {
+    let programs = app.storage.visible_programs();
+    let drive = match app.storage.disk {
         Some(letter) => format!("{letter}:"),
         None => t!("storage.all_disks"),
     };
-    let order = if app.storage_ascending {
+    let order = if app.storage.ascending {
         t!("storage.smallest_first")
     } else {
         t!("storage.biggest_first")
@@ -112,7 +112,7 @@ fn draw_programs(frame: &mut Frame, area: Rect, app: &App) {
     let block = theme.panel(&title, true);
 
     if programs.is_empty() {
-        let text = if app.storage_scanning {
+        let text = if app.storage.scanning {
             t!("storage.scanning")
         } else {
             t!("storage.none")
@@ -156,7 +156,7 @@ fn draw_programs(frame: &mut Frame, area: Rect, app: &App) {
         .row_highlight_style(theme.highlight(true))
         .highlight_symbol("> ");
     // Rendering needs `&mut TableState`; work on a copy so `draw` stays pure.
-    let mut state = app.storage_state;
+    let mut state = app.storage.state;
     frame.render_stateful_widget(table, area, &mut state);
 }
 
@@ -164,15 +164,15 @@ fn draw_programs(frame: &mut Frame, area: Rect, app: &App) {
 /// percentage of their children measured, until measured.
 fn draw_folders(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let Some(folders) = &app.folders else {
+    let Some(folders) = &app.storage.folders else {
         return;
     };
-    let entries = app.visible_entries();
+    let entries = app.storage.visible_entries();
     let dir = match &folders.dir {
         Some(dir) => dir.display().to_string(),
         None => t!("storage.drives"),
     };
-    let order = if app.storage_ascending {
+    let order = if app.storage.ascending {
         t!("storage.smallest_first")
     } else {
         t!("storage.biggest_first")
@@ -218,7 +218,7 @@ fn draw_folders(frame: &mut Frame, area: Rect, app: &App) {
         };
         // A program's folder: `d` uninstalls it instead of deleting it.
         let program = match folders.dir {
-            Some(_) => programs::installed_in(&app.programs, &entry.path)
+            Some(_) => programs::installed_in(&app.storage.programs, &entry.path)
                 .map_or(String::new(), |p| p.name.clone()),
             None => String::new(),
         };
@@ -293,7 +293,7 @@ mod tests {
         assert!(screen(&app, 110, 30).contains("Aucun programme"));
 
         let gb = 1 << 30;
-        app.on_storage_scanned(
+        app.storage.on_scanned(
             vec![Disk {
                 letter: 'C',
                 total: 100 * gb,
@@ -327,7 +327,7 @@ mod tests {
         let mut app = App::with_defaults();
         app.screen = Screen::Storage;
         let gb = 1 << 30;
-        app.on_storage_scanned(
+        app.storage.on_scanned(
             vec![Disk {
                 letter: 'C',
                 total: 100 * gb,
@@ -359,11 +359,12 @@ mod tests {
         let text = screen(&app, 110, 30);
         assert!(text.contains("1 dossier(s) en cours de mesure"), "{text}");
         assert!(text.contains(r"Dev\") && text.contains("…"), "{text}");
-        app.on_folder_progress(dir.join("Dev"), 40);
+        app.storage.on_folder_progress(dir.join("Dev"), 40);
         assert!(screen(&app, 110, 30).contains("40 %"));
 
-        app.on_folder_sized(dir.join("Dev"), 9 * gb);
+        app.storage.on_folder_sized(dir.join("Dev"), 9 * gb);
         let names: Vec<_> = app
+            .storage
             .visible_entries()
             .iter()
             .map(|e| e.name.clone())

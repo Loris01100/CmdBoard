@@ -184,7 +184,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
         spans.push(Span::raw(GAP));
     }
     for bench in Bench::ALL {
-        if let Some((_, Ok(score))) = app.bench_results.get(&bench) {
+        if let Some((_, Ok(score))) = app.optimize.results.get(&bench) {
             spans.push(Span::raw(format!("{} ", icons::BENCH)));
             spans.push(Span::raw(format!(
                 "{} {}",
@@ -252,7 +252,8 @@ mod tests {
             name: "Marathon (Hades)".into(),
             at: unix_now(),
         }];
-        app.on_bench_finished(Bench::CpuSingle, false, Ok(Score::Ops(1234.0)));
+        app.optimize
+            .on_finished(Bench::CpuSingle, false, Ok(Score::Ops(1234.0)));
         let still = ticker(&app);
         assert!(still.contains("Marathon (Hades)") && still.contains("1234 M op/s"));
         app.frame_count = 5;

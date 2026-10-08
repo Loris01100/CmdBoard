@@ -17,7 +17,7 @@ use crate::ui::{
 pub fn draw(frame: &mut Frame, app: &App) {
     let (body, command, status) = layout::screen(frame.area(), command_line::height(app));
     // On short terminals the tables keep the room and the PC summary goes.
-    let system_height = if body.height >= 14 && app.system.is_some() {
+    let system_height = if body.height >= 14 && app.optimize.system.is_some() {
         4
     } else {
         0
@@ -40,7 +40,9 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
 fn draw_system(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let Some(system) = &app.system else { return };
+    let Some(system) = &app.optimize.system else {
+        return;
+    };
     let line = |label: String, value: String| {
         Line::from(vec![
             Span::styled(format!(" {label:<12}"), theme.title),
@@ -74,7 +76,7 @@ fn draw_benches(frame: &mut Frame, area: Rect, app: &App) {
             t!("optimize.light")
         }
     };
-    let title = t!("optimize.benches", level = level(app.bench_heavy));
+    let title = t!("optimize.benches", level = level(app.optimize.heavy));
     let header = Row::new([
         t!("optimize.test"),
         t!("optimize.result"),
@@ -82,7 +84,7 @@ fn draw_benches(frame: &mut Frame, area: Rect, app: &App) {
     ])
     .style(theme.title);
     let rows = Bench::ALL.iter().map(|&bench| {
-        let (result, heavy) = match (app.bench_running, app.bench_results.get(&bench)) {
+        let (result, heavy) = match (app.optimize.running, app.optimize.results.get(&bench)) {
             (Some(running), _) if running == bench => (
                 Span::styled(t!("optimize.running"), Style::new().fg(theme.warning)),
                 String::new(),
@@ -105,19 +107,19 @@ fn draw_benches(frame: &mut Frame, area: Rect, app: &App) {
         Constraint::Min(24),
         Constraint::Length(7),
     ];
-    let focused = !app.gaming_focus;
+    let focused = !app.optimize.gaming_focus;
     let table = Table::new(rows, widths)
         .header(header)
         .block(theme.panel(&title, focused))
         .row_highlight_style(theme.highlight(focused))
         .highlight_symbol("> ");
-    let mut state = app.bench_state;
+    let mut state = app.optimize.bench_state;
     frame.render_stateful_widget(table, area, &mut state);
 }
 
 fn draw_gaming(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let rows = app.gaming.iter().map(|&(setting, on)| {
+    let rows = app.optimize.gaming.iter().map(|&(setting, on)| {
         let state = if on {
             Span::styled(t!("optimize.on"), Style::new().fg(theme.success))
         } else {
@@ -125,12 +127,12 @@ fn draw_gaming(frame: &mut Frame, area: Rect, app: &App) {
         };
         Row::new([Cell::from(setting.label()), Cell::from(state)])
     });
-    let focused = app.gaming_focus;
+    let focused = app.optimize.gaming_focus;
     let table = Table::new(rows, [Constraint::Fill(1), Constraint::Length(12)])
         .block(theme.panel(&t!("optimize.gaming"), focused))
         .row_highlight_style(theme.highlight(focused))
         .highlight_symbol("> ");
-    let mut state = app.gaming_state;
+    let mut state = app.optimize.gaming_state;
     frame.render_stateful_widget(table, area, &mut state);
 }
 
@@ -171,16 +173,18 @@ mod tests {
     fn shows_system_results_and_gaming() {
         let mut app = App::with_defaults();
         app.screen = Screen::Optimize;
-        app.system = Some(crate::optimize::System {
+        app.optimize.system = Some(crate::optimize::System {
             cpu: "Ryzen 7".into(),
             cores: 8,
             threads: 16,
             ram: 32 << 30,
         });
-        app.gaming = vec![(crate::optimize::Gaming::GameMode, true)];
-        app.on_bench_finished(Bench::CpuSingle, false, Ok(Score::Ops(1234.4)));
-        app.on_bench_finished(Bench::Memory, true, Err("mémoire insuffisante".into()));
-        app.bench_running = Some(Bench::Disk);
+        app.optimize.gaming = vec![(crate::optimize::Gaming::GameMode, true)];
+        app.optimize
+            .on_finished(Bench::CpuSingle, false, Ok(Score::Ops(1234.4)));
+        app.optimize
+            .on_finished(Bench::Memory, true, Err("mémoire insuffisante".into()));
+        app.optimize.running = Some(Bench::Disk);
         let text = screen(&app, 120, 30);
         assert!(text.contains("Ryzen 7 · 8 cœurs / 16 threads"), "{text}");
         assert!(text.contains("32 Go"), "{text}");

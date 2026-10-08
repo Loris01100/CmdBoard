@@ -11,9 +11,30 @@ use crate::popup::Popup;
 
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
+    let mut spans = vec![Span::raw(" ")];
+    for (i, (key, label)) in hints(app).into_iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::raw("   "));
+        }
+        spans.push(Span::styled(key, theme.title));
+        let label = crate::i18n::tr(label, &[]);
+        spans.push(Span::styled(format!(" {label}"), theme.muted()));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+
+    if let Some(version) = &app.update_available {
+        let notice = Line::from(vec![
+            Span::styled(t!("update.available", version), Style::new().fg(theme.info)),
+            Span::styled(":update ", theme.muted()),
+        ]);
+        frame.render_widget(Paragraph::new(notice).alignment(Alignment::Right), area);
+    }
+}
+
+/// Keys of the current mode and screen: `(key, i18n key of what it does)`.
+fn hints(app: &App) -> Vec<(String, &'static str)> {
     let enter = t!("keys.enter");
-    // `(key, i18n key of what it does)`.
-    let hints: Vec<(String, &str)> = match (&app.mode, app.screen) {
+    match (&app.mode, app.screen) {
         (Mode::Command, _) => vec![
             (enter, "hint.confirm"),
             ("Esc".into(), "hint.cancel"),
@@ -52,7 +73,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             (":".into(), "hint.command"),
             ("q".into(), "hint.quit"),
         ],
-        (Mode::Normal, Screen::Storage) if app.folders.is_some() => vec![
+        (Mode::Normal, Screen::Storage) if app.storage.folders.is_some() => vec![
             ("j/k".into(), "hint.navigate"),
             (format!("{enter}/→"), "hint.open"),
             ("←".into(), "hint.parent"),
@@ -71,7 +92,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             ("0-5".into(), "hint.screens"),
             ("q".into(), "hint.quit"),
         ],
-        (Mode::Normal, Screen::Optimize) if app.gaming_focus => vec![
+        (Mode::Normal, Screen::Optimize) if app.optimize.gaming_focus => vec![
             ("j/k".into(), "hint.navigate"),
             ("Tab".into(), "hint.panel"),
             (enter, "hint.switch"),
@@ -98,24 +119,5 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             ("0-5".into(), "hint.screens"),
             ("q".into(), "hint.quit"),
         ],
-    };
-
-    let mut spans = vec![Span::raw(" ")];
-    for (i, (key, label)) in hints.into_iter().enumerate() {
-        if i > 0 {
-            spans.push(Span::raw("   "));
-        }
-        spans.push(Span::styled(key, theme.title));
-        let label = crate::i18n::tr(label, &[]);
-        spans.push(Span::styled(format!(" {label}"), theme.muted()));
-    }
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
-
-    if let Some(version) = &app.update_available {
-        let notice = Line::from(vec![
-            Span::styled(t!("update.available", version), Style::new().fg(theme.info)),
-            Span::styled(":update ", theme.muted()),
-        ]);
-        frame.render_widget(Paragraph::new(notice).alignment(Alignment::Right), area);
     }
 }

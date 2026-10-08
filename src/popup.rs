@@ -19,13 +19,7 @@ pub enum Popup {
 }
 
 /// A reward a session just unlocked.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RewardUnlocked {
-    pub name: String,
-    pub description: String,
-    /// App it was unlocked for, `None` for a global reward.
-    pub app: Option<String>,
-}
+pub use crate::storage::models::RewardUnlocked;
 
 /// An app, the global profile, or both reached a new level.
 #[derive(Debug, Clone, PartialEq, Eq)]

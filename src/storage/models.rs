@@ -115,8 +115,32 @@ pub enum Activity {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClosedSession {
     pub session_id: i64,
-    pub app_id: i64,
     pub secs: u64,
+}
+
+/// What a closed session earned.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SessionOutcome {
+    pub xp: u32,
+    pub rewards: Vec<RewardUnlocked>,
+    /// Rewards whose rule could not be evaluated.
+    pub rule_errors: Vec<RuleError>,
+}
+
+/// A reward a session just unlocked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RewardUnlocked {
+    pub name: String,
+    pub description: String,
+    /// App it was unlocked for, `None` for a global reward.
+    pub app: Option<String>,
+}
+
+/// A reward rule that could not be evaluated.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuleError {
+    pub code: String,
+    pub error: String,
 }
 
 #[derive(Debug, Clone, Default)]
