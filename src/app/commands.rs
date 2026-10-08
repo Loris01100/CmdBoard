@@ -68,6 +68,7 @@ impl App {
             Command::ToggleFolders => self.toggle_folders(),
             Command::OpenFolder => self.open_selected_folder(),
             Command::ParentFolder => self.parent_folder(),
+            Command::RefreshStorage => self.refresh_storage(),
             Command::Trash { path, confirmed } => return self.trash(path, confirmed),
             Command::Uninstall { program, confirmed } => {
                 return self.uninstall(&program, confirmed);

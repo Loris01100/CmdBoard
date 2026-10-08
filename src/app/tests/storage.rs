@@ -175,3 +175,43 @@ fn storage_selection_and_unplugged_drive() {
     press(&mut app, KeyCode::Char('j'));
     assert_eq!(app.storage.state.selected(), Some(1));
 }
+
+#[test]
+fn refresh_reads_the_drives_and_the_shown_folder_again() {
+    let mut app = App::with_defaults();
+    let disk = |free| Disk {
+        letter: 'C',
+        total: 100,
+        free,
+    };
+    app.storage.on_scanned(vec![disk(40)], Vec::new());
+    press(&mut app, KeyCode::Char('4'));
+    press(&mut app, KeyCode::Char('f')); // the drives
+    assert_eq!(app.storage.visible_entries()[0].size, Some(60));
+    let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
+    assert_eq!(
+        app.key_to_command(key(KeyCode::Char('r'))),
+        Some(Command::RefreshStorage)
+    );
+    // The rescan a refresh starts: the Recycle Bin was emptied meanwhile.
+    app.storage.on_scanned(vec![disk(70)], Vec::new());
+    assert_eq!(app.storage.visible_entries()[0].size, Some(30));
+
+    // In a folder: read again and measured anew; sizes elsewhere are kept.
+    let dir = PathBuf::from(r"C:\Games");
+    let other = PathBuf::from(r"D:\Other");
+    app.open_folder(Some(dir.clone()), None);
+    let hades = Entry {
+        name: "Hades".into(),
+        path: dir.join("Hades"),
+        is_dir: true,
+        size: None,
+    };
+    app.on_folder_listed(&dir, vec![hades]);
+    app.storage.on_folder_sized(dir.join("Hades"), 500);
+    app.storage.folder_sizes.insert(other.clone(), 9);
+    press(&mut app, KeyCode::Char('r'));
+    assert!(app.storage.folders.as_ref().unwrap().listing);
+    assert!(!app.storage.folder_sizes.contains_key(&dir.join("Hades")));
+    assert!(app.storage.folder_sizes.contains_key(&other));
+}

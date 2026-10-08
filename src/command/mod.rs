@@ -30,6 +30,8 @@ pub enum Command {
     OpenFolder,
     /// Folder browser: back to the parent folder, then to the drives.
     ParentFolder,
+    /// Storage screen: reads the drives, the programs and the shown folder again.
+    RefreshStorage,
     /// Destructive: sends a file or folder to the Recycle Bin, after confirmation.
     Trash {
         path: std::path::PathBuf,

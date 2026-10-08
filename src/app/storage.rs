@@ -67,6 +67,12 @@ impl StorageScreen {
         }
         let visible = self.visible_programs().len();
         self.state.select(clamp(self.state.selected(), visible));
+        // The drives list of the browser shows what is used on each drive.
+        if let Some(folders) = self.folders.as_mut().filter(|f| f.dir.is_none()) {
+            folders.entries = self.disks.iter().map(drive_entry).collect();
+            let selected = self.selected_entry().map(|e| e.path.clone());
+            self.select_entry(selected.as_deref());
+        }
     }
 
     /// Programs of the chosen drive, by size (unknown sizes last), ties by name.
@@ -178,11 +184,20 @@ impl StorageScreen {
         self.select_entry(selected.as_deref());
     }
 
-    /// After `path` went to the Recycle Bin: its size, and the sizes of the folders
-    /// holding it, are stale.
+    /// Forgets the measured sizes of `path`, of what it holds and of the folders
+    /// holding it; `None`: every size.
+    fn forget_sizes(&mut self, path: Option<&Path>) {
+        match path {
+            Some(path) => self
+                .folder_sizes
+                .retain(|p, _| !path.starts_with(p) && !p.starts_with(path)),
+            None => self.folder_sizes.clear(),
+        }
+    }
+
+    /// After `path` went to the Recycle Bin: drops it, and the sizes it made stale.
     fn forget(&mut self, path: &Path) {
-        self.folder_sizes
-            .retain(|p, _| !path.starts_with(p) && !p.starts_with(path));
+        self.forget_sizes(Some(path));
         let selected = self.selected_entry().map(|e| e.path.clone());
         if let Some(folders) = &mut self.folders {
             folders.entries.retain(|e| e.path != path);
@@ -207,6 +222,7 @@ impl App {
                 Command::CycleDisk { forward: false }
             }
             KeyCode::Char('s') => Command::ToggleStorageOrder,
+            KeyCode::Char('r') => Command::RefreshStorage,
             KeyCode::Char('d') | KeyCode::Delete => {
                 let i = self.storage.state.selected()?;
                 Command::Uninstall {
@@ -226,6 +242,7 @@ impl App {
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => Command::OpenFolder,
             KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => Command::ParentFolder,
             KeyCode::Char('s') => Command::ToggleStorageOrder,
+            KeyCode::Char('r') => Command::RefreshStorage,
             KeyCode::Char('d') | KeyCode::Delete => {
                 self.storage.folders.as_ref()?.dir.as_ref()?; // drives cannot be deleted
                 let entry = self.storage.selected_entry()?;
@@ -251,6 +268,22 @@ impl App {
                 let (disks, programs) = rayon::join(programs::disks, programs::installed);
                 AppEvent::StorageScanned { disks, programs }
             });
+        }
+    }
+
+    /// `r`: reads the drives, the programs and the shown folder again, its sizes measured
+    /// anew. For what changed outside CmdBoard: an uninstaller that finished, a file
+    /// deleted elsewhere, the Recycle Bin emptied.
+    pub(super) fn refresh_storage(&mut self) {
+        self.start_storage_scan();
+        let Some(folders) = &self.storage.folders else {
+            return;
+        };
+        let dir = folders.dir.clone();
+        self.storage.forget_sizes(dir.as_deref());
+        if dir.is_some() {
+            let selected = self.storage.selected_entry().map(|e| e.path.clone());
+            self.open_folder(dir, selected);
         }
     }
 
@@ -373,6 +406,7 @@ impl App {
         self.message = Some(match result {
             Ok(()) => {
                 self.storage.forget(path);
+                self.start_storage_scan(); // the drive gauges
                 (
                     t!("storage.trashed", path = path.display()),
                     MsgKind::Success,
