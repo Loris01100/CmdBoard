@@ -46,3 +46,5 @@ strip = true
 
 [lints.clippy]
 redundant_closure_for_method_calls = "warn"
+# Functions over `too-many-lines-threshold` (clippy.toml) fail CI; see AGENTS.md.
+too_many_lines = "warn"

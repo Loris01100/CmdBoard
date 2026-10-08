@@ -16,6 +16,10 @@ Steps 1–11 are complete; step 12 is in progress. v0.1.0 and v0.2.0 are release
 - Keep business logic out of ui/: XP and reward rules in core/, SQLite in storage/, scanning/launching in launcher/, updating in update.rs.
 - Three permanent threads (UI, events, tracker) communicate through mpsc/AppEvent. Temporary scanning/network work reports through the same event channel. Do not block UI handlers on network or scanning.
 - Rewards are data-driven rules. launch_target and watch_exe are deliberately separate.
+- Layers depend only inwards: domain (core/) ← infrastructure (storage/, launcher/, tracker, update…) ← application (app/, command/, popup) ← presentation (ui/). tests/architecture.rs enforces it; classify any new module there. Plan section 2 has the table.
+- App is split by feature under app/ (keys, commands, library, forms, sessions, settings, one file per screen with its own state struct). Add a feature to its module, not to app/mod.rs.
+- Size limits: at most 30 functions and 600 lines per file (tests excluded, tests/architecture.rs) and 100 lines per function (clippy too_many_lines). Split by feature when a file grows; only long table-driven tests may use #[expect(clippy::too_many_lines, reason = "…")].
+- Closing a session, its XP and its rewards is one storage transaction (Database::close_session). Keep multi-step writes that must stay consistent inside one transaction in storage/.
 
 ## Windows and persisted data
 

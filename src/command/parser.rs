@@ -153,6 +153,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::too_many_lines, reason = "table-driven: one case per command")]
     fn parses_valid_commands() {
         let cases = [
             ("launch Hades", Command::Launch { app: s("Hades") }),

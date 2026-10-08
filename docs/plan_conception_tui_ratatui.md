@@ -10,6 +10,7 @@ Application de lancement de raccourcis avec catégories, XP par session, niveaux
 - **Le rendu est pur** : `draw(frame, &app)` lit l'état et dessine, sans rien modifier.
 - **Tout passe par `Command`** : touches, palette `:` et alias déclenchent le même chemin d'exécution.
 - **Aucune logique métier dans `ui/`** : XP, récompenses et stockage vivent dans des modules testables sans terminal.
+- **Des couches qui ne dépendent que vers l'intérieur** (domaine ← infrastructure ← application ← présentation), vérifiées par `tests/architecture.rs` (section 2).
 
 ---
 
@@ -18,7 +19,18 @@ Application de lancement de raccourcis avec catégories, XP par session, niveaux
 ```
 src/
 ├── main.rs              // init terminal, lance App::run()
-├── app.rs               // struct App, boucle principale, update()
+├── app/                 // couche application : struct App et ce qui la modifie
+│   ├── mod.rs           // App, Screen, Mode, boucle principale, routage des AppEvent
+│   ├── keys.rs          // touches par mode -> Command
+│   ├── commands.rs      // chemin d'exécution unique des Command, alias, complétion
+│   ├── library.rs       // apps et catégories : sélection, ajout, édition, suppression
+│   ├── forms.rs         // choix de l'app installée, formulaires
+│   ├── sessions.rs      // sessions suivies, animations d'XP, popups de level-up
+│   ├── settings.rs      // thème, tri, langue, alias, export/import, mises à jour
+│   ├── storage.rs       // écran Stockage (StorageScreen) et explorateur
+│   ├── optimize.rs      // écran Optimisation (OptimizeScreen)
+│   ├── sort.rs          // AppSort
+│   └── tests/           // un fichier de tests par module
 ├── event.rs             // thread d'événements (clavier, tick, tracker)
 ├── i18n.rs              // textes de l'interface : t!(), langue courante
 ├── command/
@@ -31,6 +43,7 @@ src/
 ├── storage/
 │   ├── db.rs            // connexion SQLite, migrations, contenu de départ
 │   ├── queries.rs       // CRUD et agrégats (temps joué, profil, récompenses)
+│   ├── sessions.rs      // sessions : début, points de sauvegarde, fermeture + XP + récompenses
 │   ├── backup.rs        // :export / :import en JSON
 │   └── models.rs        // App, Category, Session, Reward
 ├── launcher/
@@ -72,7 +85,23 @@ locales/                 // textes de l'interface, intégrés au binaire (includ
 └── pt.toml              // portugais du Brésil (Windows donne `pt` pour pt-BR comme pt-PT)
 .github/workflows/release.yml   // généré par `dist init`
 wix/main.wxs                    // installeur MSI, généré par `dist init`
+tests/architecture.rs           // couches et tailles de fichiers, vérifiées en CI
+clippy.toml                     // taille maximale d'une fonction
 ```
+
+### Couches et limites
+
+| Couche | Modules | Ne dépend pas de |
+|---|---|---|
+| Domaine | `core/` | tout le reste du crate, ni I/O (`std::fs`, threads, SQLite, terminal, Windows) |
+| Infrastructure | `storage/`, `launcher/`, `config.rs`, `event.rs`, `instance.rs`, `optimize.rs`, `tracker.rs`, `update.rs` | `app`, `command`, `popup`, `ui`, ratatui |
+| Application | `app/`, `command/`, `popup.rs` | SQLite, écrans et widgets de `ui/` |
+| Présentation | `ui/` | `Database`, `config`, `tracker`, `update`, lancement, threads |
+| Partagé | `i18n.rs`, `fuzzy.rs`, `text_input.rs`, `main.rs` (racine de composition) | — |
+
+- `tests/architecture.rs` lit les sources (hors `#[cfg(test)] mod tests`) : tout fichier de `src/` doit appartenir à une couche, et aucune couche ne doit contenir les chemins qui lui sont interdits. Un nouveau module se classe dans ce fichier.
+- Le champ `App::db` est privé : seul `app/` écrit dans la base, `ui/` ne peut pas l'atteindre.
+- Taille : au plus 30 fonctions et 600 lignes par fichier, tests exclus (`tests/architecture.rs`), et 100 lignes par fonction (`clippy::too_many_lines`, seuil dans `clippy.toml`). Un test de table long peut s'en exempter avec `#[expect(clippy::too_many_lines, reason = "…")]`. Un fichier qui dépasse se découpe par fonctionnalité, comme `app/`.
 
 ---
 
@@ -132,7 +161,11 @@ pub struct App {
 
     // technique
     pub theme: Theme,
-    pub db: Database,
+    db: Database,                       // privé : seul app/ écrit dans la base
+
+    // écrans avec un état propre
+    pub storage: StorageScreen,         // disques, programmes, explorateur (app/storage.rs)
+    pub optimize: OptimizeScreen,       // PC, tests, réglages de jeu (app/optimize.rs)
     pub should_quit: bool,
 }
 ```
@@ -482,7 +515,7 @@ pub fn xp_to_next_level(level: u32) -> u32 {
 ```
 
 - `streak_days` compte les jours actifs consécutifs, aujourd'hui inclus : il est calculé une fois la session fermée.
-- À la fin d'une session gardée (≥ 60 s), `xp_gained` est enregistré dans `sessions` et ajouté à `apps.total_xp`, dans une même transaction. Les sessions fermées à la sortie et les orphelines fermées au démarrage reçoivent aussi leur XP.
+- À la fin d'une session gardée (≥ 60 s), `Database::close_session` ferme la ligne, enregistre `xp_gained`, l'ajoute à `apps.total_xp` et débloque les récompenses dans **une seule transaction** : une erreur ou un crash laisse la session ouverte, et la récupération des orphelines au démarrage la récompense. Une session n'est jamais fermée sans son XP. Les sessions fermées à la sortie et les orphelines (`Database::recover_orphan_sessions`, une transaction pour toutes) reçoivent aussi leur XP.
 - Le niveau d'une app vient de son `total_xp`, le niveau global de la somme des `total_xp`. Un level-up est détecté en comparant les niveaux avant et après.
 
 Les récompenses sont définies **en données** (table `rewards`), pas en dur. La migration v2 insère un jeu de départ : Premiers pas, Marathon, Noctambule, Habitué, Passionné, Vétéran, Régulier, Assidu, Touche-à-tout, Centurion, Expert. La migration v3 ajoute Inarrêtable (30 jours de suite) et Légende (365 jours de suite).
@@ -502,7 +535,7 @@ code = "marathon", scope = "app", rule = "session_minutes >= 180"
 | `total_hours`, `total_sessions` | cumul toutes apps |
 | `apps_this_week` | apps différentes sur 7 jours |
 
-**Évaluation** : après chaque session gardée (fin normale, sortie de CmdBoard, orpheline au démarrage), une fois l'XP attribuée pour que les niveaux comptent. `storage` calcule les faits (`session_facts`) et la liste des récompenses encore à débloquer pour l'app (`pending_rewards`), `core::rewards::evaluate` tranche, `storage` enregistre. Une règle cassée n'empêche pas les autres : l'erreur s'affiche dans la ligne de message.
+**Évaluation** : après chaque session gardée (fin normale, sortie de CmdBoard, orpheline au démarrage), une fois l'XP attribuée pour que les niveaux comptent. `storage/sessions.rs` calcule les faits (`session_facts_at`) et la liste des récompenses encore à débloquer pour l'app (`pending_rewards`), `core::rewards::evaluate` tranche, `storage` enregistre, dans la transaction de fermeture. `app/sessions.rs` n'affiche que le résultat (`SessionOutcome`) : animations, popups, message. Une règle cassée n'empêche pas les autres : l'erreur s'affiche dans la ligne de message.
 
 ---
 
@@ -510,7 +543,7 @@ code = "marathon", scope = "app", rule = "session_minutes >= 180"
 
 1. À l'ajout d'une app, enregistrer `watch_exe`. Après chaque `reload()`, l'UI envoie la liste `(app_id, watch_exe)` au tracker.
 2. Le tracker interroge `sysinfo` toutes les 3 secondes, et tout de suite quand la liste change. Correspondance sur le nom de fichier de l'exe, sans tenir compte de la casse (`watch_exe` peut contenir un chemin complet). Une app tourne si au moins un de ses process tourne. Plusieurs apps peuvent surveiller le même exe.
-3. Process détecté : `SessionStarted`. L'UI insère une ligne `sessions` avec `ended_at = NULL`. Process disparu : `SessionEnded { secs }`, mesuré par le tracker. L'UI ferme la ligne (`ended_at`, `duration_s`). Le calcul de `xp_gained` suit la section 11.
+3. Process détecté : `SessionStarted`. L'UI insère une ligne `sessions` avec `ended_at = NULL`. Process disparu : `SessionEnded { secs }`, mesuré par le tracker. L'UI appelle `Database::close_session`, qui ferme la ligne (`ended_at`, `duration_s`) et la récompense en une transaction (section 11).
 4. **Temps réellement joué** : le tracker cumule lui-même le temps de chaque session, poll par poll, et l'envoie à chaque poll (`SessionProgress { played, idle }`) ; l'UI s'en sert pour le chrono du bandeau, les points de sauvegarde et la fermeture à la sortie. Un poll ne compte rien quand l'utilisateur est inactif : aucune entrée clavier / souris (`GetLastInputInfo`) ni manette XInput (changement de `dwPacketNumber`, Xbox et la plupart des autres via Steam Input) depuis `idle_minutes` minutes (`config.toml`, 10 par défaut, `0` désactive). Les entrées ne sont lues que si une session tourne. Jusqu'à `idle_minutes` d'inactivité comptent donc avant la pause. Un écart entre deux polls est plafonné à 10 s (`MAX_STEP`) : une mise en veille avec le jeu ouvert ne compte pas. En pause, le chrono s'arrête et affiche « en pause » (`session.idle`).
 5. Les sessions de moins de 60 s (`MIN_SESSION_SECS`) sont supprimées au lieu d'être enregistrées.
 6. Toutes les 60 s, `on_tick` enregistre `duration_s` des sessions en cours (point de sauvegarde).
@@ -553,7 +586,9 @@ Pilotées par `Tick` et un compteur `frame_count` dans `App` :
 - **`core/`** : tests unitaires (XP, niveaux, règles).
 - **`command/parser`** : tests de table (entrée → `Command`).
 - **`ui/`** : `TestBackend` de ratatui, ou snapshots avec `insta`.
-- **`storage/`** : `Connection::open_in_memory()`.
+- **`storage/`** : `Connection::open_in_memory()`. Un trigger qui échoue vérifie qu'une fermeture de session interrompue ne laisse rien d'écrit.
+- **`app/`** : `App::with_defaults()` sur une base en mémoire, piloté par touches et lignes de commande ; un fichier de `app/tests/` par module.
+- **Architecture** : `tests/architecture.rs` (couches, taille des fichiers) et `clippy::too_many_lines` (taille des fonctions), section 2.
 
 ---
 

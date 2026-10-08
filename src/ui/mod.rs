@@ -118,6 +118,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "table-driven: one rendering scenario per rare state"
+    )]
     fn less_common_states_render() {
         use crate::app::{Mode, MsgKind};
         use crate::command::{Command, complete::Completion};
