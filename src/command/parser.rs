@@ -68,22 +68,8 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("lang", [code]) => Ok(Command::Lang {
             code: Some(code.clone()),
         }),
-        // Apps are comma-separated, so their names need no quotes.
         ("group", [name, apps @ ..]) => {
-            let apps: Vec<String> = apps
-                .join(" ")
-                .split(',')
-                .map(str::trim)
-                .filter(|a| !a.is_empty())
-                .map(String::from)
-                .collect();
-            if apps.is_empty() {
-                return Err(t!("parse.usage", usage = help.usage()));
-            }
-            Ok(Command::Group {
-                name: name.clone(),
-                apps,
-            })
+            group(name, apps).ok_or_else(|| t!("parse.usage", usage = help.usage()))
         }
         ("export", []) => Ok(Command::Export {
             path: None,
@@ -95,6 +81,7 @@ pub fn parse(input: &str) -> Result<Command, String> {
         }),
         ("import", [_, ..]) => Ok(Command::Import {
             path: rest.join(" "),
+            confirmed: false,
         }),
         ("uninstall", [_, ..]) => Ok(Command::Uninstall {
             program: rest.join(" "),
@@ -108,6 +95,22 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("quit", []) => Ok(Command::Quit),
         _ => Err(t!("parse.usage", usage = help.usage())),
     }
+}
+
+/// `:group name app, app…`: apps are comma-separated, so their names need no quotes.
+/// `None` without any app.
+fn group(name: &str, apps: &[String]) -> Option<Command> {
+    let apps: Vec<String> = apps
+        .join(" ")
+        .split(',')
+        .map(str::trim)
+        .filter(|a| !a.is_empty())
+        .map(String::from)
+        .collect();
+    (!apps.is_empty()).then(|| Command::Group {
+        name: name.into(),
+        apps,
+    })
 }
 
 /// Splits on whitespace; double quotes group words. Backslashes are kept as-is,
@@ -272,6 +275,7 @@ mod tests {
                 r#"import "C:\Users\Me\cmdboard.json""#,
                 Command::Import {
                     path: s(r"C:\Users\Me\cmdboard.json"),
+                    confirmed: false,
                 },
             ),
             ("update", Command::Update),

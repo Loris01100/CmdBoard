@@ -8,8 +8,9 @@ use std::ptr::{null, null_mut};
 use anyhow::bail;
 use windows_sys::Win32::Foundation::ERROR_SUCCESS;
 use windows_sys::Win32::System::Registry::{
-    HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY,
-    RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegCloseKey, RegEnumKeyExW, RegGetValueW, RegOpenKeyExW,
+    HKEY, HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY,
+    KEY_WOW64_64KEY, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegCloseKey, RegEnumKeyExW, RegGetValueW,
+    RegOpenKeyExW,
 };
 use windows_sys::Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL};
 
@@ -168,6 +169,11 @@ fn split_command(command: &str) -> (String, String) {
 
 pub(crate) fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain([0]).collect()
+}
+
+/// Whether `HKEY_CLASSES_ROOT\{name}` exists, such as a registered URI scheme.
+pub fn class_exists(name: &str) -> bool {
+    Key::open(HKEY_CLASSES_ROOT, name, 0).is_some()
 }
 
 /// An open registry key, closed on drop.

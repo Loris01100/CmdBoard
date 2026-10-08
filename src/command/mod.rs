@@ -127,8 +127,10 @@ pub enum Command {
         confirmed: bool,
     },
     /// Merges a file written by `Export`: adds what is missing, never deletes.
+    /// Without `confirmed`, asks first when it adds apps, showing what they launch.
     Import {
         path: String,
+        confirmed: bool,
     },
     /// Installs the latest GitHub release, or points to winget for MSI installs.
     Update,

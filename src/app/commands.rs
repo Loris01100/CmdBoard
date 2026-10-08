@@ -86,7 +86,7 @@ impl App {
             Command::Lang { code } => return self.lang_command(code.as_deref()),
             Command::Group { name, apps } => return self.save_group(&name, &apps),
             Command::Export { path, confirmed } => return self.export(path, confirmed),
-            Command::Import { path } => return self.import(&path),
+            Command::Import { path, confirmed } => return self.import(path, confirmed),
             Command::Update => return self.start_update(),
         }
         Ok(None)

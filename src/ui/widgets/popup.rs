@@ -109,16 +109,19 @@ fn render_level_up(frame: &mut Frame, level_up: &LevelUp, app: &App) {
 fn render_confirm(frame: &mut Frame, message: &str, app: &App) {
     let theme = &app.theme;
     let width = popup_width(frame.area());
-    // Rough wrapped height: the message is plain prose.
+    // Rough wrapped height: the message is plain prose, in lines split on `\n`.
     let text_width = width.saturating_sub(2).max(1) as usize;
-    let message_lines = message.chars().count().div_ceil(text_width) as u16;
-    let area = centered(frame.area(), width, message_lines + 4);
+    let message_lines: usize = message
+        .lines()
+        .map(|line| line.chars().count().div_ceil(text_width).max(1))
+        .sum();
+    let area = centered(frame.area(), width, message_lines as u16 + 4);
 
     let block = theme
         .panel(&t!("popup.confirm_title"), true)
         .border_style(Style::new().fg(theme.error));
-    let text = vec![
-        Line::from(message.to_string()),
+    let mut text: Vec<Line> = message.lines().map(|l| Line::from(l.to_string())).collect();
+    text.extend([
         Line::from(""),
         Line::from(vec![
             Span::styled(t!("keys.confirm_keys"), theme.title),
@@ -126,7 +129,7 @@ fn render_confirm(frame: &mut Frame, message: &str, app: &App) {
             Span::styled("Esc/n", theme.title),
             Span::raw(t!("popup.no")),
         ]),
-    ];
+    ]);
     frame.render_widget(Clear, area);
     frame.render_widget(
         Paragraph::new(text).block(block).wrap(Wrap { trim: true }),
@@ -369,6 +372,20 @@ mod tests {
         let text = screen(&app, 100, 30);
         assert!(text.contains("Confirmer"));
         assert!(text.contains("Supprimer « Steam »"));
+    }
+
+    #[test]
+    fn confirm_keeps_the_message_lines() {
+        let mut app = App::with_defaults();
+        app.mode = Mode::Popup(Popup::Confirm {
+            message: "Importer ?\n• Hades → C:\\Games\\Hades.exe".into(),
+            command: crate::command::Command::Quit,
+        });
+        let text = screen(&app, 100, 30);
+        let row = |needle: &str| text.lines().position(|l| l.contains(needle));
+        let (question, item) = (row("Importer ?").unwrap(), row("• Hades").unwrap());
+        assert_eq!(item, question + 1, "{text}");
+        assert!(text.contains("Confirmer"));
     }
 
     #[test]

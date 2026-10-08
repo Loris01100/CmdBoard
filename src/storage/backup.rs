@@ -64,14 +64,25 @@ impl Database {
     /// keeps its target and category, and gains the XP of its newly imported sessions.
     /// A session already present (same app, same start) is skipped.
     pub fn import_from(&self, path: &Path) -> anyhow::Result<Imported> {
-        let text = std::fs::read_to_string(path)
-            .with_context(|| t!("error.cannot_read", path = path.display()))?;
-        let backup: Backup = serde_json::from_str(&text)
-            .with_context(|| t!("error.bad_backup", path = path.display()))?;
-        if backup.version != FORMAT_VERSION {
-            bail!(t!("error.backup_version", version = backup.version));
+        self.merge(&read_backup(path)?)
+    }
+
+    /// The apps importing `path` would add, as `(name, launch_target)`. A backup can come
+    /// from someone else and its targets then launch from the dashboard, so they are shown
+    /// before importing.
+    pub fn import_preview(&self, path: &Path) -> anyhow::Result<Vec<(String, String)>> {
+        let mut added = Vec::new();
+        for app in read_backup(path)?.apps {
+            let exists: bool = self.conn.query_row(
+                "SELECT EXISTS (SELECT 1 FROM apps WHERE name = ?1)",
+                [&app.name],
+                |r| r.get(0),
+            )?;
+            if !exists {
+                added.push((app.name, app.launch_target));
+            }
         }
-        self.merge(&backup)
+        Ok(added)
     }
 
     /// `Documents\cmdboard-<yyyy-mm-dd>.json`, or in `%APPDATA%\CmdBoard` without Documents.
@@ -197,6 +208,17 @@ impl Database {
     }
 }
 
+fn read_backup(path: &Path) -> anyhow::Result<Backup> {
+    let text = std::fs::read_to_string(path)
+        .with_context(|| t!("error.cannot_read", path = path.display()))?;
+    let backup: Backup = serde_json::from_str(&text)
+        .with_context(|| t!("error.bad_backup", path = path.display()))?;
+    if backup.version != FORMAT_VERSION {
+        bail!(t!("error.backup_version", version = backup.version));
+    }
+    Ok(backup)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,6 +292,12 @@ mod tests {
 
         // The new PC already has Hades (other session) and lacks the "Jeux" category.
         let new_pc = db_with_session("hades", "Games", 5_000, 20);
+        assert!(new_pc.import_preview(&file).unwrap().is_empty()); // known, whatever the case
+        let fresh = Database::open_in_memory().unwrap();
+        assert_eq!(
+            fresh.import_preview(&file).unwrap(),
+            [("Hades".to_string(), r"C:\Games\Hades.exe".to_string())]
+        );
         let imported = new_pc.import_from(&file).unwrap();
         assert_eq!(
             imported,
@@ -280,7 +308,6 @@ mod tests {
         );
         assert_eq!(app_xp(&new_pc, "hades"), 70);
 
-        let fresh = Database::open_in_memory().unwrap();
         fresh.import_from(&file).unwrap();
         let apps = fresh.apps().unwrap();
         assert_eq!(apps[0].launch_target, r"C:\Games\Hades.exe");

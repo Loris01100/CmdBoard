@@ -381,6 +381,10 @@ impl App {
     }
 
     pub(super) fn trash(&mut self, path: PathBuf, confirmed: bool) -> Outcome {
+        // Refused before asking; `folders::trash` checks again.
+        if folders::is_protected(&path) {
+            bail!(t!("storage.protected", path = path.display()));
+        }
         if !confirmed {
             let message = t!("storage.confirm_trash", path = path.display());
             return self.confirm(
@@ -426,7 +430,8 @@ impl App {
             .with_context(|| t!("storage.unknown_program", name = program))?;
         let name = found.name.clone();
         if !confirmed {
-            let message = t!("storage.confirm_uninstall", name);
+            // The exact command: any program running as the user can rewrite it.
+            let message = t!("storage.confirm_uninstall", name, command = found.uninstall);
             let program = name;
             return self.confirm(
                 message,

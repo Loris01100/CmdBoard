@@ -2,6 +2,8 @@ use std::path::Path;
 
 use anyhow::{Context, bail};
 
+use super::programs;
+
 /// Hands `target` (exe path, exe name on the PATH, or URI such as `steam://...`) to the
 /// Windows shell, like double-clicking it. Returns once the process is started.
 pub fn launch(target: &str) -> anyhow::Result<()> {
@@ -29,12 +31,7 @@ pub fn check_target(target: &str) -> anyhow::Result<()> {
 pub fn is_available(target: &str) -> bool {
     let target = target.trim();
     if let Some((scheme, _)) = target.split_once("://") {
-        return std::process::Command::new("reg")
-            .args(["query", &format!(r"HKCR\{scheme}")])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success());
+        return is_scheme(scheme) && programs::class_exists(scheme);
     }
     let path = Path::new(target);
     if path.is_absolute() {
@@ -43,6 +40,14 @@ pub fn is_available(target: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|paths| {
         std::env::split_paths(&paths).any(|dir| dir.join(target).symlink_metadata().is_ok())
     })
+}
+
+/// RFC 3986 scheme: a letter, then letters, digits, `+`, `-` or `.`. Keeps the registry
+/// lookup to one key under `HKEY_CLASSES_ROOT`.
+fn is_scheme(scheme: &str) -> bool {
+    let mut chars = scheme.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
 /// Process to track for a target: its file name when it is an exe, `None` for URIs
@@ -82,6 +87,10 @@ mod tests {
         assert!(!is_available(r"C:\nope\does-not-exist.exe"));
         assert!(is_available("http://example.com")); // always registered
         assert!(!is_available("no-such-scheme-cmdboard://x"));
+        // Not a scheme: no other registry key is looked up.
+        assert!(!is_available(r"http\shell://x"));
+        assert!(!is_available("://x"));
+        assert!(!is_available("1http://x"));
     }
 
     #[test]

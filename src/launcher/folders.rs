@@ -102,6 +102,9 @@ fn entry_size(e: &std::fs::DirEntry, cancel: &AtomicBool) -> Option<u64> {
 /// something too big for the bin. Blocks until done: call it off the UI thread.
 pub fn trash(path: &Path) -> anyhow::Result<()> {
     use std::os::windows::ffi::OsStrExt;
+    if is_protected(path) {
+        bail!(t!("storage.protected", path = path.display()));
+    }
     // A double-nul-terminated list of one path.
     let from: Vec<u16> = path.as_os_str().encode_wide().chain([0, 0]).collect();
     let mut op = SHFILEOPSTRUCTW {
@@ -118,6 +121,54 @@ pub fn trash(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Whether `path` must stay out of the Recycle Bin: a drive root, anything inside
+/// Windows or CmdBoard's data (its database), or a folder holding Program Files,
+/// ProgramData, the user folder or CmdBoard itself. Paths are resolved first, so short
+/// names, `..` and junctions do not get around it.
+pub fn is_protected(path: &Path) -> bool {
+    let env = |var| std::env::var_os(var).map(PathBuf::from);
+    let inside: Vec<PathBuf> = [env("SystemRoot"), crate::storage::db::data_dir().ok()]
+        .into_iter()
+        .flatten()
+        .collect();
+    let mut kept: Vec<PathBuf> = [
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "ProgramW6432",
+        "ProgramData",
+        "USERPROFILE",
+        "PUBLIC",
+    ]
+    .into_iter()
+    .filter_map(env)
+    .collect();
+    kept.extend(std::env::current_exe().ok());
+    let resolve_all = |dirs: &[PathBuf]| dirs.iter().map(|d| resolve(d)).collect::<Vec<_>>();
+    protected_by(&resolve(path), &resolve_all(&inside), &resolve_all(&kept))
+}
+
+/// `path` is a root or relative, is inside one of `inside`, or holds one of `inside`
+/// or `kept`.
+fn protected_by(path: &Path, inside: &[PathBuf], kept: &[PathBuf]) -> bool {
+    !path.is_absolute()
+        || path.parent().is_none()
+        || inside.iter().any(|dir| path.starts_with(dir))
+        || inside.iter().chain(kept).any(|dir| dir.starts_with(path))
+}
+
+/// The real path (long names, links followed) in lowercase, as Windows ignores case.
+/// A path that does not exist stays as written.
+fn resolve(path: &Path) -> PathBuf {
+    let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let text = real.to_string_lossy().to_lowercase();
+    // `canonicalize` answers `\\?\C:\…`; the variables hold `C:\…`.
+    let text = match text.strip_prefix(r"\\?\") {
+        Some(rest) if !rest.starts_with(r"unc\") => rest.to_string(),
+        _ => text,
+    };
+    PathBuf::from(text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,6 +181,54 @@ mod tests {
         assert_eq!(dir_size_with_progress(missing, &go, |_| {}), Some(0));
         assert_eq!(dir_size_with_progress(missing, &stop, |_| {}), None);
         assert!(trash(missing).is_err());
+    }
+
+    #[test]
+    fn critical_folders_are_protected() {
+        let p = PathBuf::from;
+        let inside = [p(r"c:\windows"), p(r"c:\users\me\appdata\roaming\cmdboard")];
+        let kept = [p(r"c:\program files"), p(r"c:\users\me")];
+        let protected = |path: &str| protected_by(Path::new(path), &inside, &kept);
+        for path in [
+            r"c:\",
+            r"d:\",
+            r"windows\system32",
+            r"c:\windows",
+            r"c:\windows\system32\drivers",
+            r"c:\users\me\appdata\roaming\cmdboard\cmdboard.db",
+            r"c:\users\me\appdata\roaming",
+            r"c:\users\me",
+            r"c:\users",
+            r"c:\program files",
+        ] {
+            assert!(protected(path), "{path}");
+        }
+        for path in [
+            r"c:\program files\old game",
+            r"c:\users\me\downloads",
+            r"c:\users\me\appdata\roaming\other",
+            r"c:\windowsapps-backup",
+            r"d:\games",
+        ] {
+            assert!(!protected(path), "{path}");
+        }
+
+        // The real folders, however they are written.
+        let windows = PathBuf::from(std::env::var("SystemRoot").unwrap());
+        let upper = PathBuf::from(windows.to_string_lossy().to_uppercase());
+        for path in [
+            upper,
+            windows.join("System32"),
+            windows.join(r"System32\.."),
+            PathBuf::from(std::env::var("USERPROFILE").unwrap()),
+            std::env::current_exe().unwrap(),
+            PathBuf::from(r"C:\"),
+        ] {
+            assert!(is_protected(&path), "{}", path.display());
+        }
+        assert!(!is_protected(&std::env::temp_dir().join("cmdboard-free")));
+        let error = trash(&windows).unwrap_err().to_string();
+        assert!(error.contains("protégé"), "{error}");
     }
 
     #[test]

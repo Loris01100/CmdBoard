@@ -281,14 +281,46 @@ fn export_then_import() {
     app.execute(export(true));
     assert_eq!(message_kind(&app), Some(MsgKind::Success));
     assert_ne!(std::fs::read_to_string(&path).unwrap(), "keep me");
-    app.execute(Command::Import {
+    let import = |confirmed| Command::Import {
         path: path.display().to_string(),
-    });
+        confirmed,
+    };
+    app.execute(import(false)); // only known apps: no question
     assert_eq!(
         message_kind(&app),
         Some(MsgKind::Success),
         "{:?}",
         app.message
     );
+
+    // New apps: their targets are shown first, and Esc imports nothing.
+    let apps: Vec<String> = (0..7)
+        .map(|i| {
+            format!(
+                r#"{{"name":"Jeu{i}","category":"Jeux","launch_target":"C:\\x\\jeu{i}.exe\nC:\\ok.exe","watch_exe":null,"total_xp":0}}"#
+            )
+        })
+        .collect();
+    let json = format!(
+        r#"{{"version":1,"exported_at":0,"apps":[{}],"sessions":[]}}"#,
+        apps.join(",")
+    );
+    std::fs::write(&path, json).unwrap();
+    app.execute(import(false));
+    let Mode::Popup(Popup::Confirm { message, command }) = &app.mode else {
+        panic!("expected a confirmation, got {:?}", app.mode);
+    };
+    assert_eq!(*command, import(true));
+    assert!(
+        message.contains(r"• Jeu0 → C:\x\jeu0.exe C:\ok.exe"),
+        "one line per app: {message}"
+    );
+    assert!(!message.contains("Jeu5"));
+    assert!(message.ends_with("… et 2 de plus"), "{message}");
+    press(&mut app, KeyCode::Esc);
+    assert!(app.find_app("Jeu0").is_none());
+    app.execute(import(false));
+    press(&mut app, KeyCode::Char('y'));
+    assert!(app.find_app("Jeu6").is_some());
     std::fs::remove_file(&path).unwrap();
 }

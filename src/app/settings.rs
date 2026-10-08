@@ -119,8 +119,24 @@ impl App {
         Ok(Some((text, MsgKind::Success)))
     }
 
-    pub(super) fn import(&mut self, path: &str) -> Outcome {
-        let imported = self.db.import_from(Path::new(path))?;
+    /// Asks first when the file adds apps: a backup from someone else could launch
+    /// anything, so their targets are shown.
+    pub(super) fn import(&mut self, path: String, confirmed: bool) -> Outcome {
+        if !confirmed {
+            let added = self.db.import_preview(Path::new(&path))?;
+            if !added.is_empty() {
+                let (count, list) = (added.len(), import_list(&added));
+                let message = t!("action.confirm_import", path, count, list);
+                return self.confirm(
+                    message,
+                    Command::Import {
+                        path,
+                        confirmed: true,
+                    },
+                );
+            }
+        }
+        let imported = self.db.import_from(Path::new(&path))?;
         self.reload()?;
         let text = t!(
             "action.imported",
@@ -197,4 +213,27 @@ impl App {
         };
         self.message = Some(message);
     }
+}
+
+/// Apps listed in the import confirmation; the others are counted.
+const IMPORT_SHOWN: usize = 5;
+
+/// `• name → target`, one per line. Control characters are blanked: the file could hide
+/// part of a target behind a line break.
+fn import_list(added: &[(String, String)]) -> String {
+    let clean = |text: &str| -> String {
+        text.chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect()
+    };
+    let mut lines: Vec<String> = added
+        .iter()
+        .take(IMPORT_SHOWN)
+        .map(|(name, target)| format!("• {} → {}", clean(name), clean(target)))
+        .collect();
+    if added.len() > IMPORT_SHOWN {
+        let count = added.len() - IMPORT_SHOWN;
+        lines.push(t!("action.import_more", count));
+    }
+    lines.join("\n")
 }

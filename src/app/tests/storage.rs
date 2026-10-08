@@ -46,9 +46,13 @@ fn storage_sorts_filters_and_confirms_uninstall() {
     assert_eq!(app.storage.disk, Some('D'));
 
     press(&mut app, KeyCode::Char('d'));
-    let Mode::Popup(Popup::Confirm { command, .. }) = &app.mode else {
+    let Mode::Popup(Popup::Confirm { message, command }) = &app.mode else {
         panic!("expected a confirmation, got {:?}", app.mode);
     };
+    assert!(
+        message.ends_with("\nx.exe"),
+        "the command it runs: {message}"
+    );
     assert_eq!(
         *command,
         Command::Uninstall {
@@ -137,6 +141,14 @@ fn folder_browser_without_threads() {
         confirmed: true,
     }); // no event channel in tests
     assert_eq!(message_kind(&app), Some(MsgKind::Error));
+    // Windows is refused before any confirmation.
+    let windows = PathBuf::from(std::env::var("SystemRoot").unwrap());
+    app.execute(Command::Trash {
+        path: windows.join("System32"),
+        confirmed: false,
+    });
+    assert_eq!(app.mode, Mode::Normal);
+    assert!(app.message.as_ref().unwrap().0.contains("protégé"));
     app.on_trashed(&dir.join("notes.txt"), Ok(()));
     assert_eq!(message_kind(&app), Some(MsgKind::Success));
     assert_eq!(names(&app), ["Hades"]);
