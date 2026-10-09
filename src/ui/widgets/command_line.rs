@@ -7,6 +7,7 @@ use ratatui::{
 };
 
 use crate::app::{App, Mode, MsgKind};
+use crate::ui::layout::cells;
 
 const PLACEHOLDER: &str = "launch <app>, stats, help… (Tab)";
 
@@ -87,7 +88,7 @@ fn render_input(
     frame.render_widget(Paragraph::new(prompt), inner);
 
     // Placing the terminal cursor is not a state change.
-    frame.set_cursor_position(Position::new(inner.x + 1 + cursor as u16, inner.y));
+    frame.set_cursor_position(Position::new(inner.x + 1 + cells(cursor), inner.y));
 }
 
 fn render_message(frame: &mut Frame, area: Rect, app: &App) {

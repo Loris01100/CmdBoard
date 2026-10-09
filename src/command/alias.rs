@@ -72,7 +72,7 @@ impl Aliases {
 
     /// Adds or replaces the alias `name` in `path` (`:group`), then returns the reloaded
     /// aliases. A file that does not parse is left untouched.
-    /// ponytail: rewritten through `toml`, so comments in the file are lost; toml_edit if it matters.
+    /// ponytail: rewritten through `toml`, so comments in the file are lost; `toml_edit` if it matters.
     pub fn save(path: &Path, name: &str, body: &str) -> anyhow::Result<Self> {
         let lower = name.to_lowercase();
         if find_help(&lower).is_some() {

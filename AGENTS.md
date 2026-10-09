@@ -39,7 +39,7 @@ Steps 1–11 are complete; step 12 is in progress. v0.1.0 and v0.2.0 are release
 
 ## Validation
 
-Run cargo fmt --check, cargo clippy --all-targets -- -D warnings and appropriate cargo test checks before handing off code changes. CI runs clippy with -D warnings, so any warning fails the build. The pre-commit hook only checks formatting and needs git config core.hooksPath .githooks once per clone; CI runs formatting, clippy and tests.
+Run cargo fmt --check, cargo clippy --all-targets -- -D warnings and appropriate cargo test checks before handing off code changes. CI runs clippy with -D warnings, so any warning fails the build. Clippy enables the pedantic group in Cargo.toml: fix a lint rather than silencing it, or use a local #[expect(clippy::…, reason = "…")]. Prefer try_from over `as` for narrowing casts. The pre-commit hook only checks formatting and needs git config core.hooksPath .githooks once per clone; CI runs formatting, clippy and tests.
 
 Use table-driven parser tests, in-memory SQLite tests (including migration upgrades), built-in theme parsing tests, and ratatui TestBackend for rendering. Verify behavior and boundary cases rather than duplicating implementation details in assertions.
 

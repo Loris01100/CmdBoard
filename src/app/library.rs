@@ -121,27 +121,26 @@ impl App {
 
     pub(super) fn add_app(
         &mut self,
-        name: String,
+        name: &str,
         target: String,
         category: Option<String>,
         watch_exe: Option<String>,
     ) -> Outcome {
-        if self.find_app(&name).is_some() {
+        if self.find_app(name).is_some() {
             bail!(t!("error.app_exists", name));
         }
         launch::check_target(&target)?;
-        let (category_id, created) = match category {
-            Some(category) => self.category_or_create(&category)?,
-            None => {
-                let selected = self
-                    .selected_category()
-                    .with_context(|| t!("error.no_category"))?;
-                (selected.id, false)
-            }
+        let (category_id, created) = if let Some(category) = category {
+            self.category_or_create(&category)?
+        } else {
+            let selected = self
+                .selected_category()
+                .with_context(|| t!("error.no_category"))?;
+            (selected.id, false)
         };
         let id = self
             .db
-            .add_app(&new_app(name.clone(), target, category_id, watch_exe))?;
+            .add_app(&new_app(name.to_owned(), target, category_id, watch_exe))?;
         self.reload()?;
         self.select_app(id);
         let text = t!("action.added", name, note = created_note(created));
@@ -152,20 +151,22 @@ impl App {
     pub(super) fn edit_app(
         &mut self,
         app: &str,
-        name: String,
+        name: &str,
         target: String,
         category: &str,
         watch_exe: Option<String>,
     ) -> Outcome {
         let id = self.app_named(app)?.id;
         // Another app with that name; changing only the case of its own name is fine.
-        if self.find_app(&name).is_some_and(|other| other.id != id) {
+        if self.find_app(name).is_some_and(|other| other.id != id) {
             bail!(t!("error.app_exists", name));
         }
         launch::check_target(&target)?;
         let (category_id, created) = self.category_or_create(category)?;
-        self.db
-            .update_app(id, &new_app(name.clone(), target, category_id, watch_exe))?;
+        self.db.update_app(
+            id,
+            &new_app(name.to_owned(), target, category_id, watch_exe),
+        )?;
         self.reload()?;
         self.select_app(id);
         let text = t!("action.edited", name, note = created_note(created));
@@ -237,6 +238,10 @@ impl App {
     }
 
     /// Asks before running `command`, its `confirmed: true` version.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "callers return it as their own Outcome"
+    )]
     pub(super) fn confirm(&mut self, message: String, command: Command) -> Outcome {
         self.mode = Mode::Popup(Popup::Confirm { message, command });
         Ok(None)

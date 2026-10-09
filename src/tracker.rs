@@ -107,7 +107,7 @@ fn credit(step: Duration, idle: bool) -> Duration {
     }
 }
 
-/// When the user last used the keyboard, the mouse or an XInput controller (Xbox pads,
+/// When the user last used the keyboard, the mouse or an `XInput` controller (Xbox pads,
 /// and most others through Steam Input). Controllers are not seen by `GetLastInputInfo`.
 #[derive(Debug)]
 struct Input {
@@ -142,11 +142,11 @@ impl Input {
 /// Time since the last keyboard or mouse input in this Windows session.
 fn keyboard_mouse_idle() -> Duration {
     let mut info = LASTINPUTINFO {
-        cbSize: size_of::<LASTINPUTINFO>() as u32,
+        cbSize: u32::try_from(size_of::<LASTINPUTINFO>()).unwrap_or(0),
         dwTime: 0,
     };
     // SAFETY: `info` is a valid LASTINPUTINFO with its size set.
-    if unsafe { GetLastInputInfo(&mut info) } == 0 {
+    if unsafe { GetLastInputInfo(&raw mut info) } == 0 {
         return Duration::ZERO; // unknown: count the time rather than lose it
     }
     // SAFETY: no arguments. Both are in the same wrapping millisecond counter.
@@ -159,7 +159,7 @@ fn pad_packet(slot: u32) -> Option<u32> {
     // SAFETY: XINPUT_STATE is plain data, filled by the call.
     let mut state: XINPUT_STATE = unsafe { std::mem::zeroed() };
     // SAFETY: `state` is a valid output for the call.
-    let status = unsafe { XInputGetState(slot, &mut state) };
+    let status = unsafe { XInputGetState(slot, &raw mut state) };
     (status == 0).then_some(state.dwPacketNumber)
 }
 

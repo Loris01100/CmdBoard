@@ -47,14 +47,14 @@ impl App {
                 target,
                 category,
                 watch_exe,
-            } => return self.add_app(name, target, category, watch_exe),
+            } => return self.add_app(&name, target, category, watch_exe),
             Command::Edit {
                 app,
                 name,
                 target,
                 category,
                 watch_exe,
-            } => return self.edit_app(&app, name, target, &category, watch_exe),
+            } => return self.edit_app(&app, &name, target, &category, watch_exe),
             Command::Move { app, category } => return self.move_app(&app, &category),
             Command::RemoveApp { app, confirmed } => return self.remove_app(&app, confirmed),
             Command::RemoveCategory {

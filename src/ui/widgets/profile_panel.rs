@@ -6,6 +6,7 @@ use ratatui::{
 
 use super::xp_bar;
 use crate::app::App;
+use crate::ui::layout::cells;
 
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
@@ -23,9 +24,9 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         xp = profile.xp_today
     );
     let [level_area, gauge_area, stats_area] = Layout::horizontal([
-        Constraint::Length(level.chars().count() as u16),
+        Constraint::Length(cells(level.chars().count())),
         Constraint::Min(10),
-        Constraint::Length(stats.chars().count() as u16),
+        Constraint::Length(cells(stats.chars().count())),
     ])
     .areas(inner);
 

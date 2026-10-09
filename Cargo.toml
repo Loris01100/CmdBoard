@@ -45,6 +45,10 @@ strip = true
 # panic stays "unwind": a panic in a temporary scan thread must not kill the UI.
 
 [lints.clippy]
-redundant_closure_for_method_calls = "warn"
-# Functions over `too-many-lines-threshold` (clippy.toml) fail CI; see AGENTS.md.
-too_many_lines = "warn"
+# Pedantic lints warn, so CI (-D warnings) rejects them. The group includes
+# too_many_lines: functions over `too-many-lines-threshold` (clippy.toml) fail CI; see AGENTS.md.
+pedantic = { level = "warn", priority = -1 }
+# Seconds, bytes and counts stay far below 2^52: f64 holds them exactly enough for ratios and charts.
+cast_precision_loss = "allow"
+# `assert!(x.is_empty())` reads better than comparing with a typed empty array.
+assert_is_empty = "allow"

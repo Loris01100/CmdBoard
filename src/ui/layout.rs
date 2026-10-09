@@ -80,6 +80,11 @@ pub fn screen(area: Rect, command_height: u16) -> (Rect, Rect, Rect) {
     (body, command, status)
 }
 
+/// A length in cells, for counts that fit on screen anyway: saturates instead of wrapping.
+pub fn cells(n: usize) -> u16 {
+    u16::try_from(n).unwrap_or(u16::MAX)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -154,27 +154,26 @@ impl Database {
                     r.get(0)
                 })
                 .optional()?;
-            let entry = match existing {
-                Some(id) => (id, false),
-                None => {
-                    tx.execute(
-                        "INSERT OR IGNORE INTO categories (name) VALUES (?1)",
-                        [&app.category],
-                    )?;
-                    tx.execute(
-                        "INSERT INTO apps (name, launch_target, watch_exe, category_id, total_xp)
-                         SELECT ?1, ?2, ?3, id, ?5 FROM categories WHERE name = ?4",
-                        params![
-                            app.name,
-                            app.launch_target,
-                            app.watch_exe,
-                            app.category,
-                            app.total_xp
-                        ],
-                    )?;
-                    imported.apps += 1;
-                    (tx.last_insert_rowid(), true)
-                }
+            let entry = if let Some(id) = existing {
+                (id, false)
+            } else {
+                tx.execute(
+                    "INSERT OR IGNORE INTO categories (name) VALUES (?1)",
+                    [&app.category],
+                )?;
+                tx.execute(
+                    "INSERT INTO apps (name, launch_target, watch_exe, category_id, total_xp)
+                     SELECT ?1, ?2, ?3, id, ?5 FROM categories WHERE name = ?4",
+                    params![
+                        app.name,
+                        app.launch_target,
+                        app.watch_exe,
+                        app.category,
+                        app.total_xp
+                    ],
+                )?;
+                imported.apps += 1;
+                (tx.last_insert_rowid(), true)
             };
             ids.insert(app.name.to_lowercase(), entry);
         }
@@ -229,7 +228,7 @@ mod tests {
         let path = db.default_export_path().unwrap();
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
         assert!(
-            name.starts_with("cmdboard-") && name.ends_with(".json"),
+            name.starts_with("cmdboard-") && path.extension().is_some_and(|e| e == "json"),
             "{name}"
         );
         assert_eq!(name.len(), "cmdboard-yyyy-mm-dd.json".len());

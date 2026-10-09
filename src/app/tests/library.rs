@@ -68,7 +68,7 @@ fn edit_refuses_a_taken_name_but_allows_a_new_case() {
     };
     app.execute(edit("Windows Terminal"));
     assert_eq!(message_kind(&app), Some(MsgKind::Error));
-    assert!(app.find_app("Windows Terminal").unwrap().id != steam_id(&app));
+    assert_ne!(app.find_app("Windows Terminal").unwrap().id, steam_id(&app));
 
     app.execute(edit("STEAM"));
     assert_eq!(message_kind(&app), Some(MsgKind::Success));

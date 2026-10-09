@@ -44,7 +44,7 @@ impl App {
             KeyCode::Char('3') => Command::Show(Screen::Rewards),
             KeyCode::Char('4') => Command::Show(Screen::Storage),
             KeyCode::Char('5') => Command::Show(Screen::Optimize),
-            KeyCode::Char('0') | KeyCode::Char('?') => Command::Show(Screen::Help),
+            KeyCode::Char('0' | '?') => Command::Show(Screen::Help),
             KeyCode::Down | KeyCode::Char('j') => Command::SelectNext,
             KeyCode::Up | KeyCode::Char('k') => Command::SelectPrev,
             _ if self.screen == Screen::Storage => self.storage_key(key)?,

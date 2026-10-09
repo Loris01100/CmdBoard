@@ -203,11 +203,15 @@ fn migrate(conn: &mut Connection) -> anyhow::Result<usize> {
 
 fn user_version(conn: &Connection) -> rusqlite::Result<usize> {
     let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    Ok(version.max(0) as usize)
+    Ok(usize::try_from(version).unwrap_or(0))
 }
 
 fn set_user_version(conn: &Connection, version: usize) -> rusqlite::Result<()> {
-    conn.pragma_update(None, "user_version", version as i64)
+    conn.pragma_update(
+        None,
+        "user_version",
+        i64::try_from(version).unwrap_or(i64::MAX),
+    )
 }
 
 #[cfg(test)]

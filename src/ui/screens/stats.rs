@@ -21,7 +21,7 @@ use crate::ui::{
 pub fn draw(frame: &mut Frame, app: &App) {
     let theme = &app.theme;
     let stats = &app.stats;
-    let (body, command, status) = layout::screen(frame.area(), command_line::height(app));
+    let (body, command, status_area) = layout::screen(frame.area(), command_line::height(app));
     // On short terminals the history keeps the room and the charts go.
     let charts_height = if body.height >= 20 { 10 } else { 0 };
     let [summary_area, charts_area, sessions_area] = Layout::vertical([
@@ -57,7 +57,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     if charts_height > 0 {
         // The pie (`s`: per category or per app), then the heatmap on the right half;
         // narrow: heatmap only.
-        let pie = if charts_area.width >= 60 { 1 } else { 0 };
+        let pie = u16::from(charts_area.width >= 60);
         let [pie_area, activity_area] =
             Layout::horizontal([Constraint::Fill(pie), Constraint::Percentage(50)])
                 .areas(charts_area);
@@ -74,7 +74,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     render_sessions(frame, sessions_area, app);
 
     command_line::render(frame, command, app);
-    status_bar::render(frame, status, app);
+    status_bar::render(frame, status_area, app);
 }
 
 /// Share of the play time per name, as a braille pie with its legend.
@@ -103,16 +103,19 @@ fn render_pie(frame: &mut Frame, area: Rect, app: &App, title: &str, data: &[(St
     let [pie_area, legend_area] =
         Layout::horizontal([Constraint::Length(inner.height * 2 + 1), Constraint::Min(0)])
             .areas(inner);
-    let (w, h) = (pie_area.width as i32 * 2, pie_area.height as i32 * 4);
+    let (w, h) = (
+        i32::from(pie_area.width) * 2,
+        i32::from(pie_area.height) * 4,
+    );
     let (cx, cy, r) = (
-        (w - 1) as f64 / 2.0,
-        (h - 1) as f64 / 2.0,
-        w.min(h) as f64 / 2.0,
+        f64::from(w - 1) / 2.0,
+        f64::from(h - 1) / 2.0,
+        f64::from(w.min(h)) / 2.0,
     );
     let mut dots = vec![Vec::new(); slices.len()];
     for x in 0..w {
         for y in 0..h {
-            let (dx, dy) = (x as f64 - cx, y as f64 - cy);
+            let (dx, dy) = (f64::from(x) - cx, f64::from(y) - cy);
             if dx.hypot(dy) > r {
                 continue;
             }
@@ -126,13 +129,13 @@ fn render_pie(frame: &mut Frame, area: Rect, app: &App, title: &str, data: &[(St
                     turn < start
                 })
                 .unwrap_or(slices.len() - 1);
-            dots[slice].push((x as f64, y as f64));
+            dots[slice].push((f64::from(x), f64::from(y)));
         }
     }
     let pie = Canvas::default()
         .marker(Marker::Braille)
-        .x_bounds([0.0, (w - 1) as f64])
-        .y_bounds([0.0, (h - 1) as f64])
+        .x_bounds([0.0, f64::from(w - 1)])
+        .y_bounds([0.0, f64::from(h - 1)])
         .paint(|ctx| {
             for (i, coords) in dots.iter().enumerate() {
                 ctx.draw(&Points {
@@ -203,9 +206,10 @@ fn pie_slices(by_category: &[(String, u64)], max: usize) -> Vec<(Option<String>,
 }
 
 fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
+    const LABELS: usize = 3; // weekday names column
     let theme = &app.theme;
     let (daily, today) = (&app.stats.daily, app.stats.today);
-    let weekday = (today + 3).rem_euclid(7); // 0 = Monday
+    let weekday = usize::try_from((today + 3).rem_euclid(7)).unwrap_or(0); // 0 = Monday
     // Same square everywhere, the color tells the time played.
     let cell = |secs: u64| (icons::SQUARE, theme.heat(level(secs)));
 
@@ -228,18 +232,16 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
 
     // GitHub-style: one column per week, Monday on top, today bottom right, the date of
     // each Monday above. Too narrow: keep the most recent weeks.
-    const LABELS: usize = 3;
     let room = (inner.width as usize).saturating_sub(LABELS);
     let width = (room / (ACTIVITY_DAYS / 7)).clamp(2, 4);
     let weeks = (room / width).min(ACTIVITY_DAYS / 7);
     // Days back from today of a cell; `None` in the future.
-    let back =
-        |col: usize, row: i64| usize::try_from(((weeks - 1 - col) * 7) as i64 + weekday - row).ok();
+    let back = |col: usize, row: usize| ((weeks - 1 - col) * 7 + weekday).checked_sub(row);
 
     let mut header = vec![' '; LABELS + weeks * width + 5];
     let step = 6usize.div_ceil(width); // "dd/mm" and a space
     for col in (0..weeks).filter(|col| (weeks - 1 - col).is_multiple_of(step)) {
-        let (day, month) = day_month(today - back(col, 0).unwrap_or(0) as i64);
+        let (day, month) = day_month(today - i64::try_from(back(col, 0).unwrap_or(0)).unwrap_or(0));
         let start = LABELS + col * width;
         header.splice(start..start + 5, format!("{day:02}/{month:02}").chars());
     }
@@ -252,7 +254,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
     for (row, name) in names.split_whitespace().take(7).enumerate() {
         let mut spans = vec![Span::styled(format!("{name:<LABELS$}"), theme.muted())];
         for col in 0..weeks {
-            let index = back(col, row as i64).and_then(|b| daily.len().checked_sub(b + 1));
+            let index = back(col, row).and_then(|b| daily.len().checked_sub(b + 1));
             spans.push(match index {
                 None => Span::raw(" ".repeat(width)),
                 Some(i) => {

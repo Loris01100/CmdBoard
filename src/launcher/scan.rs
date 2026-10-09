@@ -135,9 +135,10 @@ fn steam_games() -> Vec<Shortcut> {
         return Vec::new();
     };
     let libraries: Vec<PathBuf> =
-        std::fs::read_to_string(steam.join(r"steamapps\libraryfolders.vdf"))
-            .map(|vdf| vdf_values(&vdf, "path").map(PathBuf::from).collect())
-            .unwrap_or_else(|_| vec![steam]);
+        std::fs::read_to_string(steam.join(r"steamapps\libraryfolders.vdf")).map_or_else(
+            |_| vec![steam],
+            |vdf| vdf_values(&vdf, "path").map(PathBuf::from).collect(),
+        );
     let mut manifests = Vec::new();
     for steamapps in libraries.iter().map(|lib| lib.join("steamapps")) {
         let Ok(entries) = std::fs::read_dir(&steamapps) else {
@@ -187,7 +188,7 @@ fn steam_game(steamapps: &Path, acf: &str) -> Option<Shortcut> {
     })
 }
 
-/// Values of `"key" "value"` lines in a Valve KeyValues text (`.vdf`, `.acf`), in order.
+/// Values of `"key" "value"` lines in a Valve `KeyValues` text (`.vdf`, `.acf`), in order.
 fn vdf_values<'a>(text: &'a str, key: &'a str) -> impl Iterator<Item = String> + 'a {
     text.lines()
         .filter_map(move |line| match quoted(line).as_slice() {

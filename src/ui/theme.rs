@@ -122,9 +122,10 @@ impl Theme {
             info: color("info")?,
             success: color("success")?,
             warning: color("warning")?,
-            caution: match slots.contains_key("caution") {
-                true => color("caution")?,
-                false => color("warning")?,
+            caution: if slots.contains_key("caution") {
+                color("caution")?
+            } else {
+                color("warning")?
             },
             error: color("error")?,
             muted: color("muted")?,
@@ -280,6 +281,8 @@ fn modifier(style: Style, modifier: Modifier, on: bool) -> Style {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write;
+
     use super::*;
 
     #[test]
@@ -366,7 +369,7 @@ mod tests {
         let mut text = String::from("name = \"T\"\n[palette]\nleaf = \"#00ff00\"\n[slots]\n");
         for slot in STYLE_SLOTS.iter().chain(COLOR_SLOTS) {
             if !slots.contains(&format!("{slot} ")) {
-                text.push_str(&format!("{slot} = \"leaf\"\n"));
+                writeln!(text, "{slot} = \"leaf\"").unwrap();
             }
         }
         text + slots

@@ -9,6 +9,7 @@ use ratatui::{
 use super::{format_duration, xp_bar};
 use crate::app::{App, Focus, Mode};
 use crate::core::xp;
+use crate::ui::layout::cells;
 
 const XP_BAR_WIDTH: usize = 8;
 
@@ -43,7 +44,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let widths = [
         Constraint::Min(12),
         Constraint::Length(4),
-        Constraint::Length(XP_BAR_WIDTH as u16),
+        Constraint::Length(cells(XP_BAR_WIDTH)),
         Constraint::Length(6),
     ];
 

@@ -207,7 +207,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
     }
     // Enough copies to fill the panel from any offset within one cycle.
     let copies = inner.width as usize / cycle + 2;
-    let offset = (app.frame_count % cycle as u64) as u16;
+    let offset = u16::try_from(app.frame_count % cycle as u64).unwrap_or(0);
     let looped: Vec<_> = spans
         .iter()
         .cycle()

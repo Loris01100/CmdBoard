@@ -9,6 +9,7 @@ use rusqlite::params;
 use super::db::Database;
 use super::models::{ClosedSession, Reward, RewardUnlocked, RuleError, SessionOutcome};
 use super::queries::unix_now;
+use super::{to_i64, to_u64};
 use crate::core::{
     rewards::{self, Facts},
     xp,
@@ -32,7 +33,7 @@ impl Database {
     pub fn checkpoint_session(&self, id: i64, secs: u64) -> anyhow::Result<()> {
         self.conn.execute(
             "UPDATE sessions SET duration_s = ?2 WHERE id = ?1 AND ended_at IS NULL",
-            params![id, secs as i64],
+            params![id, to_i64(secs)],
         )?;
         Ok(())
     }
@@ -97,7 +98,7 @@ impl Database {
         }
         self.conn.execute(
             "UPDATE sessions SET ended_at = ?2, duration_s = ?3 WHERE id = ?1",
-            params![id, ended_at, secs as i64],
+            params![id, ended_at, to_i64(secs)],
         )?;
         Ok(true)
     }
@@ -106,7 +107,7 @@ impl Database {
     pub(super) fn close_orphan_sessions(&self) -> anyhow::Result<Vec<ClosedSession>> {
         self.conn.execute(
             "DELETE FROM sessions WHERE ended_at IS NULL AND duration_s < ?1",
-            [MIN_SESSION_SECS as i64],
+            [to_i64(MIN_SESSION_SECS)],
         )?;
         let kept = self
             .conn
@@ -117,7 +118,7 @@ impl Database {
             .query_map([], |r| {
                 Ok(ClosedSession {
                     session_id: r.get(0)?,
-                    secs: r.get::<_, i64>(1)?.max(0) as u64,
+                    secs: to_u64(r.get(1)?),
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -133,7 +134,7 @@ impl Database {
         now: i64,
     ) -> anyhow::Result<SessionOutcome> {
         let streak = self.profile_at(now)?.streak_days;
-        let xp = xp::xp_for_session((secs / 60) as u32, streak);
+        let xp = xp::xp_for_session(u32::try_from(secs / 60).unwrap_or(u32::MAX), streak);
         if xp > 0 {
             self.add_session_xp(session_id, xp)?;
         }
@@ -184,12 +185,12 @@ impl Database {
     pub(super) fn add_session_xp(&self, session_id: i64, xp: u32) -> anyhow::Result<()> {
         self.conn.execute(
             "UPDATE sessions SET xp_gained = ?2 WHERE id = ?1",
-            [session_id, xp as i64],
+            [session_id, i64::from(xp)],
         )?;
         self.conn.execute(
             "UPDATE apps SET total_xp = total_xp + ?2
              WHERE id = (SELECT app_id FROM sessions WHERE id = ?1)",
-            [session_id, xp as i64],
+            [session_id, i64::from(xp)],
         )?;
         Ok(())
     }
@@ -230,9 +231,9 @@ impl Database {
             session_hour: hour as f64,
             app_hours: app_secs as f64 / 3600.0,
             app_sessions: app_sessions as f64,
-            app_level: xp::level_from_total(app_xp).0 as f64,
-            level: profile.level as f64,
-            streak_days: profile.streak_days as f64,
+            app_level: f64::from(xp::level_from_total(app_xp).0),
+            level: f64::from(profile.level),
+            streak_days: f64::from(profile.streak_days),
             total_hours: total_secs as f64 / 3600.0,
             total_sessions: total_sessions as f64,
             apps_this_week: apps_this_week as f64,

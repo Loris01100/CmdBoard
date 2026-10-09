@@ -272,7 +272,7 @@ impl App {
     }
 
     /// `r`: reads the drives, the programs and the shown folder again, its sizes measured
-    /// anew. For what changed outside CmdBoard: an uninstaller that finished, a file
+    /// anew. For what changed outside `CmdBoard`: an uninstaller that finished, a file
     /// deleted elsewhere, the Recycle Bin emptied.
     pub(super) fn refresh_storage(&mut self) {
         self.start_storage_scan();
@@ -283,7 +283,7 @@ impl App {
         self.storage.forget_sizes(dir.as_deref());
         if dir.is_some() {
             let selected = self.storage.selected_entry().map(|e| e.path.clone());
-            self.open_folder(dir, selected);
+            self.open_folder(dir, selected.as_deref());
         }
     }
 
@@ -327,13 +327,13 @@ impl App {
     pub(super) fn parent_folder(&mut self) {
         if let Some(dir) = self.storage.folders.as_ref().and_then(|f| f.dir.clone()) {
             // `C:\` has no parent: back to the drives.
-            self.open_folder(dir.parent().map(Path::to_path_buf), Some(dir));
+            self.open_folder(dir.parent().map(Path::to_path_buf), Some(&dir));
         }
     }
 
     /// Shows `dir` (`None`: the drives) and reads it in a short-lived thread. Stops the
     /// measures of the folder being left.
-    pub(super) fn open_folder(&mut self, dir: Option<PathBuf>, select: Option<PathBuf>) {
+    pub(super) fn open_folder(&mut self, dir: Option<PathBuf>, select: Option<&Path>) {
         self.storage.stop_measures();
         let entries = match &dir {
             Some(_) => Vec::new(),
@@ -344,11 +344,11 @@ impl App {
             dir: dir.clone(),
             entries,
             state: TableState::default(),
-            select: select.clone(),
+            select: select.map(Path::to_path_buf),
             cancel: Arc::new(AtomicBool::new(false)),
             progress: HashMap::new(),
         });
-        self.storage.select_entry(select.as_deref());
+        self.storage.select_entry(select);
         if let Some(dir) = dir {
             self.spawn(move || {
                 let entries = folders::list(&dir);

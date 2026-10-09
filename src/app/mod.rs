@@ -107,6 +107,11 @@ type Message = (String, MsgKind);
 /// What a command reports: a message to show, or nothing.
 type Outcome = anyhow::Result<Option<Message>>;
 
+#[expect(
+    clippy::struct_excessive_bools,
+    clippy::struct_field_names,
+    reason = "App holds the state of every screen, named after it"
+)]
 pub struct App {
     // navigation
     pub screen: Screen,
@@ -371,11 +376,11 @@ impl App {
             AppEvent::SessionEnded { app_id, secs } => self.on_session_end(app_id, secs),
             AppEvent::UpdateFinished { action, result } => self.on_update_finished(action, result),
             AppEvent::StorageScanned { disks, programs } => {
-                self.storage.on_scanned(disks, programs)
+                self.storage.on_scanned(disks, programs);
             }
             AppEvent::FolderListed { dir, entries } => self.on_folder_listed(&dir, entries),
             AppEvent::FolderProgress { path, percent } => {
-                self.storage.on_folder_progress(path, percent)
+                self.storage.on_folder_progress(path, percent);
             }
             AppEvent::FolderSized { path, size } => self.storage.on_folder_sized(path, size),
             AppEvent::Trashed { path, result } => self.on_trashed(&path, result),

@@ -100,7 +100,7 @@ impl App {
             (KeyCode::Esc, _) => self.cancel_popup(),
             (KeyCode::Down, _) if count > 0 => picker.selected = (picker.selected + 1) % count,
             (KeyCode::Up, _) if count > 0 => {
-                picker.selected = (picker.selected + count - 1) % count
+                picker.selected = (picker.selected + count - 1) % count;
             }
             (KeyCode::Enter, Some(s)) => {
                 let form =

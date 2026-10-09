@@ -9,6 +9,7 @@ use ratatui::{
 use crate::app::App;
 use crate::popup::{Form, LevelUp, Picker, Popup, RewardUnlocked};
 use crate::ui::icons;
+use crate::ui::layout::cells;
 
 const MAX_WIDTH: u16 = 64;
 
@@ -44,7 +45,7 @@ fn render_reward(frame: &mut Frame, reward: &RewardUnlocked, app: &App) {
     let area = centered(
         frame.area(),
         popup_width(frame.area()).min(50),
-        text.len() as u16 + 2,
+        cells(text.len() + 2),
     );
     let block = theme
         .panel(&t!("popup.reward_title"), true)
@@ -97,7 +98,7 @@ fn render_level_up(frame: &mut Frame, level_up: &LevelUp, app: &App) {
     let area = centered(
         frame.area(),
         popup_width(frame.area()).min(44),
-        text.len() as u16 + 2,
+        cells(text.len() + 2),
     );
     let block = theme
         .panel(&t!("popup.level_up_title"), true)
@@ -115,7 +116,7 @@ fn render_confirm(frame: &mut Frame, message: &str, app: &App) {
         .lines()
         .map(|line| line.chars().count().div_ceil(text_width).max(1))
         .sum();
-    let area = centered(frame.area(), width, message_lines as u16 + 4);
+    let area = centered(frame.area(), width, cells(message_lines + 4));
 
     let block = theme
         .panel(&t!("popup.confirm_title"), true)
@@ -161,7 +162,7 @@ fn render_picker(frame: &mut Frame, picker: &Picker, app: &App) {
     ]);
     frame.render_widget(Paragraph::new(search), Rect { height: 1, ..inner });
     frame.set_cursor_position(Position::new(
-        inner.x + (prompt.chars().count() + cursor) as u16,
+        inner.x + cells(prompt.chars().count() + cursor),
         inner.y,
     ));
 
@@ -193,7 +194,7 @@ fn render_picker(frame: &mut Frame, picker: &Picker, app: &App) {
             line
         });
     }
-    let list = Rect::new(inner.x, inner.y + 2, inner.width, rows as u16);
+    let list = Rect::new(inner.x, inner.y + 2, inner.width, cells(rows));
     frame.render_widget(Paragraph::new(lines), list.intersection(inner));
 
     if inner.height > 1 {
@@ -208,7 +209,7 @@ fn render_picker(frame: &mut Frame, picker: &Picker, app: &App) {
 
 fn render_form(frame: &mut Frame, form: &Form, app: &App) {
     let theme = &app.theme;
-    let rows = form.fields.len() as u16;
+    let rows = cells(form.fields.len());
     // Fields, blank, help (3 rows), footer, borders.
     let area = centered(frame.area(), popup_width(frame.area()), rows + 7);
     let block = theme.panel(&form.title(), true);
@@ -225,7 +226,7 @@ fn render_form(frame: &mut Frame, form: &Form, app: &App) {
         + 4; // "> " marker and " " padding, plus "*" for required fields
 
     for (i, field) in form.fields.iter().enumerate() {
-        let y = inner.y + i as u16;
+        let y = inner.y + cells(i);
         if y >= inner.bottom() {
             break;
         }
@@ -254,7 +255,7 @@ fn render_form(frame: &mut Frame, form: &Form, app: &App) {
             row,
         );
         if focused && room > 0 {
-            let x = inner.x + (label_width + cursor) as u16;
+            let x = inner.x + cells(label_width + cursor);
             frame.set_cursor_position(Position::new(x, y));
         }
     }

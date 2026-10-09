@@ -590,6 +590,8 @@ Pilotées par `Tick` et un compteur `frame_count` dans `App` :
 - **`storage/`** : `Connection::open_in_memory()`. Un trigger qui échoue vérifie qu'une fermeture de session interrompue ne laisse rien d'écrit.
 - **`app/`** : `App::with_defaults()` sur une base en mémoire, piloté par touches et lignes de commande ; un fichier de `app/tests/` par module.
 - **Architecture** : `tests/architecture.rs` (couches, taille des fichiers) et `clippy::too_many_lines` (taille des fonctions), section 2.
+- **Clippy** : le groupe `pedantic` est activé dans `Cargo.toml` (`[lints.clippy]`), donc bloquant en CI. On corrige l'avertissement ; sinon, `#[expect(clippy::…, reason = "…")]` au plus près du code. Seuls `cast_precision_loss` et `assert_is_empty` sont désactivés pour tout le projet. Les conversions qui réduisent passent par `try_from` : `storage::to_u64` et `to_i64` pour les entiers SQLite, `ui::layout::cells` pour les longueurs à l'écran.
+- **Clippy** : groupe `pedantic` activé dans `Cargo.toml` (`[lints.clippy]`), donc bloquant en CI. On corrige l’avertissement ; sinon `#[expect(clippy::…, reason = "…")]` au plus près du code. Seuls `cast_precision_loss` et `assert_is_empty` sont désactivés pour tout le projet. Les conversions passent par `try_from` (`storage::to_u64` et `to_i64` pour les entiers SQLite, `ui::layout::cells` pour les longueurs à l’écran).
 
 ---
 

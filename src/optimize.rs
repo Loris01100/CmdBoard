@@ -272,7 +272,7 @@ fn dword(root: HKEY, path: &str, name: &str) -> Option<u32> {
             RRF_RT_REG_DWORD,
             null_mut(),
             (&raw mut value).cast(),
-            &mut size,
+            &raw mut size,
         )
     };
     (status == ERROR_SUCCESS).then_some(value)

@@ -11,13 +11,18 @@ pub fn xp_for_session(duration_min: u32, streak_days: u32) -> u32 {
 }
 
 /// XP needed to go from `level` to `level + 1`.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "positive and far below u32::MAX for any reachable level"
+)]
 pub fn xp_to_next_level(level: u32) -> u32 {
     (100.0 * (level.max(1) as f32).powf(1.5)) as u32
 }
 
 /// Progress through the current level, between 0.0 and 1.0.
 pub fn level_progress(level: u32, xp: u32) -> f64 {
-    (xp as f64 / xp_to_next_level(level) as f64).clamp(0.0, 1.0)
+    (f64::from(xp) / f64::from(xp_to_next_level(level))).clamp(0.0, 1.0)
 }
 
 /// Splits accumulated XP into `(level, xp within that level)`. Levels start at 1.
@@ -49,13 +54,18 @@ pub fn streak_days(days: &[i64], today: i64) -> u32 {
 
 /// Value of an animated counter going from `from` to `to` over `frames` ticks,
 /// `elapsed` ticks after it started. Eases out: fast at first, slowing at the end.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "rounded between `from` and `to`"
+)]
 pub fn animate(from: u32, to: u32, elapsed: u64, frames: u64) -> u32 {
     if elapsed >= frames || frames == 0 {
         return to;
     }
     let t = elapsed as f64 / frames as f64;
     let eased = 1.0 - (1.0 - t).powi(3);
-    (from as f64 + (to as f64 - from as f64) * eased).round() as u32
+    (f64::from(from) + (f64::from(to) - f64::from(from)) * eased).round() as u32
 }
 
 #[cfg(test)]

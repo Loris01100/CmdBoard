@@ -7,6 +7,7 @@ use ratatui::{
 
 use crate::app::App;
 use crate::command::COMMANDS;
+use crate::ui::layout::cells;
 use crate::ui::{
     layout,
     widgets::{command_line, status_bar},
@@ -36,7 +37,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     frame.render_widget(block, body);
 
     let [keys_area, commands_area] = ratatui::layout::Layout::vertical([
-        Constraint::Length(keys().len() as u16 + 2),
+        Constraint::Length(cells(keys().len() + 2)),
         Constraint::Min(0),
     ])
     .areas(inner);

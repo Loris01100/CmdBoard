@@ -9,6 +9,7 @@ use ratatui::{
 
 use crate::app::App;
 use crate::launcher::programs::{self, Disk};
+use crate::ui::layout::cells;
 use crate::ui::{
     layout,
     theme::Theme,
@@ -21,7 +22,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let (body, command, status) = layout::screen(frame.area(), command_line::height(app));
     // On short terminals the programs keep the room and the drives go.
     let disks_height = if body.height >= 12 && !app.storage.disks.is_empty() {
-        app.storage.disks.len() as u16 + 2
+        cells(app.storage.disks.len() + 2)
     } else {
         0
     };

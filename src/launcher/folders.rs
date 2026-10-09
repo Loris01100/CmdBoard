@@ -81,7 +81,8 @@ pub fn dir_size_with_progress(
         .par_iter()
         .map(|e| {
             let size = entry_size(e, cancel);
-            let percent = ((done.fetch_add(1, Ordering::Relaxed) + 1) * 100 / children.len()) as u8;
+            let finished = done.fetch_add(1, Ordering::Relaxed) + 1;
+            let percent = u8::try_from(finished * 100 / children.len()).unwrap_or(100);
             if shown.fetch_max(percent, Ordering::Relaxed) < percent {
                 progress(percent);
             }
@@ -110,11 +111,11 @@ pub fn trash(path: &Path) -> anyhow::Result<()> {
     let mut op = SHFILEOPSTRUCTW {
         wFunc: FO_DELETE,
         pFrom: from.as_ptr(),
-        fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_WANTNUKEWARNING) as u16,
+        fFlags: u16::try_from(FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_WANTNUKEWARNING)?,
         ..Default::default()
     };
     // SAFETY: `from` outlives the call; the other pointers are null.
-    let status = unsafe { SHFileOperationW(&mut op) };
+    let status = unsafe { SHFileOperationW(&raw mut op) };
     if status != 0 || op.fAnyOperationsAborted != 0 {
         bail!(t!("storage.trash_failed", path = path.display()));
     }
@@ -122,8 +123,8 @@ pub fn trash(path: &Path) -> anyhow::Result<()> {
 }
 
 /// Whether `path` must stay out of the Recycle Bin: a drive root, anything inside
-/// Windows or CmdBoard's data (its database), or a folder holding Program Files,
-/// ProgramData, the user folder or CmdBoard itself. Paths are resolved first, so short
+/// Windows or `CmdBoard`'s data (its database), or a folder holding Program Files,
+/// `ProgramData`, the user folder or `CmdBoard` itself. Paths are resolved first, so short
 /// names, `..` and junctions do not get around it.
 pub fn is_protected(path: &Path) -> bool {
     let env = |var| std::env::var_os(var).map(PathBuf::from);

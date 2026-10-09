@@ -1,4 +1,4 @@
-//! Only one CmdBoard per Windows session: two would both track the same apps, record
+//! Only one `CmdBoard` per Windows session: two would both track the same apps, record
 //! every session twice and award its XP twice.
 
 use std::ptr::null;
@@ -11,7 +11,7 @@ use crate::launcher::programs::wide;
 /// `Local\`: one per logged-in user, who each have their own `%APPDATA%`.
 const NAME: &str = r"Local\CmdBoard.SingleInstance";
 
-/// Proof that this process is the only CmdBoard. Keep it for the life of the process;
+/// Proof that this process is the only `CmdBoard`. Keep it for the life of the process;
 /// Windows releases it on exit, crash included.
 pub struct Instance(HANDLE);
 
@@ -22,7 +22,7 @@ impl Drop for Instance {
     }
 }
 
-/// `None` when another CmdBoard is already running.
+/// `None` when another `CmdBoard` is already running.
 pub fn acquire() -> anyhow::Result<Option<Instance>> {
     acquire_named(NAME)
 }

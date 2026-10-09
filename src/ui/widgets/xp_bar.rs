@@ -4,6 +4,11 @@ use crate::core::xp;
 use crate::ui::theme::Theme;
 
 /// Text bar for table cells, e.g. "█████░░░".
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the ratio is clamped, so the result is within 0..=width"
+)]
 pub fn text(ratio: f64, width: usize) -> String {
     let filled = (ratio.clamp(0.0, 1.0) * width as f64).round() as usize;
     "█".repeat(filled) + &"░".repeat(width - filled)

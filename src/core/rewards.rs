@@ -92,6 +92,10 @@ pub fn evaluate(rule: &str, facts: &Facts) -> Result<bool, String> {
     Ok(any)
 }
 
+#[expect(
+    clippy::float_cmp,
+    reason = "a rule like `level == 10` asks for that exact value"
+)]
 fn check(condition: &[Token], facts: &Facts) -> Result<bool, String> {
     let [Token::Var(name), Token::Cmp(op), Token::Num(value)] = condition else {
         return Err(t!("rule.condition_expected"));

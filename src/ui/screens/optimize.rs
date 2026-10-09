@@ -136,6 +136,11 @@ fn draw_gaming(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_stateful_widget(table, area, &mut state);
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "rates are positive and far below u64::MAX"
+)]
 pub fn format_score(score: Score) -> String {
     let rate = |bytes: f64| t!("optimize.per_sec", size = format_size(bytes as u64));
     match score {
@@ -207,7 +212,7 @@ mod tests {
     #[test]
     fn disk_score_shows_both_rates() {
         let score = Score::Disk {
-            write: (500 << 20) as f64,
+            write: f64::from(500 << 20),
             read: (2u64 << 30) as f64,
         };
         assert_eq!(

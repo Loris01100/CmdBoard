@@ -184,7 +184,8 @@ impl Key {
         let path = wide(path);
         let mut key = null_mut();
         // SAFETY: `path` is nul-terminated, `key` receives the handle.
-        let status = unsafe { RegOpenKeyExW(root, path.as_ptr(), 0, KEY_READ | view, &mut key) };
+        let status =
+            unsafe { RegOpenKeyExW(root, path.as_ptr(), 0, KEY_READ | view, &raw mut key) };
         (status == ERROR_SUCCESS).then_some(Self(key))
     }
 
@@ -193,14 +194,14 @@ impl Key {
         let mut buf = [0u16; 256];
         let mut names = Vec::new();
         for index in 0.. {
-            let mut len = buf.len() as u32;
+            let mut len = u32::try_from(buf.len()).unwrap_or(0);
             // SAFETY: `buf` holds `len` characters; the optional outputs are null.
             let status = unsafe {
                 RegEnumKeyExW(
                     self.0,
                     index,
                     buf.as_mut_ptr(),
-                    &mut len,
+                    &raw mut len,
                     null(),
                     null_mut(),
                     null_mut(),
@@ -228,7 +229,7 @@ impl Key {
                 RRF_RT_REG_SZ,
                 null_mut(),
                 null_mut(),
-                &mut size,
+                &raw mut size,
             )
         };
         if status != ERROR_SUCCESS {
@@ -244,7 +245,7 @@ impl Key {
                 RRF_RT_REG_SZ,
                 null_mut(),
                 buf.as_mut_ptr().cast(),
-                &mut size,
+                &raw mut size,
             )
         };
         if status != ERROR_SUCCESS {
@@ -268,7 +269,7 @@ impl Key {
                 RRF_RT_REG_DWORD,
                 null_mut(),
                 (&raw mut value).cast(),
-                &mut size,
+                &raw mut size,
             )
         };
         (status == ERROR_SUCCESS).then_some(value)

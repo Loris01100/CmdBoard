@@ -10,6 +10,7 @@ use super::models::{
     ACTIVITY_DAYS, Activity, AppEntry, Category, NewApp, Profile, RewardView, SessionRow, Stats,
     Unlock,
 };
+use super::{to_i64, to_u64};
 use crate::core::xp;
 use crate::i18n;
 
@@ -68,7 +69,7 @@ impl Database {
                 total_xp,
                 level,
                 xp,
-                total_secs: r.get::<_, i64>(6)?.max(0) as u64,
+                total_secs: to_u64(r.get(6)?),
                 last_played: r.get(7)?,
                 rewards: r.get(8)?,
             })
@@ -127,7 +128,7 @@ impl Database {
     pub fn set_app_xp(&self, app_id: i64, total_xp: u32) -> anyhow::Result<()> {
         self.conn.execute(
             "UPDATE apps SET total_xp = ?2 WHERE id = ?1",
-            [app_id, total_xp as i64],
+            [app_id, i64::from(total_xp)],
         )?;
         Ok(())
     }
@@ -206,7 +207,7 @@ impl Database {
         let sessions = stmt.query_map([limit], |r| {
             Ok(Activity::Session {
                 app: r.get(0)?,
-                secs: r.get::<_, i64>(1)? as u64,
+                secs: to_u64(r.get(1)?),
                 xp: r.get(2)?,
                 at: r.get(3)?,
             })
@@ -240,7 +241,7 @@ impl Database {
                 Ok(SessionRow {
                     app: r.get(0)?,
                     started: r.get(1)?,
-                    duration_secs: r.get::<_, i64>(2)?.max(0) as u64,
+                    duration_secs: to_u64(r.get(2)?),
                     xp: r.get(3)?,
                 })
             })?
@@ -263,9 +264,7 @@ impl Database {
                  GROUP BY {group} ORDER BY secs DESC, {name}"
             ))?;
             Ok(stmt
-                .query_map([app_id], |r| {
-                    Ok((r.get(0)?, r.get::<_, i64>(1)?.max(0) as u64))
-                })?
+                .query_map([app_id], |r| Ok((r.get(0)?, to_u64(r.get(1)?))))?
                 .collect::<Result<Vec<_>, _>>()?)
         };
         let by_category = totals("c.name", "c.id")?;
@@ -290,14 +289,14 @@ impl Database {
         })?;
         for row in rows {
             let (d, secs) = row?;
-            daily[ACTIVITY_DAYS - 1 - (today - d) as usize] = secs.max(0) as u64;
+            daily[ACTIVITY_DAYS - 1 - usize::try_from(today - d)?] = to_u64(secs);
         }
 
         Ok(Stats {
             sessions,
             session_count,
-            total_secs: total_secs.max(0) as u64,
-            longest_secs: longest_secs.max(0) as u64,
+            total_secs: to_u64(total_secs),
+            longest_secs: to_u64(longest_secs),
             by_category,
             by_app,
             daily,
@@ -357,7 +356,7 @@ impl Database {
 pub fn unix_now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs() as i64)
+        .map_or(0, |d| to_i64(d.as_secs()))
 }
 
 #[cfg(test)]

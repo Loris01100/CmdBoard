@@ -94,15 +94,12 @@ fn fill(template: &str, args: &[(&str, &dyn Display)]) -> String {
         let value = after
             .find('}')
             .and_then(|close| Some((close, args.iter().find(|(n, _)| *n == &after[..close])?)));
-        match value {
-            Some((close, (_, value))) => {
-                out.push_str(&value.to_string());
-                rest = &after[close + 1..];
-            }
-            None => {
-                out.push('{');
-                rest = after;
-            }
+        if let Some((close, (_, value))) = value {
+            out.push_str(&value.to_string());
+            rest = &after[close + 1..];
+        } else {
+            out.push('{');
+            rest = after;
         }
     }
     out.push_str(rest);
@@ -152,13 +149,13 @@ fn system() -> Option<String> {
     // SAFETY: the buffer is as long as we say.
     let len = unsafe {
         LCIDToLocaleName(
-            GetUserDefaultUILanguage() as u32,
+            u32::from(GetUserDefaultUILanguage()),
             name.as_mut_ptr(),
-            name.len() as i32,
+            i32::try_from(name.len()).ok()?,
             0,
         )
     };
-    let name = String::from_utf16_lossy(name.get(..(len as usize).checked_sub(1)?)?);
+    let name = String::from_utf16_lossy(name.get(..usize::try_from(len).ok()?.checked_sub(1)?)?);
     Some(name.split('-').next()?.to_lowercase())
 }
 
@@ -192,7 +189,7 @@ mod tests {
             .skip(1)
             .filter_map(|s| s.split_once('}').map(|(name, _)| name))
             .collect();
-        names.sort();
+        names.sort_unstable();
         names
     }
 
