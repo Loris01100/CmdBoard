@@ -1,12 +1,17 @@
-//! Installed apps, from the Steam and Epic libraries and the Start Menu and Desktop
-//! shortcuts (`.lnk`, and `.url` for games). Feeds the picker of the "add app" form.
+//! Installed apps, from the Steam and Epic libraries, the other launchers and the Store
+//! (`stores`), and the Start Menu and Desktop shortcuts (`.lnk`, and `.url` for games).
+//! Feeds the picker of the "add app" form.
 
 use std::path::{Path, PathBuf};
 
 use rayon::prelude::*;
 use serde::Deserialize;
+use windows_sys::Win32::System::Registry::HKEY_CURRENT_USER;
 
 use super::launch::watch_exe_for;
+use super::programs::wide;
+use super::registry::Key;
+use super::stores;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Shortcut {
@@ -21,10 +26,19 @@ pub struct Shortcut {
 /// Every shortcut found, sorted by name, without duplicates or uninstallers.
 /// Library games come first so they win over a `.url` of the same name (no exe).
 pub fn scan() -> Vec<Shortcut> {
-    let (mut found, (epic, shortcuts)) =
-        rayon::join(steam_games, || rayon::join(epic_games, shortcuts));
-    found.extend(epic);
-    found.extend(shortcuts);
+    let sources: [fn() -> Vec<Shortcut>; 6] = [
+        steam_games,
+        epic_games,
+        stores::gog_games,
+        stores::ubisoft_games,
+        stores::store_apps,
+        shortcuts,
+    ];
+    // Each source in parallel; `collect` keeps their order.
+    let mut found: Vec<Shortcut> = sources
+        .par_iter()
+        .flat_map_iter(|source| source())
+        .collect();
     // Stable sort: dedup keeps the library game.
     found.sort_by_key(|s| s.name.to_lowercase());
     found.dedup_by_key(|s| s.name.to_lowercase());
@@ -164,13 +178,8 @@ fn steam_games() -> Vec<Shortcut> {
 }
 
 fn steam_dir() -> Option<PathBuf> {
-    let out = std::process::Command::new("reg")
-        .args(["query", r"HKCU\Software\Valve\Steam", "/v", "SteamPath"])
-        .output()
-        .ok()?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    let path = text.lines().find_map(|l| l.split_once("REG_SZ"))?.1.trim();
-    Some(PathBuf::from(path))
+    let key = Key::open(HKEY_CURRENT_USER, r"Software\Valve\Steam", 0)?;
+    key.string(&wide(""), "SteamPath").map(PathBuf::from)
 }
 
 fn steam_game(steamapps: &Path, acf: &str) -> Option<Shortcut> {
@@ -268,7 +277,7 @@ fn epic_game(json: &str) -> Option<Shortcut> {
 /// File name of a Steam game's exe, which the manifest does not record.
 /// ponytail: guesses the largest exe up to three folders deep (Unreal games keep the real
 /// one in `Binaries\Win64`); a wrong guess is fixed in the form.
-fn main_exe(dir: &Path) -> Option<String> {
+pub(super) fn main_exe(dir: &Path) -> Option<String> {
     fn visit(dir: &Path, depth: u8, best: &mut Option<(u64, String)>) {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
@@ -300,7 +309,7 @@ fn main_exe(dir: &Path) -> Option<String> {
     best.map(|(_, name)| name)
 }
 
-fn is_noise(name: &str) -> bool {
+pub(super) fn is_noise(name: &str) -> bool {
     let name = name.to_lowercase();
     ["uninstall", "désinstall", "desinstall"]
         .iter()
