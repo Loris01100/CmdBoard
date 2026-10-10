@@ -232,4 +232,20 @@ mod tests {
             assert!(Facts::default().get(name).is_some(), "{name}");
         }
     }
+
+    proptest::proptest! {
+        /// A rule typed by the user is evaluated or rejected, never a panic.
+        #[test]
+        fn any_rule_text_is_handled(rule in r"[a-z_ 0-9.<>=!&|()]{0,40}|\PC{0,40}") {
+            let _ = evaluate(&rule, &facts());
+        }
+
+        /// `x >= n` and `x < n` always disagree. Rules have no negative numbers: facts are >= 0.
+        #[test]
+        fn opposite_conditions_disagree(n in 0f64..1e6) {
+            let ge = evaluate(&format!("level >= {n}"), &facts()).unwrap();
+            let lt = evaluate(&format!("level < {n}"), &facts()).unwrap();
+            proptest::prop_assert_ne!(ge, lt);
+        }
+    }
 }

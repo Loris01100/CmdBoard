@@ -118,4 +118,35 @@ mod tests {
         assert_eq!(streak_days(&[9, 8], 10), 2); // nothing yet today: streak still alive
         assert_eq!(streak_days(&[8, 7], 10), 0);
     }
+
+    proptest::proptest! {
+        /// Levels split the total exactly: the XP of the levels passed plus what is left
+        /// gives the total back, and what is left is not enough for the next level.
+        #[test]
+        fn level_from_total_splits_the_total(total in proptest::num::u32::ANY) {
+            let (level, rest) = level_from_total(total);
+            let passed: u64 = (1..level).map(|l| u64::from(xp_to_next_level(l))).sum();
+            proptest::prop_assert_eq!(passed + u64::from(rest), u64::from(total));
+            proptest::prop_assert!(rest < xp_to_next_level(level));
+        }
+
+        /// More XP never means a lower level.
+        #[test]
+        fn level_never_drops(a in proptest::num::u32::ANY, b in proptest::num::u32::ANY) {
+            let (low, high) = (a.min(b), a.max(b));
+            proptest::prop_assert!(level_from_total(low).0 <= level_from_total(high).0);
+        }
+
+        /// The counter stays between its two values, whatever the timing.
+        #[test]
+        fn animate_stays_between_ends(
+            from in proptest::num::u32::ANY,
+            to in proptest::num::u32::ANY,
+            elapsed in 0u64..200,
+            frames in 0u64..100,
+        ) {
+            let value = animate(from, to, elapsed, frames);
+            proptest::prop_assert!((from.min(to)..=from.max(to)).contains(&value));
+        }
+    }
 }

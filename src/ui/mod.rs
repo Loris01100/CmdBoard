@@ -108,6 +108,32 @@ mod tests {
         assert!(!render(80).contains("Détails"));
     }
 
+    /// Whole screens at a common size, compared with `src/ui/snapshots/`. Only screens
+    /// that do not depend on the date, the drives or the machine's speed.
+    /// After a deliberate change: `cargo insta review` (or `INSTA_UPDATE=always`).
+    #[test]
+    fn screens_match_snapshots() {
+        use crate::app::Mode;
+        use crate::command::Command;
+        use crate::popup::Popup;
+        let mut app = App::with_defaults();
+        for (name, screen) in [
+            ("dashboard", Screen::Dashboard),
+            ("rewards", Screen::Rewards),
+            ("help", Screen::Help),
+        ] {
+            app.screen = screen;
+            insta::assert_snapshot!(name, screen_text(&app, 100, 30));
+        }
+
+        app.screen = Screen::Dashboard;
+        app.mode = Mode::Popup(Popup::Confirm {
+            message: "Supprimer Steam ?".into(),
+            command: Command::Quit,
+        });
+        insta::assert_snapshot!("confirm_popup", screen_text(&app, 100, 30));
+    }
+
     fn screen_text(app: &App, w: u16, h: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
         terminal.draw(|f| draw(f, app)).unwrap();

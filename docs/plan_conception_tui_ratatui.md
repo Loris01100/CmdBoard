@@ -584,9 +584,9 @@ Pilotées par `Tick` et un compteur `frame_count` dans `App` :
 
 ## 15. Tests
 
-- **`core/`** : tests unitaires (XP, niveaux, règles).
-- **`command/parser`** : tests de table (entrée → `Command`).
-- **`ui/`** : `TestBackend` de ratatui, ou snapshots avec `insta`.
+- **`core/`** : tests unitaires (XP, niveaux, règles), et propriétés avec `proptest` : le découpage de l'XP en niveaux redonne le total, un niveau ne baisse jamais, une règle saisie ne fait jamais paniquer.
+- **`command/parser`** : tests de table (entrée → `Command`), et propriétés avec `proptest` : tout argument sans guillemet survit aux guillemets, un chemin Windows garde ses antislashs, aucune saisie ne fait paniquer.
+- **`ui/`** : `TestBackend` de ratatui, et snapshots `insta` des écrans entiers (`src/ui/snapshots/`) qui ne dépendent ni de la date, ni des disques, ni de la machine. Après un changement voulu : `cargo insta review`.
 - **`storage/`** : `Connection::open_in_memory()`. Un trigger qui échoue vérifie qu'une fermeture de session interrompue ne laisse rien d'écrit.
 - **`app/`** : `App::with_defaults()` sur une base en mémoire, piloté par touches et lignes de commande ; un fichier de `app/tests/` par module.
 - **Architecture** : `tests/architecture.rs` (couches, taille des fichiers) et `clippy::too_many_lines` (taille des fonctions), section 2.

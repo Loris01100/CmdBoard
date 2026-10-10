@@ -1,0 +1,2 @@
+# insta snapshots: keep the exact text on every checkout.
+*.snap text eol=lf

@@ -52,3 +52,7 @@ pedantic = { level = "warn", priority = -1 }
 cast_precision_loss = "allow"
 # `assert!(x.is_empty())` reads better than comparing with a typed empty array.
 assert_is_empty = "allow"
+
+[dev-dependencies]
+insta = "1.49.0"
+proptest = "1.11.0"

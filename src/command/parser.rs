@@ -336,4 +336,27 @@ mod tests {
             [s("a"), s(r"C:\x\y.exe"), s(""), s("b c")]
         );
     }
+
+    proptest::proptest! {
+        /// Any argument without a double quote survives being quoted: spaces,
+        /// backslashes, empty text, accents.
+        #[test]
+        fn quoted_args_round_trip(args in proptest::collection::vec(r#"[^"]*"#, 0..6)) {
+            let line: Vec<String> = args.iter().map(|a| format!("\"{a}\"")).collect();
+            proptest::prop_assert_eq!(split_args(&line.join(" ")).unwrap(), args);
+        }
+
+        /// A Windows path without spaces needs no quotes and keeps every backslash.
+        #[test]
+        fn launch_keeps_windows_paths(path in r"[A-Z]:(\\[\w.\-]{1,12}){0,5}") {
+            let command = parse(&format!("launch {path}")).unwrap();
+            proptest::prop_assert_eq!(command, Command::Launch { app: path });
+        }
+
+        /// Whatever is typed, the parser answers with a command or an error.
+        #[test]
+        fn never_panics(input in r#"[a-z :,"\\ ]{0,40}|\PC{0,40}"#) {
+            let _ = parse(&input);
+        }
+    }
 }

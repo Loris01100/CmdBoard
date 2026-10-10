@@ -1,0 +1,34 @@
+---
+source: src/ui/mod.rs
+expression: "screen_text(&app, 100, 30)"
+---
+╭ Récompenses (0/13) ──────────────────────────────────────────────────────────────────────────────╮
+│     Nom              Description                                                     Débloquée   │
+│> 🔒  Premiers pas     Terminer une première session                                   —           │
+│  🔒  Marathon         Jouer 3 h d'affilée                                             —           │
+│  🔒  Noctambule       Commencer une session entre minuit et 5 h                       —           │
+│  🔒  Habitué          Cumuler 10 h sur une app                                        —           │
+│  🔒  Passionné        Cumuler 50 h sur une app                                        —           │
+│  🔒  Vétéran          Atteindre le niveau 5 sur une app                               —           │
+│  🔒  Régulier         Jouer 3 jours de suite                                          —           │
+│  🔒  Assidu           Jouer 7 jours de suite                                          —           │
+│  🔒  Touche-à-tout    Lancer 5 apps différentes en 7 jours                            —           │
+│  🔒  Centurion        Cumuler 100 h au total                                          —           │
+│  🔒  Expert           Atteindre le niveau global 10                                   —           │
+│  🔒  Inarrêtable      Jouer 30 jours de suite                                         —           │
+│  🔒  Légende          Jouer 365 jours de suite                                        —           │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭ Détail ──────────────────────────────────────────────────────────────────────────────────────────╮
+│Premiers pas  ·  globale                                                                          │
+│Condition : total_sessions >= 1                                                                   │
+│Débloquée : verrouillée                                                                           │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+                                                                                                    
+ j/k naviguer   : commande   0-5 écrans   q quitter

@@ -1,0 +1,34 @@
+---
+source: src/ui/mod.rs
+expression: "screen_text(&app, 100, 30)"
+---
+╭ Aide ────────────────────────────────────────────────────────────────────────────────────────────╮
+│Touches                                                                                           │
+│  j/k ↑↓      naviguer                                                                            │
+│  Tab ←→ h/l  changer de panneau                                                                  │
+│  Entrée      lancer l'app sélectionnée                                                           │
+│  a / e / m / dajouter / modifier / déplacer / supprimer (app ou catégorie vide)                  │
+│  s           changer le tri des apps (nom, XP, récent, temps) ; Stats : camembert par catégorie o│
+│  /           chercher une app dans toutes les catégories (Entrée : y aller)                      │
+│  Tab s d f r Stockage : Tab/←→ disque, s plus petits/plus gros d'abord, d/Suppr désinstalle, f do│
+│  Tab n o     Optimisation : Tab tests ↔ Gaming, Entrée lance le test ou bascule le réglage, n lég│
+│  :           ligne de commande (↑↓ historique, Tab compléter, Esc annuler)                       │
+│  1-5  0 ?    Dashboard, Stats, Récompenses, Stockage, Optimisation ; 0 ou ? : Aide               │
+│  q  Ctrl-C   quitter                                                                             │
+│                                                                                                  │
+│Commandes                                                                                         │
+│  :launch <app>                     (l)      Lance une app                                        │
+│  :add [<nom> <cible> [catégorie]]           Ajoute une app (exe ou URI). Sans argument : ouvre le│
+│  :move <app> [catégorie]           (mv)     Déplace une app. Sans catégorie : ouvre le formulaire│
+│  :edit <app>                                Ouvre le formulaire pour changer le nom, la cible, la│
+│  :rm <app>                         (delete) Supprime une app et son historique, après confirmatio│
+│  :rmcat <catégorie>                         Supprime une catégorie vide, après confirmation      │
+│  :stats [app]                               Statistiques de toutes les apps, ou d'une seule      │
+│  :clear sessions|stats                      Efface l'historique des sessions, ou toutes les stats│
+│  :theme [nom]                               Change de thème (mémorisé). Sans nom : liste les thèm│
+│  :sort [name|xp|recent|time]                Trie les apps (mémorisé). Sans argument : tri actuel │
+│  :lang [en|fr|pt]                           Change de langue (mémorisée). Sans argument : liste l│
+│  :group <nom> <app>, <app>…                 Crée (ou remplace) un alias :<nom> qui lance ces apps│
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+                                                                                                    
+ : commande   0-5 écrans   q quitter
