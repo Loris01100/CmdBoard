@@ -511,7 +511,7 @@ pub struct Theme {
 ### Chargement
 
 - **Intégrés** : les 4 saveurs Catppuccin et `terminal`, embarqués via `include_str!`. Pas de dépendance au crate `catppuccin` : thèmes intégrés et thèmes utilisateur passent par le même parseur.
-- **Utilisateur** : `%APPDATA%\CmdBoard\themes\*.toml`. Le nom d'un thème est celui du fichier sans extension, en minuscules (`name` dans le fichier est le nom affiché). À nom égal, le fichier utilisateur remplace le thème intégré.
+- **Utilisateur** : `%APPDATA%\CmdBoard\themes\*.toml`. Le nom d'un thème est celui du fichier sans extension, en minuscules (`name` dans le fichier est le nom affiché). À nom égal, le fichier utilisateur remplace le thème intégré. Un nom contenant `\`, `/`, `:` ou `..` est refusé (« thème inconnu ») : il désignerait un fichier hors de ce dossier.
 - **Erreurs** : un slot manquant ou une référence inconnue affiche une erreur claire dans la ligne de message, et le thème courant est conservé.
 - `:sort [name|xp|recent|time]` trie le panneau Applications (nom croissant, sinon le plus grand ou le plus récent d'abord, égalités par nom). Mémorisé dans `config.toml` (`sort = "..."`), affiché dans le titre du panneau. La recherche `/` garde son propre ordre (meilleur résultat d'abord).
 - `:theme` liste les thèmes, `:theme catppuccin-latte` en change. Le choix est mémorisé dans `%APPDATA%\CmdBoard\config.toml` (`theme = "..."`, les autres clés du fichier sont conservées). Au démarrage, un thème configuré introuvable ou cassé affiche l'erreur et bascule sur le thème par défaut. Les erreurs de `config.toml`, du thème et de `commands.toml` sont réunies dans la ligne de message.

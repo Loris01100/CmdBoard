@@ -191,6 +191,10 @@ pub fn available(user_dir: Option<&Path>) -> Vec<String> {
 /// built-in theme. Errors name the file and the problem; the caller keeps its theme.
 pub fn load(name: &str, user_dir: Option<&Path>) -> Result<Theme, String> {
     let name = name.trim().to_lowercase();
+    // A name, not a path: `..\x`, `C:x` or `\\server\x` would read outside the folder.
+    if name.contains(['\\', '/', ':']) || name.contains("..") {
+        return Err(t!("theme.error", name, error = t!("theme.unknown")));
+    }
     if let Some(dir) = user_dir {
         let path = dir.join(format!("{name}.toml"));
         match std::fs::read_to_string(&path) {
@@ -447,6 +451,17 @@ mod tests {
             load("broken", Some(&dir)),
             Err("thème broken.toml : section [slots] manquante".into())
         );
+
+        // Only names inside the folder: not the theme one level up.
+        let inner = dir.join("inner");
+        std::fs::create_dir_all(&inner).unwrap();
+        let outside = dir.join("Terminal.toml").display().to_string();
+        let outside = outside.trim_end_matches(".toml");
+        for name in [r"..\terminal", "../terminal", outside, r"c:terminal"] {
+            let error = load(name, Some(&inner)).unwrap_err();
+            assert!(error.contains("thème inconnu"), "{name}: {error}");
+        }
+        assert!(load("terminal", Some(&inner)).is_ok()); // the built-in one
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
