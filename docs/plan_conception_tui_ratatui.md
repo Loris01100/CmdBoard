@@ -139,6 +139,8 @@ goals(id, kind, app_id NULL, category_id NULL, minutes, period)
 - Noms de catégories et d'apps uniques sans tenir compte de la casse. Une catégorie qui contient des apps ne peut pas être supprimée. Supprimer une app supprime ses sessions et récompenses.
 - Une base neuve reçoit un contenu de départ (catégories Jeux, Dev, Outils et quelques apps Windows) pour avoir de quoi lancer dès le premier démarrage.
 - **Migrations** : le schéma est versionné via `PRAGMA user_version`. Au démarrage, `storage/db.rs` applique dans l'ordre les migrations manquantes. Une mise à jour de l'app ne doit jamais perdre les données de `%APPDATA%` : on ne modifie jamais une migration déjà publiée, on en ajoute une nouvelle.
+- **Journal** : à chaque ouverture, `journal_mode = WAL` (conservé dans le fichier, d'où `cmdboard.db-wal` et `-shm` à côté) et `synchronous = NORMAL` : la sauvegarde d'une session en cours chaque minute ne coûte plus plusieurs synchronisations disque ; une coupure de courant peut perdre les derniers commits, jamais la base. Un système de fichiers sans WAL garde le journal classique. `:export` passe par SQL, pas par une copie du fichier.
+- Index `sessions_ended_at` (migration v8) : le temps joué du jour et de la semaine (`Database::usage`, chaque minute) compare `ended_at` aux heures Unix du minuit local du jour et du lundi, au lieu d'un numéro de jour calculé sur chaque session, et ne lit donc que les sessions récentes.
 
 ---
 

@@ -21,6 +21,14 @@ fn monday(column: &str) -> String {
     )
 }
 
+/// Unix time of the local midnight starting the day of a Unix time column or parameter,
+/// moved by the date `modifiers` (each preceded by a comma).
+fn midnight(column: &str, modifiers: &str) -> String {
+    format!(
+        "CAST(strftime('%s', date({column}, 'unixepoch', 'localtime'{modifiers}), 'utc') AS INTEGER)"
+    )
+}
+
 fn target_ids(target: GoalTarget) -> (Option<i64>, Option<i64>) {
     match target {
         GoalTarget::All => (None, None),
@@ -98,20 +106,27 @@ impl Database {
     }
 
     pub(super) fn usage_at(&self, now: i64) -> anyhow::Result<Usage> {
-        let (day_number, week): (i64, i64) = self.conn.query_row(
-            &format!("SELECT {}, {}", day("?1"), monday("?1")),
+        // Day numbers for `Usage`, and the Unix times at which today and this week began,
+        // so the sessions are found by `ended_at` through its index.
+        let (day_number, week, day_start, week_start): (i64, i64, i64, i64) = self.conn.query_row(
+            &format!(
+                "SELECT {}, {}, {}, {}",
+                day("?1"),
+                monday("?1"),
+                midnight("?1", ""),
+                midnight("?1", ", 'weekday 0', '-6 days'"),
+            ),
             [now],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )?;
-        let mut stmt = self.conn.prepare(&format!(
-            "SELECT app_id, SUM(CASE WHEN {ended} = ?1 THEN duration_s ELSE 0 END),
+        let mut stmt = self.conn.prepare(
+            "SELECT app_id, SUM(CASE WHEN ended_at >= ?1 THEN duration_s ELSE 0 END),
                 SUM(duration_s)
-             FROM sessions WHERE ended_at IS NOT NULL AND {ended} >= ?2
+             FROM sessions WHERE ended_at >= ?2
              GROUP BY app_id",
-            ended = day("ended_at"),
-        ))?;
+        )?;
         let by_app = stmt
-            .query_map([day_number, week], |r| {
+            .query_map([day_start, week_start], |r| {
                 Ok((r.get(0)?, (to_u64(r.get(1)?), to_u64(r.get(2)?))))
             })?
             .collect::<Result<_, _>>()?;
@@ -222,5 +237,41 @@ mod tests {
         // On a Monday, the week starts today.
         let monday = db.usage_at(noon("2026-10-05")).unwrap();
         assert_eq!(monday.day, monday.week);
+    }
+
+    #[test]
+    fn usage_starts_at_local_midnight() {
+        let (db, _, app) = db_with_app();
+        let local = |time: &str| -> i64 {
+            db.conn
+                .query_row(
+                    "SELECT CAST(strftime('%s', ?1, 'utc') AS INTEGER)",
+                    [time],
+                    |r| r.get(0),
+                )
+                .unwrap()
+        };
+        for (ended, secs) in [
+            ("2026-10-04 23:59:59", 60u64), // Sunday: last week
+            ("2026-10-05 00:00:00", 120),   // Monday midnight: this week
+            ("2026-10-07 23:59:59", 240),   // Wednesday: this week, not today
+            ("2026-10-08 00:00:00", 480),   // Thursday midnight: today
+        ] {
+            let start = local(ended) - i64::try_from(secs).unwrap();
+            let id = db.start_session(app, start).unwrap();
+            db.close_session(id, local(ended), secs).unwrap();
+        }
+        let usage = db.usage_at(local("2026-10-08 12:00:00")).unwrap();
+        assert_eq!(usage.by_app[&app], (480, 840));
+
+        let plan: String = db
+            .conn
+            .query_row(
+                "EXPLAIN QUERY PLAN SELECT * FROM sessions WHERE ended_at >= 0",
+                [],
+                |r| r.get(3),
+            )
+            .unwrap();
+        assert!(plan.contains("sessions_ended_at"), "{plan}");
     }
 }

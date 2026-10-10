@@ -102,6 +102,9 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE apps ADD COLUMN launch_args TEXT;
     ALTER TABLE apps ADD COLUMN pin INTEGER CHECK (pin BETWEEN 1 AND 9);
     CREATE UNIQUE INDEX apps_pin ON apps(pin) WHERE pin IS NOT NULL;",
+    // v8: time played this day and week (`usage`, every minute) reads only recent
+    // sessions.
+    "CREATE INDEX sessions_ended_at ON sessions(ended_at);",
 ];
 
 pub struct Database {
@@ -142,6 +145,13 @@ impl Database {
 
     fn init(mut conn: Connection) -> anyhow::Result<(Self, usize)> {
         conn.pragma_update(None, "foreign_keys", true)?;
+        // A write-ahead log, synced at checkpoints rather than at each commit: the save
+        // of a running session every minute costs one write instead of several syncs. A
+        // power cut may lose the last commits, never the database. The mode stays in
+        // the file; an in-memory database keeps its own, and a file system without WAL
+        // support keeps the rollback journal.
+        conn.pragma_update_and_check(None, "journal_mode", "WAL", |_| Ok(()))?;
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
         let previous_version = migrate(&mut conn)?;
         Ok((Self { conn }, previous_version))
     }
@@ -311,7 +321,14 @@ mod tests {
         let count = |db: &Database| db.apps().unwrap().len();
         let first = count(&Database::open(&path).unwrap());
         assert!(first > 0);
-        assert_eq!(count(&Database::open(&path).unwrap()), first);
+        let db = Database::open(&path).unwrap();
+        assert_eq!(count(&db), first);
+        let mode: String = db
+            .conn
+            .pragma_query_value(None, "journal_mode", |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode, "wal");
+        drop(db);
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
