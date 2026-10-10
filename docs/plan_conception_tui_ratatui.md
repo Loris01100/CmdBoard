@@ -678,7 +678,7 @@ chrono = "0.4"
 anyhow = "1"
 directories = "6"
 fuzzy-matcher = "0.3"
-self_update = { version = "1.3", default-features = false, features = ["github", "ureq", "rustls", "archive-zip", "compression-zip-deflate"] }
+self_update = { version = "1.3", default-features = false, features = ["github", "ureq", "rustls", "archive-zip", "compression-zip-deflate", "signatures"] }
 windows-sys = { version = "0.61", features = ["Win32_Globalization", "Win32_System_Registry", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }  # langue de Windows ; registre et ShellExecute (écran Stockage)
 ```
 
@@ -736,7 +736,15 @@ Deux canaux, selon le mode d'installation :
 
 1. Interroge la dernière GitHub Release et la compare à `env!("CARGO_PKG_VERSION")`.
 2. Si l'exécutable est sous `Program Files` (MSI ou winget), ne remplace rien et affiche `winget upgrade CmdBoard`. Remplacer l'exe exigerait les droits admin et désynchroniserait winget.
-3. Sinon, télécharge l'archive Windows et remplace l'exe en cours. Windows verrouille un exe en cours d'exécution : `self_update` contourne ce verrou via `self_replace`. Un message demande ensuite de relancer l'app.
+3. Sinon, télécharge l'archive Windows, vérifie sa signature (ci-dessous) et remplace l'exe en cours. Windows verrouille un exe en cours d'exécution : `self_update` contourne ce verrou via `self_replace`. Un message demande ensuite de relancer l'app.
+
+**Signature du `.zip`** : HTTPS prouve seulement que l'archive vient de GitHub. Un compte ou un workflow compromis pourrait publier une release piégée, que `:update` installerait chez tous les utilisateurs. Le `.zip` est donc signé avec [zipsign](https://github.com/Kijewski/zipsign) (ed25519), et `:update` refuse toute archive qu'aucune clé de `VERIFYING_KEYS` n'a signée (fonctionnalité `signatures` de `self_update`).
+
+- La clé publique (32 octets bruts) est `src/update.pub`, incluse dans l'exe par `include_bytes!`.
+- La clé privée ne va jamais dans le dépôt (`*.key` est ignoré). Elle est gardée hors ligne, et sa copie en base64 est le secret `ZIPSIGN_KEY` du dépôt.
+- Le job `host` de `release.yml` signe le `.zip` juste avant `gh release create` (`zipsign sign zip`, contexte = nom du fichier, celui sous lequel `self_update` le télécharge), le vérifie, puis recalcule son empreinte dans `<zip>.sha256`, `sha256.sum` et `dist-manifest.json`. Sans le secret, le job échoue plutôt que de publier une release que `:update` refuserait.
+- Rotation : signer avec l'ancienne et la nouvelle clé pendant une transition, et lister les deux dans `VERIFYING_KEYS`.
+- Le MSI n'est pas concerné : winget vérifie l'empreinte SHA-256 de son manifeste, relu dans `winget-pkgs`.
 
 Le téléchargement tourne dans un thread temporaire qui renvoie `AppEvent::UpdateFinished` : l'UI ne bloque jamais. Une vérification passive au démarrage (au plus une fois par jour, désactivable dans `config.toml`) affiche « vX.Y disponible » dans la barre de statut, sans rien installer.
 

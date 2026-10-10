@@ -226,6 +226,9 @@ mod tests {
                     walk(&path, missing);
                     continue;
                 }
+                if path.extension().is_none_or(|ext| ext != "rs") {
+                    continue; // snapshots, the update key…
+                }
                 let text = std::fs::read_to_string(&path).unwrap();
                 for (at, _) in text.match_indices("t!(\"") {
                     // Not the end of `format!("` and the like.

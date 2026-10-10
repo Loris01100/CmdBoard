@@ -269,6 +269,33 @@ jobs:
         run: |
           # Remove the granular manifests
           rm -f artifacts/*-dist-manifest.json
+      # `:update` only installs a zip signed with the key in src/update.pub (plan section 18).
+      # ZIPSIGN_KEY is the base64 of the private key; without it the release would be one
+      # `:update` refuses, so the job fails instead.
+      - name: Sign the update zip
+        env:
+          ZIPSIGN_KEY: ${{ secrets.ZIPSIGN_KEY }}
+          ZIP: cmdboard-x86_64-pc-windows-msvc.zip
+        run: |
+          if [ -z "$ZIPSIGN_KEY" ]; then
+            echo "::error::The ZIPSIGN_KEY secret is missing: :update would refuse this release"
+            exit 1
+          fi
+          cargo install zipsign --version 0.2.1 --locked
+          KEY="$RUNNER_TEMP/update.key"
+          echo "$ZIPSIGN_KEY" | base64 --decode > "$KEY"
+          zipsign sign zip -f "artifacts/$ZIP" "$KEY"
+          rm -f "$KEY"
+          zipsign verify zip "artifacts/$ZIP" src/update.pub
+
+          # dist's checksums are of the unsigned zip
+          cd artifacts
+          SUM=$(sha256sum "$ZIP" | cut -d' ' -f1)
+          echo "$SUM *$ZIP" > "$ZIP.sha256"
+          sed -i "s|^[0-9a-f]\{64\} \*$ZIP\$|$SUM *$ZIP|" sha256.sum
+          jq --arg zip "$ZIP" --arg sum "$SUM" '.artifacts[$zip].checksums.sha256 = $sum' dist-manifest.json > manifest.tmp
+          mv manifest.tmp dist-manifest.json
+          sha256sum -c sha256.sum
       - name: Create GitHub Release
         env:
           PRERELEASE_FLAG: "${{ fromJson(steps.host.outputs.manifest).announcement_is_prerelease && '--prerelease' || '' }}"

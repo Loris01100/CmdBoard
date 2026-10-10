@@ -18,6 +18,11 @@ const CHECK_EVERY_SECS: i64 = 24 * 3600;
 /// The archive `dist` publishes for us; the `.msi` and `.sha256` assets must not match.
 const ZIP_ASSET: &str = "cmdboard-x86_64-pc-windows-msvc.zip";
 
+/// Public half of the key the release job signs `ZIP_ASSET` with (zipsign, ed25519). A zip
+/// that no listed key signed is refused, even when it comes from our GitHub releases.
+/// Rotating: sign with both keys for a while and list both here.
+const VERIFYING_KEYS: [self_update::VerifyingKey; 1] = [*include_bytes!("update.pub")];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     /// Passive check at startup: only reports a newer version.
@@ -54,6 +59,7 @@ fn run(action: Action) -> anyhow::Result<Outcome> {
         .bin_name("cmdboard")
         .current_version(CURRENT)
         .asset_matcher(|assets| assets.iter().find(|a| a.name() == ZIP_ASSET).cloned())
+        .verifying_keys(VERIFYING_KEYS)
         // We own the terminal: no output, no stdin prompt.
         .show_output(false)
         .show_download_progress(false)
@@ -126,6 +132,22 @@ mod tests {
             Path::new(r"C:\x\cmdboard.exe"),
             &[PathBuf::new()]
         ));
+    }
+
+    #[test]
+    fn unsigned_releases_are_refused() {
+        use self_update::zipsign_api::verify::collect_keys;
+        assert!(collect_keys(VERIFYING_KEYS.map(Ok)).is_ok()); // a valid ed25519 key
+
+        // An empty zip, under the asset's name: the signature is bound to it.
+        let dir = std::env::temp_dir().join(format!("cmdboard-unsigned-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip = dir.join(ZIP_ASSET);
+        let mut empty = b"PK\x05\x06".to_vec();
+        empty.resize(22, 0);
+        std::fs::write(&zip, empty).unwrap();
+        assert!(self_update::verify_signature(&zip, &VERIFYING_KEYS).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

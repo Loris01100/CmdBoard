@@ -1,3 +1,5 @@
 /target
 /.scannerwork
 /.sonar
+# Release signing keys stay out of the repository (only src/update.pub is public)
+*.key

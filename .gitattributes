@@ -1,2 +1,4 @@
 # insta snapshots: keep the exact text on every checkout.
 *.snap text eol=lf
+# Raw ed25519 key: line-ending conversion would corrupt it
+src/update.pub binary
