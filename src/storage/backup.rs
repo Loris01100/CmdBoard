@@ -46,6 +46,14 @@ struct BackupSession {
     xp_gained: u32,
 }
 
+/// An app an import would add, with what it launches.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewImport {
+    pub name: String,
+    pub target: String,
+    pub args: Option<String>,
+}
+
 /// What an import added.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Imported {
@@ -70,10 +78,9 @@ impl Database {
         self.merge(&read_backup(path)?)
     }
 
-    /// The apps importing `path` would add, as `(name, launch_target)`. A backup can come
-    /// from someone else and its targets then launch from the dashboard, so they are shown
-    /// before importing.
-    pub fn import_preview(&self, path: &Path) -> anyhow::Result<Vec<(String, String)>> {
+    /// The apps importing `path` would add. A backup can come from someone else and its
+    /// targets then launch from the dashboard, so they are shown before importing.
+    pub fn import_preview(&self, path: &Path) -> anyhow::Result<Vec<NewImport>> {
         let mut added = Vec::new();
         for app in read_backup(path)?.apps {
             let exists: bool = self.conn.query_row(
@@ -82,7 +89,11 @@ impl Database {
                 |r| r.get(0),
             )?;
             if !exists {
-                added.push((app.name, app.launch_target));
+                added.push(NewImport {
+                    name: app.name,
+                    target: app.launch_target,
+                    args: app.launch_args,
+                });
             }
         }
         Ok(added)
@@ -302,7 +313,11 @@ mod tests {
         let fresh = Database::open_in_memory().unwrap();
         assert_eq!(
             fresh.import_preview(&file).unwrap(),
-            [("Hades".to_string(), r"C:\Games\Hades.exe".to_string())]
+            [NewImport {
+                name: "Hades".into(),
+                target: r"C:\Games\Hades.exe".into(),
+                args: Some("-dx12".into()),
+            }]
         );
         let imported = new_pc.import_from(&file).unwrap();
         assert_eq!(

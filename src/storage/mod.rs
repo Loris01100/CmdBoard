@@ -5,6 +5,7 @@ pub mod models;
 mod queries;
 mod sessions;
 
+pub use backup::NewImport;
 pub use db::Database;
 pub use queries::unix_now;
 

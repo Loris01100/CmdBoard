@@ -9,6 +9,8 @@ use super::{App, AppSort, MsgKind, Outcome};
 use crate::command::{Command, alias::Aliases};
 use crate::config;
 use crate::i18n;
+use crate::launcher::launch::{self, Risk};
+use crate::storage::NewImport;
 use crate::ui::theme;
 use crate::update::{self, Action};
 
@@ -218,22 +220,54 @@ impl App {
 /// Apps listed in the import confirmation; the others are counted.
 const IMPORT_SHOWN: usize = 5;
 
-/// `• name → target`, one per line. Control characters are blanked: the file could hide
-/// part of a target behind a line break.
-fn import_list(added: &[(String, String)]) -> String {
-    let clean = |text: &str| -> String {
-        text.chars()
-            .map(|c| if c.is_control() { ' ' } else { c })
-            .collect()
-    };
-    let mut lines: Vec<String> = added
+/// `• name → target args`, one per line, risky ones first and flagged, under a warning
+/// that counts them all, shown or not.
+fn import_list(added: &[NewImport]) -> String {
+    let mut added: Vec<_> = added
         .iter()
-        .take(IMPORT_SHOWN)
-        .map(|(name, target)| format!("• {} → {}", clean(name), clean(target)))
+        .map(|app| (launch::risk(&app.target, app.args.as_deref()), app))
         .collect();
+    added.sort_by_key(|(risk, _)| risk.is_none()); // stable: file order otherwise
+    let risky = added.iter().filter(|(risk, _)| risk.is_some()).count();
+    let mut lines = Vec::new();
+    if risky > 0 {
+        lines.push(t!("action.import_risky", count = risky));
+    }
+    for (risk, app) in added.iter().take(IMPORT_SHOWN) {
+        let command = format!("{} {}", app.target, app.args.as_deref().unwrap_or(""));
+        let mut line = format!("• {} → {}", visible(&app.name), visible(&command));
+        if let Some(risk) = risk {
+            line = format!("{line}  ⚠ {}", risk_label(*risk));
+        }
+        lines.push(line);
+    }
     if added.len() > IMPORT_SHOWN {
         let count = added.len() - IMPORT_SHOWN;
         lines.push(t!("action.import_more", count));
     }
     lines.join("\n")
+}
+
+/// `text` on one line with single spaces: the file could hide part of a command behind a
+/// line break, a run of spaces pushing it out of the popup, or invisible and
+/// direction-changing characters.
+fn visible(text: &str) -> String {
+    let hidden = |c: char| {
+        c.is_control()
+            || matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}')
+    };
+    text.chars()
+        .map(|c| if hidden(c) { ' ' } else { c })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn risk_label(risk: Risk) -> String {
+    match risk {
+        Risk::NetworkPath => t!("action.risk_network"),
+        Risk::Script => t!("action.risk_script"),
+        Risk::UnknownScheme => t!("action.risk_scheme"),
+    }
 }
