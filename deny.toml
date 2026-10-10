@@ -1,0 +1,40 @@
+# cargo deny check: known vulnerabilities, licenses, duplicate crates and sources.
+# Runs in CI; see AGENTS.md and plan section 15.
+
+[graph]
+# Only the shipped target: crates for other platforms never reach the binary.
+targets = ["x86_64-pc-windows-msvc"]
+
+[advisories]
+# RustSec advisories (vulnerable, unmaintained, unsound, yanked) fail the check.
+# A false positive goes here with its id and why it does not apply.
+ignore = []
+
+[licenses]
+# Permissive licenses compatible with distributing an MIT binary.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.8
+exceptions = [
+    # File-level copyleft: fine as long as option-ext's own sources stay unmodified.
+    { allow = ["MPL-2.0"], crate = "option-ext" },
+]
+
+[bans]
+# Duplicates come from transitive dependencies: report them without failing.
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

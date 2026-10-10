@@ -25,9 +25,11 @@ jobs:
       - run: cargo fmt --check
       - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2
         with:
-          tool: cargo-machete,cargo-llvm-cov,cargo-sonar-scanner
+          tool: cargo-machete,cargo-deny,cargo-llvm-cov,cargo-sonar-scanner
       # Dependencies declared in Cargo.toml but never used.
       - run: cargo machete
+      # Vulnerabilities, licenses and sources of dependencies (deny.toml).
+      - run: cargo deny check
       - run: cargo clippy --all-targets -- -D warnings
       # Runs the test suite and writes the coverage report read by Sonar.
       - run: cargo llvm-cov --lcov --output-path target/lcov.info
