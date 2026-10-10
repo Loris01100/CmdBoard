@@ -79,6 +79,7 @@ impl App {
             }
             Command::ToggleBenchLevel => self.optimize.heavy = !self.optimize.heavy,
             Command::Bench(bench) => self.bench(bench)?,
+            Command::BenchAll => self.bench_all()?,
             Command::ToggleGaming(setting) => return self.toggle_gaming(setting),
             Command::OpenGamingPage(setting) => return optimize::open_gaming_page(setting),
 

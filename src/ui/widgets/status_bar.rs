@@ -106,6 +106,7 @@ fn hints(app: &App) -> Vec<(String, &'static str)> {
             ("j/k".into(), "hint.navigate"),
             ("Tab".into(), "hint.panel"),
             (enter, "hint.run"),
+            ("a".into(), "hint.run_all"),
             ("n".into(), "hint.level"),
             ("0-5".into(), "hint.screens"),
             ("q".into(), "hint.quit"),

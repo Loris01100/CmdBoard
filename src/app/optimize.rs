@@ -25,6 +25,8 @@ pub struct OptimizeScreen {
     /// Benchmarks run their heavy version.
     pub heavy: bool,
     pub running: Option<Bench>,
+    /// Benchmarks still to run after `running`, for `a`.
+    pub queue: Vec<Bench>,
     /// Last result of each benchmark, with whether it ran heavy.
     pub results: HashMap<Bench, (bool, Result<Score, String>)>,
 }
@@ -39,6 +41,7 @@ impl Default for OptimizeScreen {
             gaming_focus: false,
             heavy: false,
             running: None,
+            queue: Vec::new(),
             results: HashMap::new(),
         }
     }
@@ -73,13 +76,14 @@ impl OptimizeScreen {
 }
 
 impl App {
-    /// Tab switches between benchmarks and gaming settings, Enter runs or switches, `n`
-    /// light/heavy, `o` the setting's Windows page.
+    /// Tab switches between benchmarks and gaming settings, Enter runs or switches, `a`
+    /// runs every benchmark, `n` light/heavy, `o` the setting's Windows page.
     pub(super) fn optimize_key(&self, key: KeyEvent) -> Option<Command> {
         let screen = &self.optimize;
         Some(match key.code {
             KeyCode::Tab | KeyCode::BackTab => Command::ToggleFocus,
             KeyCode::Char('n') => Command::ToggleBenchLevel,
+            KeyCode::Char('a') => Command::BenchAll,
             KeyCode::Enter if screen.gaming_focus => {
                 Command::ToggleGaming(screen.selected_setting()?)
             }
@@ -95,7 +99,35 @@ impl App {
         if self.optimize.running.is_some() {
             bail!(t!("optimize.busy"));
         }
-        let heavy = self.optimize.heavy;
+        self.start_bench(bench, self.optimize.heavy);
+        Ok(())
+    }
+
+    /// Every benchmark in turn, the next one started when the last finishes.
+    pub(super) fn bench_all(&mut self) -> anyhow::Result<()> {
+        let [first, rest @ ..] = Bench::ALL;
+        self.bench(first)?;
+        if self.optimize.running.is_some() {
+            self.optimize.queue = rest.to_vec();
+        }
+        Ok(())
+    }
+
+    /// Records a result and starts the next queued benchmark, at the same level.
+    pub(super) fn on_bench_finished(
+        &mut self,
+        bench: Bench,
+        heavy: bool,
+        result: Result<Score, String>,
+    ) {
+        self.optimize.on_finished(bench, heavy, result);
+        if !self.optimize.queue.is_empty() {
+            let next = self.optimize.queue.remove(0);
+            self.start_bench(next, heavy);
+        }
+    }
+
+    fn start_bench(&mut self, bench: Bench, heavy: bool) {
         let started = self.spawn(move || AppEvent::BenchFinished {
             bench,
             heavy,
@@ -103,8 +135,9 @@ impl App {
         });
         if started {
             self.optimize.running = Some(bench);
+        } else {
+            self.optimize.queue.clear();
         }
-        Ok(())
     }
 
     /// Settings Windows does not let switch from here open their page instead.

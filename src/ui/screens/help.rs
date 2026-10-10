@@ -23,7 +23,7 @@ fn keys() -> [(String, String); 12] {
         ("s".into(), t!("help.sort")),
         ("/".into(), t!("help.search")),
         ("Tab s d f r".into(), t!("help.storage")),
-        ("Tab n o".into(), t!("help.optimize")),
+        ("Tab a n o".into(), t!("help.optimize")),
         (":".into(), t!("help.command")),
         ("1-5  0 ?".into(), t!("help.screens")),
         ("q  Ctrl-C".into(), t!("help.quit")),

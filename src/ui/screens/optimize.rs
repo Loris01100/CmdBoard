@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     style::Style,
     text::{Line, Span},
-    widgets::{Cell, Paragraph, Row, Table},
+    widgets::{Cell, Paragraph, Row, Table, Wrap},
 };
 
 use crate::app::App;
@@ -102,6 +102,10 @@ fn draw_benches(frame: &mut Frame, area: Rect, app: &App) {
                     Line::styled(t!("optimize.running"), Style::new().fg(theme.warning)),
                     String::new(),
                 ),
+                _ if app.optimize.queue.contains(&bench) => (
+                    Line::styled(t!("optimize.queued"), theme.muted()),
+                    String::new(),
+                ),
                 (_, Some((_, Ok(score)))) => (verdict(app, bench, *score), format_score(*score)),
                 (_, Some((_, Err(e)))) => (
                     Line::styled(e.clone(), Style::new().fg(theme.error)),
@@ -140,13 +144,66 @@ fn draw_benches(frame: &mut Frame, area: Rect, app: &App) {
         Row::new(row)
     });
     let focused = !app.optimize.gaming_focus;
+    let block = theme.panel(&title, focused);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    // The summary under the tests, when the panel has room for both.
+    let summary_height = if inner.height >= 9 { 3 } else { 0 };
+    let [table_area, summary_area] =
+        Layout::vertical([Constraint::Min(0), Constraint::Length(summary_height)]).areas(inner);
     let table = Table::new(rows, widths)
         .header(Row::new(header).style(theme.title))
-        .block(theme.panel(&title, focused))
         .row_highlight_style(theme.highlight(focused))
         .highlight_symbol("> ");
     let mut state = app.optimize.bench_state;
-    frame.render_stateful_widget(table, area, &mut state);
+    frame.render_stateful_widget(table, table_area, &mut state);
+    if summary_height > 0 {
+        let lines = vec![Line::default(), summary(app)];
+        frame.render_widget(
+            Paragraph::new(lines).wrap(Wrap { trim: true }),
+            summary_area,
+        );
+    }
+}
+
+/// The PC in one sentence once every test has a result, else how to get one.
+fn summary(app: &App) -> Line<'static> {
+    let theme = &app.theme;
+    let scores: Vec<_> = Bench::ALL
+        .iter()
+        .filter_map(|&b| match app.optimize.results.get(&b) {
+            Some((_, Ok(score))) => Some((b, *score)),
+            _ => None,
+        })
+        .collect();
+    let busy = app.optimize.running.is_some();
+    let Some(summary) = optimize::summarize(&scores).filter(|_| !busy) else {
+        let hint = if busy {
+            String::new()
+        } else {
+            t!("optimize.run_all_first")
+        };
+        return Line::styled(format!(" {hint}"), theme.muted());
+    };
+    let (verdict, color) = match summary.tier {
+        Tier::Slow => (t!("optimize.summary_slow"), theme.error),
+        Tier::Fair => (t!("optimize.summary_fair"), theme.warning),
+        Tier::Fast => (t!("optimize.summary_fast"), theme.success),
+        Tier::VeryFast => (t!("optimize.summary_very_fast"), theme.success),
+    };
+    let text = match summary.weakest {
+        Some(bench) => {
+            let part = match bench {
+                Bench::CpuSingle => t!("optimize.weak_cpu_single"),
+                Bench::CpuMulti => t!("optimize.weak_cpu_multi"),
+                Bench::Memory => t!("optimize.weak_memory"),
+                Bench::Disk => t!("optimize.weak_disk"),
+            };
+            t!("optimize.weakest", verdict = verdict, part = part)
+        }
+        None => t!("optimize.balanced", verdict = verdict),
+    };
+    Line::styled(format!(" {text}"), Style::new().fg(color))
 }
 
 /// A gauge and a word, colored from slow to very fast.
@@ -286,6 +343,47 @@ mod tests {
             !text.contains("Ryzen") && text.contains("Mode Jeu"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn summary_follows_the_run() {
+        let gb = |n: f64| n * f64::from(1u32 << 30);
+        let mut app = App::with_defaults();
+        app.screen = Screen::Optimize;
+        let text = screen(&app, 140, 30);
+        assert!(text.contains("a lance tous les tests"), "{text}");
+
+        // Running all: the next ones wait, no verdict yet.
+        app.optimize.running = Some(Bench::CpuMulti);
+        app.optimize.queue = vec![Bench::Memory, Bench::Disk];
+        app.optimize
+            .on_finished(Bench::CpuSingle, false, Ok(Score::Ops(678.0)));
+        app.optimize.running = Some(Bench::CpuMulti);
+        let text = screen(&app, 140, 30);
+        assert_eq!(text.matches("en attente").count(), 2, "{text}");
+        assert!(!text.contains("a lance tous les tests"), "{text}");
+
+        app.optimize.queue.clear();
+        for (bench, score) in [
+            (Bench::CpuMulti, Score::Ops(6_300.0)),
+            (Bench::Memory, Score::Bytes(gb(4.0))),
+            (
+                Bench::Disk,
+                Score::Disk {
+                    write: gb(2.0),
+                    read: gb(2.0),
+                },
+            ),
+        ] {
+            app.optimize.on_finished(bench, false, Ok(score));
+        }
+        let text = screen(&app, 140, 30);
+        assert!(
+            text.contains("Bon PC de jeu — le point faible est la mémoire."),
+            "{text}"
+        );
+        // Too short a panel: the tests keep the room.
+        assert!(!screen(&app, 140, 10).contains("Bon PC"));
     }
 
     #[test]

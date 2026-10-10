@@ -41,6 +41,8 @@ pub enum Command {
 
     /// Optimization screen: runs a benchmark at the current level, in a thread.
     Bench(crate::optimize::Bench),
+    /// Optimization screen: runs every benchmark in turn, at the current level.
+    BenchAll,
     /// Optimization screen: light or heavy benchmarks.
     ToggleBenchLevel,
     /// Optimization screen: switches a gaming setting, or opens its Windows page.

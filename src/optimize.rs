@@ -90,6 +90,40 @@ pub struct Rating {
     pub gauge: f64,
 }
 
+/// The PC as a whole, once every benchmark has a result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Summary {
+    /// From the mean of the gauges.
+    pub tier: Tier,
+    /// The lowest gauge; none when every part rates the same.
+    pub weakest: Option<Bench>,
+}
+
+pub fn summarize(scores: &[(Bench, Score)]) -> Option<Summary> {
+    if Bench::ALL
+        .iter()
+        .any(|b| !scores.iter().any(|(s, _)| s == b))
+    {
+        return None;
+    }
+    let ratings: Vec<_> = scores.iter().map(|&(b, s)| (b, rate(b, s))).collect();
+    #[expect(clippy::cast_precision_loss, reason = "a handful of scores")]
+    let mean = ratings.iter().map(|(_, r)| r.gauge).sum::<f64>() / ratings.len() as f64;
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the mean gauge is between 0 and 1"
+    )]
+    let tier = Tier::ALL[((mean * 4.0) as usize).min(3)];
+    let balanced = ratings.iter().all(|(_, r)| r.tier == ratings[0].1.tier);
+    let weakest = ratings
+        .iter()
+        .min_by(|a, b| a.1.gauge.total_cmp(&b.1.gauge))
+        .filter(|_| !balanced)
+        .map(|&(b, _)| b);
+    Some(Summary { tier, weakest })
+}
+
 pub fn rate(bench: Bench, score: Score) -> Rating {
     let value = match score {
         Score::Ops(n) | Score::Bytes(n) => n,
@@ -428,6 +462,36 @@ mod tests {
             Tier::Slow.label(Bench::Disk),
             Tier::Slow.label(Bench::Memory)
         );
+    }
+
+    #[test]
+    fn summary_names_the_weakest_part() {
+        let gb = |n: f64| n * f64::from(1u32 << 30);
+        let pc = |single: f64, memory: f64| {
+            [
+                (Bench::CpuSingle, Score::Ops(single)),
+                (Bench::CpuMulti, Score::Ops(6_300.0)),
+                (Bench::Memory, Score::Bytes(gb(memory))),
+                (
+                    Bench::Disk,
+                    Score::Disk {
+                        write: gb(2.0),
+                        read: gb(2.0),
+                    },
+                ),
+            ]
+        };
+        // A 3600X with slow memory: good overall, memory first to upgrade.
+        let summary = summarize(&pc(678.0, 4.0)).unwrap();
+        assert_eq!(summary.tier, Tier::Fast);
+        assert_eq!(summary.weakest, Some(Bench::Memory));
+        // Every part in the same tier: nothing stands out.
+        let summary = summarize(&pc(678.0, 15.0)).unwrap();
+        assert_eq!((summary.tier, summary.weakest), (Tier::Fast, None));
+        let summary = summarize(&pc(100.0, 15.0)).unwrap();
+        assert_eq!(summary.weakest, Some(Bench::CpuSingle));
+        // A missing result: no summary yet.
+        assert_eq!(summarize(&pc(678.0, 15.0)[..3]), None);
     }
 
     #[test]

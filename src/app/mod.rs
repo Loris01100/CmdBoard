@@ -442,7 +442,7 @@ impl App {
                 bench,
                 heavy,
                 result,
-            } => self.optimize.on_finished(bench, heavy, result),
+            } => self.on_bench_finished(bench, heavy, result),
             AppEvent::ShortcutsScanned(found) => self.on_shortcuts_scanned(found),
         }
     }
