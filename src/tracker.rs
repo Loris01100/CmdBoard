@@ -2,8 +2,9 @@
 //! watched app starts or stops, and how long it has really been played (plan section 12).
 
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsStr;
 use std::path::Path;
-use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, RecvTimeoutError, SendError, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -40,10 +41,14 @@ pub fn spawn(
     let (watch_tx, watch_rx) = mpsc::channel::<Vec<Watched>>();
     thread::spawn(move || {
         let mut system = System::new();
-        let mut input = Input::default();
         let mut watched = WatchIndex::new();
-        let mut played = resumed;
-        let mut last_poll = Instant::now();
+        let mut sessions = Sessions {
+            events,
+            idle_limit,
+            input: Input::default(),
+            played: resumed,
+            last_poll: Instant::now(),
+        };
         loop {
             match watch_rx.recv_timeout(POLL) {
                 Ok(list) => watched = index(&watch_rx.try_iter().last().unwrap_or(list)),
@@ -56,47 +61,58 @@ pub fn spawn(
             } else {
                 poll_running(&mut system, &watched)
             };
-
-            // Input is only read while something is played.
-            let now = Instant::now();
-            let step = now - last_poll;
-            last_poll = now;
-            let idle =
-                idle_limit.is_some_and(|limit| !played.is_empty() && input.idle_for() >= limit);
-            for time in played.values_mut() {
-                *time += credit(step, idle);
-            }
-
-            let previous: HashSet<i64> = played.keys().copied().collect();
-            let (begun, ended) = diff(&previous, &now_running);
-            for app_id in ended {
-                let secs = played.remove(&app_id).map_or(0, |t| t.as_secs());
-                if events
-                    .send(AppEvent::SessionEnded { app_id, secs })
-                    .is_err()
-                {
-                    return;
-                }
-            }
-            for (&app_id, &time) in &played {
-                let progress = AppEvent::SessionProgress {
-                    app_id,
-                    played: time,
-                    idle,
-                };
-                if events.send(progress).is_err() {
-                    return;
-                }
-            }
-            for app_id in begun {
-                played.insert(app_id, Duration::ZERO);
-                if events.send(AppEvent::SessionStarted { app_id }).is_err() {
-                    return;
-                }
+            if sessions.update(&now_running).is_err() {
+                return;
             }
         }
     });
     watch_tx
+}
+
+/// Running sessions of the tracker thread and the time each has been played.
+struct Sessions {
+    events: Sender<AppEvent>,
+    idle_limit: Option<Duration>,
+    input: Input,
+    played: HashMap<i64, Duration>,
+    last_poll: Instant,
+}
+
+impl Sessions {
+    /// Credits the time since the last poll, then reports ended, ongoing and new
+    /// sessions. Fails once the UI has closed the event channel.
+    fn update(&mut self, now_running: &HashSet<i64>) -> Result<(), SendError<AppEvent>> {
+        let now = Instant::now();
+        let step = now - self.last_poll;
+        self.last_poll = now;
+        // Input is only read while something is played.
+        let idle = self
+            .idle_limit
+            .is_some_and(|limit| !self.played.is_empty() && self.input.idle_for() >= limit);
+        for time in self.played.values_mut() {
+            *time += credit(step, idle);
+        }
+
+        let previous: HashSet<i64> = self.played.keys().copied().collect();
+        let (begun, ended) = diff(&previous, now_running);
+        for app_id in ended {
+            let secs = self.played.remove(&app_id).map_or(0, |t| t.as_secs());
+            self.events.send(AppEvent::SessionEnded { app_id, secs })?;
+        }
+        for (&app_id, &played) in &self.played {
+            let progress = AppEvent::SessionProgress {
+                app_id,
+                played,
+                idle,
+            };
+            self.events.send(progress)?;
+        }
+        for app_id in begun {
+            self.played.insert(app_id, Duration::ZERO);
+            self.events.send(AppEvent::SessionStarted { app_id })?;
+        }
+        Ok(())
+    }
 }
 
 /// Watched apps running right now, read once: at startup, to resume the sessions the
@@ -196,7 +212,7 @@ fn exe_key(exe: &str) -> String {
     let exe = exe.trim();
     let name = Path::new(exe)
         .file_name()
-        .map_or(exe.into(), |n| n.to_string_lossy());
+        .map_or(exe.into(), OsStr::to_string_lossy);
     // Lowercased like process names (`lowercase_into`), so both always match.
     name.chars().flat_map(char::to_lowercase).collect()
 }
