@@ -47,15 +47,19 @@ impl App {
                 target,
                 category,
                 watch_exe,
-            } => return self.add_app(&name, target, category, watch_exe),
+                args,
+            } => return self.add_app(&name, target, category, watch_exe, args),
             Command::Edit {
                 app,
                 name,
                 target,
                 category,
                 watch_exe,
-            } => return self.edit_app(&app, &name, target, &category, watch_exe),
+                args,
+            } => return self.edit_app(&app, &name, target, &category, watch_exe, args),
             Command::Move { app, category } => return self.move_app(&app, &category),
+            Command::Pin { change, app } => return self.pin_command(change, app.as_deref()),
+            Command::LaunchPin { slot } => return self.launch_pin(slot),
             Command::RemoveApp { app, confirmed } => return self.remove_app(&app, confirmed),
             Command::RemoveCategory {
                 category,
@@ -213,7 +217,7 @@ impl App {
             Screen::Optimize => self.optimize.move_selection(forward),
             Screen::Dashboard | Screen::Help => match self.focus {
                 Focus::Categories => {
-                    let next = step(self.cat_state.selected(), self.categories.len(), forward);
+                    let next = step(self.cat_state.selected(), self.category_rows(), forward);
                     if next != self.cat_state.selected() {
                         self.cat_state.select(next);
                         self.reset_app_selection();

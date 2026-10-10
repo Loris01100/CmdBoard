@@ -5,13 +5,22 @@ use ratatui::{
 };
 
 use crate::app::{App, Focus};
+use crate::ui::icons;
 
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focus == Focus::Categories;
-    let items: Vec<ListItem> = app
-        .categories
-        .iter()
-        .map(|c| ListItem::new(format!("{} ({})", c.name, app.app_count(c.id))))
+    // "Recent" first: the apps played last, whatever their category.
+    let recent = t!(
+        "apps.recent",
+        icon = icons::STAR,
+        count = app.recent_apps().len()
+    );
+    let items: Vec<ListItem> = std::iter::once(ListItem::new(recent))
+        .chain(
+            app.categories
+                .iter()
+                .map(|c| ListItem::new(format!("{} ({})", c.name, app.app_count(c.id)))),
+        )
         .collect();
 
     let list = List::new(items)

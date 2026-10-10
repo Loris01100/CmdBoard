@@ -6,10 +6,15 @@ use super::programs;
 
 /// Hands `target` (exe path, exe name on the PATH, or URI such as `steam://...`) to the
 /// Windows shell, like double-clicking it. Returns once the process is started.
-pub fn launch(target: &str) -> anyhow::Result<()> {
+/// `args` (`-dx12`, a folder to open) go to the program as its command line.
+pub fn launch(target: &str, args: Option<&str>) -> anyhow::Result<()> {
     check_target(target)?;
     let target = target.trim();
-    opener::open(target).with_context(|| t!("error.cannot_launch", target))
+    match args.map(str::trim).filter(|a| !a.is_empty()) {
+        None => opener::open(target).with_context(|| t!("error.cannot_launch", target)),
+        Some(args) if programs::shell_execute(target, args) => Ok(()),
+        Some(_) => bail!(t!("error.cannot_launch", target)),
+    }
 }
 
 /// Rejects empty targets and absolute paths that do not exist.
@@ -69,7 +74,7 @@ mod tests {
 
     #[test]
     fn empty_target_is_rejected() {
-        assert!(launch("  ").is_err());
+        assert!(launch("  ", None).is_err());
     }
 
     #[test]

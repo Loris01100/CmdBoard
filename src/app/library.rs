@@ -11,6 +11,9 @@ use crate::launcher::launch;
 use crate::popup::Popup;
 use crate::storage::models::{AppEntry, Category, NewApp};
 
+/// Apps listed in the "Recent" row.
+const RECENT_APPS: usize = 8;
+
 impl App {
     pub(super) fn find_app_by_id(&self, id: i64) -> Option<&AppEntry> {
         self.apps.iter().find(|a| a.id == id)
@@ -47,10 +50,41 @@ impl App {
         }
     }
 
+    /// The category selected in the list, `None` on the "Recent" row above them.
     pub fn selected_category(&self) -> Option<&Category> {
+        let row = self.cat_state.selected()?;
+        self.categories.get(row.checked_sub(1)?)
+    }
+
+    /// The first row of the categories list: the apps played last.
+    pub fn recents_selected(&self) -> bool {
+        self.cat_state.selected() == Some(0)
+    }
+
+    /// Rows of the categories list: "Recent", then every category.
+    pub fn category_rows(&self) -> usize {
+        self.categories.len() + 1
+    }
+
+    /// The `RECENT_APPS` apps whose last session ended last, most recent first.
+    pub fn recent_apps(&self) -> Vec<&AppEntry> {
+        let mut played: Vec<&AppEntry> = self
+            .apps
+            .iter()
+            .filter(|a| a.last_played.is_some())
+            .collect();
+        played.sort_by_key(|a| std::cmp::Reverse(a.last_played));
+        played.truncate(RECENT_APPS);
+        played
+    }
+
+    /// Keeps the categories row in range. At first, "Recent" if anything was played,
+    /// else the first category.
+    pub(super) fn clamp_category_row(&mut self) {
+        let first = usize::from(self.recent_apps().is_empty());
+        let row = self.cat_state.selected().unwrap_or(first);
         self.cat_state
-            .selected()
-            .and_then(|i| self.categories.get(i))
+            .select(Some(row.min(self.category_rows() - 1)));
     }
 
     /// Apps of the selected category, in display order. While searching: the matches
@@ -62,6 +96,9 @@ impl App {
                 .into_iter()
                 .map(|i| &self.apps[i])
                 .collect();
+        }
+        if self.recents_selected() {
+            return self.recent_apps();
         }
         match self.selected_category() {
             Some(cat) => self
@@ -90,7 +127,11 @@ impl App {
         let Some(category_id) = self.find_app_by_id(id).map(|a| a.category_id) else {
             return;
         };
-        let cat_index = self.categories.iter().position(|c| c.id == category_id);
+        let cat_index = self
+            .categories
+            .iter()
+            .position(|c| c.id == category_id)
+            .map(|i| i + 1);
         self.cat_state.select(cat_index);
         let app_index = self.visible_apps().iter().position(|a| a.id == id);
         self.app_state.select(app_index);
@@ -112,7 +153,7 @@ impl App {
 
     pub(super) fn launch(&self, app: &str) -> Outcome {
         let entry = self.app_named(app)?;
-        launch::launch(&entry.launch_target)?;
+        launch::launch(&entry.launch_target, entry.launch_args.as_deref())?;
         Ok(Some((
             t!("action.launched", name = entry.name),
             MsgKind::Success,
@@ -125,6 +166,7 @@ impl App {
         target: String,
         category: Option<String>,
         watch_exe: Option<String>,
+        args: Option<String>,
     ) -> Outcome {
         if self.find_app(name).is_some() {
             bail!(t!("error.app_exists", name));
@@ -138,9 +180,13 @@ impl App {
                 .with_context(|| t!("error.no_category"))?;
             (selected.id, false)
         };
-        let id = self
-            .db
-            .add_app(&new_app(name.to_owned(), target, category_id, watch_exe))?;
+        let id = self.db.add_app(&new_app(
+            name.to_owned(),
+            target,
+            category_id,
+            watch_exe,
+            args,
+        ))?;
         self.reload()?;
         self.select_app(id);
         let text = t!("action.added", name, note = created_note(created));
@@ -155,6 +201,7 @@ impl App {
         target: String,
         category: &str,
         watch_exe: Option<String>,
+        args: Option<String>,
     ) -> Outcome {
         let id = self.app_named(app)?.id;
         // Another app with that name; changing only the case of its own name is fine.
@@ -165,7 +212,7 @@ impl App {
         let (category_id, created) = self.category_or_create(category)?;
         self.db.update_app(
             id,
-            &new_app(name.to_owned(), target, category_id, watch_exe),
+            &new_app(name.to_owned(), target, category_id, watch_exe, args),
         )?;
         self.reload()?;
         self.select_app(id);
@@ -249,8 +296,15 @@ impl App {
 }
 
 /// Without a `watch_exe`, the one `target` launches, if any.
-fn new_app(name: String, target: String, category_id: i64, watch_exe: Option<String>) -> NewApp {
+fn new_app(
+    name: String,
+    target: String,
+    category_id: i64,
+    watch_exe: Option<String>,
+    launch_args: Option<String>,
+) -> NewApp {
     NewApp {
+        launch_args,
         watch_exe: watch_exe.or_else(|| launch::watch_exe_for(&target)),
         name,
         launch_target: target,

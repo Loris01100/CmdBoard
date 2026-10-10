@@ -111,6 +111,7 @@ const NAME: usize = 0;
 const TARGET: usize = 1;
 const CATEGORY: usize = 2;
 const PROCESS: usize = 3;
+const ARGS: usize = 4;
 
 impl Form {
     /// Add-app form; `category` pre-fills the category field.
@@ -122,6 +123,7 @@ impl Form {
                 Field::new(t!("form.target"), "", true),
                 Field::new(t!("form.category"), category, true),
                 Field::new(t!("form.process"), "", false),
+                Field::new(t!("form.args"), "", false),
             ],
         )
     }
@@ -141,7 +143,13 @@ impl Form {
     }
 
     /// Edit form for an app, pre-filled with its current details.
-    pub fn edit_app(app: &str, target: &str, category: &str, watch_exe: Option<&str>) -> Self {
+    pub fn edit_app(
+        app: &str,
+        target: &str,
+        category: &str,
+        watch_exe: Option<&str>,
+        args: Option<&str>,
+    ) -> Self {
         let mut form = Self::add_app(category);
         form.kind = FormKind::Edit {
             app: app.to_string(),
@@ -149,6 +157,7 @@ impl Form {
         form.fields[NAME].input.set(app);
         form.fields[TARGET].input.set(target);
         form.fields[PROCESS].input.set(watch_exe.unwrap_or(""));
+        form.fields[ARGS].input.set(args.unwrap_or(""));
         form
     }
 
@@ -205,6 +214,7 @@ impl Form {
             TARGET => t!("form.help_target"),
             CATEGORY => t!("form.help_category"),
             PROCESS => t!("form.help_process"),
+            ARGS => t!("form.help_args"),
             _ => return None,
         })
     }
@@ -242,6 +252,7 @@ impl Form {
                 target: value(TARGET),
                 category: Some(value(CATEGORY)),
                 watch_exe: Some(value(PROCESS)).filter(|p| !p.is_empty()),
+                args: Some(value(ARGS)).filter(|a| !a.is_empty()),
             },
             FormKind::Move { app } => Command::Move {
                 app: app.clone(),
@@ -253,6 +264,7 @@ impl Form {
                 target: value(TARGET),
                 category: value(CATEGORY),
                 watch_exe: Some(value(PROCESS)).filter(|p| !p.is_empty()),
+                args: Some(value(ARGS)).filter(|a| !a.is_empty()),
             },
         })
     }
@@ -300,6 +312,7 @@ mod tests {
                 target: "steam://rungameid/1145360".into(),
                 category: Some("Jeux".into()),
                 watch_exe: None,
+                args: None,
             })
         );
         fill(&mut form, PROCESS, "Hades.exe");
@@ -311,7 +324,13 @@ mod tests {
 
     #[test]
     fn edit_form_starts_from_the_app_and_builds_command() {
-        let mut form = Form::edit_app("Hades", "steam://rungameid/1145360", "Jeux", None);
+        let mut form = Form::edit_app(
+            "Hades",
+            "steam://rungameid/1145360",
+            "Jeux",
+            None,
+            Some("-dx12"),
+        );
         assert!(form.title().contains("Hades"));
         assert_eq!(form.help(), Some(t!("form.help_name")));
         assert_eq!(
@@ -328,6 +347,7 @@ mod tests {
                 target: "steam://rungameid/1145360".into(),
                 category: "Jeux".into(),
                 watch_exe: Some("Hades2.exe".into()),
+                args: Some("-dx12".into()),
             })
         );
     }
@@ -355,7 +375,7 @@ mod tests {
     fn fields_cycle() {
         let mut form = Form::add_app("");
         form.prev_field();
-        assert_eq!(form.focused, PROCESS);
+        assert_eq!(form.focused, ARGS);
         assert!(form.is_last_field());
         form.next_field();
         assert_eq!(form.focused, NAME);

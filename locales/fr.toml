@@ -72,6 +72,15 @@ unreachable = "impossible de joindre GitHub"
 install_failed = "échec de la mise à jour"
 available = "v{version} disponible "
 
+[pin]
+set = "Favori {slot} : {name} (Alt+{slot})"
+removed = "Retirée des favoris : {name}"
+not_pinned = "{name} n'est pas un favori"
+full = "Les 9 favoris sont pris : :pin <1-9> <app> en remplace un"
+empty = "Aucun favori en {slot} (p sur une app, ou :pin {slot} <app>)"
+none = "Aucun favori : p sur une app, ou :pin <1-9> <app>"
+list = "Favoris : {items}"
+
 [goals]
 goal = "Objectif"
 limit = "Limite"
@@ -157,6 +166,7 @@ empty = "Commande vide"
 unknown = "Commande inconnue : {name} (:help pour la liste)"
 bad_sort = "Tri inconnu : {name} (usage : {usage})"
 bad_amount = "Durée invalide : {amount} (usage : {usage})"
+bad_pin = "Emplacement invalide : {slot} (usage : {usage})"
 usage = "Usage : {usage}"
 unclosed_quote = "Guillemet non fermé"
 
@@ -195,6 +205,8 @@ help_name = "Nom affiché dans CmdBoard."
 help_target = "Ce qui est lancé : un .exe ou un raccourci .lnk, un nom sur le PATH, ou un lien steam://…"
 help_category = "Une catégorie existante, ou une nouvelle qui sera créée."
 help_process = "Exe surveillé pour compter le temps de jeu (XP). Vide : déduit de la cible. Pour un lien steam://…, l'exe du jeu (ex. Hades.exe)."
+args = "Arguments"
+help_args = "Passés à la cible au lancement : -dx12, -windowed, un dossier ou un fichier à ouvrir. Vide : aucun. La plupart des liens steam://… les ignorent."
 required = "{label} : champ requis"
 footer = "  * requis · Entrée sur le dernier champ : valider"
 
@@ -237,6 +249,8 @@ no_activity = "Aucune activité pour le moment"
 [apps]
 title = "Applications · {sort}"
 search_title = "Recherche ({count})"
+recent = "{icon} Récents ({count})"
+recent_title = "Applications · jouées en dernier"
 name = "Nom"
 level = "Niv"
 xp = "XP"
@@ -368,6 +382,7 @@ panel = "changer de panneau"
 launch = "lancer l'app sélectionnée"
 edit = "ajouter / modifier / déplacer / supprimer (app ou catégorie vide)"
 sort = "changer le tri des apps (nom, XP, récent, temps) ; Stats : camembert par catégorie ou par app"
+pin = "épingler l'app à un favori, ou la retirer ; Alt+1-9 lance un favori depuis n'importe quel écran"
 search = "chercher une app dans toutes les catégories (Entrée : y aller)"
 command = "ligne de commande (↑↓ historique, Tab compléter, Esc annuler)"
 screens = "Dashboard, Stats, Récompenses, Stockage, Optimisation ; 0 ou ? : Aide"
@@ -442,6 +457,10 @@ summary = "Statistiques de toutes les apps, ou d'une seule"
 [cmd.theme]
 usage = "theme [nom]"
 summary = "Change de thème (mémorisé). Sans nom : liste les thèmes"
+
+[cmd.pin]
+usage = "pin [<1-9>|off <app>]"
+summary = "Épingle une app à un favori, lancé par Alt+<n> depuis n'importe quel écran ; off la retire. Sans argument : la liste"
 
 [cmd.goal]
 usage = "goal [<durée>/day|week|off] [app|catégorie]"

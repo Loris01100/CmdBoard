@@ -77,20 +77,24 @@ pub fn complete(line: &str, sources: &Sources) -> Option<Completion> {
             &[None, None, Some(Kind::Category)],
             sources,
         ),
-        // The amount, then the rest of the line names an app or a category.
-        "goal" | "limit" => {
-            let rest = &line[rest_start..];
-            let amount = rest.find(char::is_whitespace)?;
-            let after = &rest[amount..];
-            let start = rest_start + amount + (after.len() - after.trim_start().len());
-            whole(line, start, Kind::Target, sources)
-        }
+        // The amount or the slot, then the rest of the line names an app or a category.
+        "goal" | "limit" => after_first(line, rest_start, Kind::Target, sources),
+        "pin" => after_first(line, rest_start, Kind::App, sources),
         _ => None,
     }
 }
 
 fn whole(line: &str, start: usize, kind: Kind, sources: &Sources) -> Option<Completion> {
     build(&line[..start], &line[start..], kind, sources, "")
+}
+
+/// After a first free-text argument (an amount, a slot), the rest of the line is one name.
+fn after_first(line: &str, rest_start: usize, kind: Kind, sources: &Sources) -> Option<Completion> {
+    let rest = &line[rest_start..];
+    let first = rest.find(char::is_whitespace)?;
+    let after = &rest[first..];
+    let start = rest_start + first + (after.len() - after.trim_start().len());
+    whole(line, start, kind, sources)
 }
 
 /// Completes the argument at the end of the line, if its position has a known kind.
@@ -222,6 +226,8 @@ mod tests {
                 Some("limit 2h/day Windows Terminal"),
             ),
             ("limit 2h/d", None), // the amount is free text
+            ("pin 2 ste", Some("pin 2 Steam")),
+            ("pin off wind", Some("pin off Windows Terminal")),
             ("quit x", None),
             ("fly x", None),
             ("launch zzz", None),

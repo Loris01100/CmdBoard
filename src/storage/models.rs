@@ -15,9 +15,13 @@ pub struct AppEntry {
     pub name: String,
     /// Exe path or URI (`steam://...`) passed to the shell.
     pub launch_target: String,
+    /// Arguments passed to `launch_target` (`-dx12`, a folder to open).
+    pub launch_args: Option<String>,
     /// Process to track; may differ from `launch_target` for launchers.
     pub watch_exe: Option<String>,
     pub category_id: i64,
+    /// Favorite slot, launched with `Alt+<slot>` (1 to 9).
+    pub pin: Option<u8>,
     pub total_xp: u32,
     pub level: u32,
     /// XP earned within the current level.
@@ -35,6 +39,7 @@ pub struct NewApp {
     pub launch_target: String,
     pub watch_exe: Option<String>,
     pub category_id: i64,
+    pub launch_args: Option<String>,
 }
 
 /// A reward that can still be unlocked for the app being checked.

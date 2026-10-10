@@ -132,7 +132,16 @@ pub fn installed_in<'a>(programs: &'a [Program], dir: &Path) -> Option<&'a Progr
 /// (UAC) when it needs them. Returns once it is started, not when it is done.
 pub fn uninstall(program: &Program) -> anyhow::Result<()> {
     let (file, params) = split_command(&program.uninstall);
-    let (file, params) = (wide(&file), wide(&params));
+    if !shell_execute(&file, &params) {
+        bail!(t!("storage.uninstall_failed", name = program.name));
+    }
+    Ok(())
+}
+
+/// Opens `file` (exe, shortcut, URI) with `params`, like the Run dialog: Windows asks for
+/// elevation (UAC) when the program needs it. Returns whether it started.
+pub(super) fn shell_execute(file: &str, params: &str) -> bool {
+    let (file, params) = (wide(file), wide(params));
     // SAFETY: every pointer is a nul-terminated UTF-16 string alive for the call.
     let result = unsafe {
         ShellExecuteW(
@@ -145,10 +154,7 @@ pub fn uninstall(program: &Program) -> anyhow::Result<()> {
         )
     };
     // Above 32: started. Otherwise an error code, including a UAC prompt refused.
-    if result as isize <= 32 {
-        bail!(t!("storage.uninstall_failed", name = program.name));
-    }
-    Ok(())
+    result as isize > 32
 }
 
 /// Exe and arguments of an uninstall command. The exe may be quoted, or an unquoted

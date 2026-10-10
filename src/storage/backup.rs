@@ -29,6 +29,9 @@ struct BackupApp {
     category: String,
     launch_target: String,
     watch_exe: Option<String>,
+    /// Missing from exports made before arguments existed.
+    #[serde(default)]
+    launch_args: Option<String>,
     /// Includes XP no session accounts for (given by hand in older versions).
     total_xp: u32,
 }
@@ -102,7 +105,7 @@ impl Database {
 
     fn backup(&self) -> anyhow::Result<Backup> {
         let mut stmt = self.conn.prepare(
-            "SELECT a.name, c.name, a.launch_target, a.watch_exe, a.total_xp
+            "SELECT a.name, c.name, a.launch_target, a.watch_exe, a.total_xp, a.launch_args
              FROM apps a JOIN categories c ON c.id = a.category_id ORDER BY a.id",
         )?;
         let apps = stmt
@@ -113,6 +116,7 @@ impl Database {
                     launch_target: r.get(2)?,
                     watch_exe: r.get(3)?,
                     total_xp: r.get(4)?,
+                    launch_args: r.get(5)?,
                 })
             })?
             .collect::<Result<_, _>>()?;
@@ -162,14 +166,16 @@ impl Database {
                     [&app.category],
                 )?;
                 tx.execute(
-                    "INSERT INTO apps (name, launch_target, watch_exe, category_id, total_xp)
-                     SELECT ?1, ?2, ?3, id, ?5 FROM categories WHERE name = ?4",
+                    "INSERT INTO apps
+                        (name, launch_target, watch_exe, category_id, total_xp, launch_args)
+                     SELECT ?1, ?2, ?3, id, ?5, ?6 FROM categories WHERE name = ?4",
                     params![
                         app.name,
                         app.launch_target,
                         app.watch_exe,
                         app.category,
-                        app.total_xp
+                        app.total_xp,
+                        app.launch_args
                     ],
                 )?;
                 imported.apps += 1;
@@ -262,6 +268,7 @@ mod tests {
                 launch_target: format!(r"C:\Games\{app}.exe"),
                 watch_exe: Some(format!("{app}.exe")),
                 category_id,
+                launch_args: Some("-dx12".into()),
             })
             .unwrap();
         let session = db.start_session(app_id, started_at).unwrap();
@@ -310,6 +317,7 @@ mod tests {
         fresh.import_from(&file).unwrap();
         let apps = fresh.apps().unwrap();
         assert_eq!(apps[0].launch_target, r"C:\Games\Hades.exe");
+        assert_eq!(apps[0].launch_args.as_deref(), Some("-dx12"));
         assert_eq!(apps[0].total_xp, 80);
         assert_eq!(apps[0].total_secs, 600);
         assert!(fresh.categories().unwrap().iter().any(|c| c.name == "Jeux"));
@@ -324,6 +332,16 @@ mod tests {
             }
         );
         assert_eq!(app_xp(&fresh, "Hades"), 80);
+
+        // Exported before arguments existed: still imported.
+        std::fs::write(
+            &file,
+            r#"{"version": 1, "exported_at": 0, "apps": [{"name": "Celeste", "category": "Jeux",
+                "launch_target": "celeste.exe", "watch_exe": null, "total_xp": 0}], "sessions": []}"#,
+        )
+        .unwrap();
+        fresh.import_from(&file).unwrap();
+        assert_eq!(fresh.apps().unwrap()[0].launch_args, None); // Celeste, first by name
 
         std::fs::write(
             &file,

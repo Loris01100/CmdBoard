@@ -3,6 +3,7 @@ use super::*;
 #[test]
 fn changing_category_resets_app_selection() {
     let mut app = App::with_defaults();
+    press(&mut app, KeyCode::Char('k')); // "Recent", above the categories
     press(&mut app, KeyCode::Char('k')); // wraps to "Outils"
     press(&mut app, KeyCode::Tab);
     press(&mut app, KeyCode::Char('j'));
@@ -65,6 +66,7 @@ fn edit_refuses_a_taken_name_but_allows_a_new_case() {
         target: "steam://open/main".into(),
         category: "Jeux".into(),
         watch_exe: Some("steam.exe".into()),
+        args: None,
     };
     app.execute(edit("Windows Terminal"));
     assert_eq!(message_kind(&app), Some(MsgKind::Error));

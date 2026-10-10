@@ -2,7 +2,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Rect},
     style::Style,
-    text::Span,
+    text::{Line, Span},
     widgets::{Cell, Row, Table},
 };
 
@@ -19,6 +19,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
 
     let title = match app.mode {
         Mode::Search => t!("apps.search_title", count = app.visible_apps().len()),
+        _ if app.recents_selected() => t!("apps.recent_title"),
         _ => t!("apps.title", sort = app.sort.label()),
     };
     let header = Row::new([
@@ -31,8 +32,16 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let rows = app.visible_apps().into_iter().map(|entry| {
         let (level, xp) = app.shown_app_xp(entry);
         let progress = xp::level_progress(level, xp);
+        // The favorite slot before the name, so `Alt+<slot>` is easy to find.
+        let name = match entry.pin {
+            Some(slot) => Line::from(vec![
+                Span::styled(format!("{slot} "), theme.title),
+                Span::raw(entry.name.as_str()),
+            ]),
+            None => Line::raw(format!("  {}", entry.name)),
+        };
         Row::new([
-            Cell::from(entry.name.as_str()),
+            Cell::from(name),
             Cell::from(level.to_string()),
             Cell::from(Span::styled(
                 xp_bar::text(progress, XP_BAR_WIDTH),

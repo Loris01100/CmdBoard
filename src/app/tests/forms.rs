@@ -11,8 +11,9 @@ fn add_form_adds_app() {
     assert_eq!(form(&app).focused, 1);
 
     type_text(&mut app, "mspaint.exe");
-    press(&mut app, KeyCode::Tab);
-    press(&mut app, KeyCode::Tab);
+    for _ in 0..3 {
+        press(&mut app, KeyCode::Tab); // category, process, arguments
+    }
     press(&mut app, KeyCode::Enter); // last field: submit
 
     assert_eq!(app.mode, Mode::Normal);
@@ -27,7 +28,7 @@ fn form_keeps_errors_inside() {
     let mut app = App::with_defaults();
     run(&mut app, "add");
     press(&mut app, KeyCode::Tab); // skip the picker
-    for _ in 0..4 {
+    for _ in 0..5 {
         press(&mut app, KeyCode::Enter); // empty name: submit fails on the last field
     }
     assert_eq!(form(&app).error.as_deref(), Some("Nom : champ requis"));
@@ -76,7 +77,7 @@ fn picker_fills_the_form_from_an_installed_app() {
     let fields: Vec<_> = form(&app).fields.iter().map(|f| f.input.text()).collect();
     assert_eq!(
         fields,
-        ["Hollow Knight", "steam://rungameid/367520", "Jeux", ""]
+        ["Hollow Knight", "steam://rungameid/367520", "Jeux", "", ""]
     );
     assert_eq!(form(&app).focused, 2); // only the category is left to check
 
@@ -120,6 +121,8 @@ fn edit_form_changes_app_and_keeps_history() {
     for _ in 0.."steam.exe".len() {
         press(&mut app, KeyCode::Backspace);
     }
+    press(&mut app, KeyCode::Tab);
+    type_text(&mut app, "-silent");
     press(&mut app, KeyCode::Enter); // last field: submit
 
     assert_eq!(app.mode, Mode::Normal);
@@ -127,6 +130,7 @@ fn edit_form_changes_app_and_keeps_history() {
     let after = app.selected_app().unwrap();
     assert_eq!((after.id, after.name.as_str()), (steam, "Steam Deck"));
     assert_eq!(after.watch_exe, None); // empty, and a URI gives no exe
+    assert_eq!(after.launch_args.as_deref(), Some("-silent"));
     assert_eq!(
         (after.total_secs, after.total_xp),
         (before.total_secs, before.total_xp)

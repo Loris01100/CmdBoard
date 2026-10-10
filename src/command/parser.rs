@@ -1,6 +1,6 @@
 //! Text typed after `:` -> `Command`.
 
-use super::{Command, GoalChange, find_help};
+use super::{Command, GoalChange, PinChange, find_help};
 use crate::app::AppSort;
 use crate::core::goals::{self, GoalKind};
 use crate::popup::FormKind;
@@ -31,12 +31,14 @@ pub fn parse(input: &str) -> Result<Command, String> {
             target: target.clone(),
             category: None,
             watch_exe: None,
+            args: None,
         }),
         ("add", [name, target, category]) => Ok(Command::Add {
             name: name.clone(),
             target: target.clone(),
             category: Some(category.clone()),
             watch_exe: None,
+            args: None,
         }),
         ("move", [app]) => Ok(Command::OpenForm(FormKind::Move { app: app.clone() })),
         ("move", [app, category]) => Ok(Command::Move {
@@ -56,6 +58,7 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("clear", [what]) if what.eq_ignore_ascii_case("stats") => {
             Ok(Command::ClearStats { confirmed: false })
         }
+        ("pin", _) => pin(rest, &help.usage()),
         ("goal" | "limit", _) => goal(help.name, rest).ok_or_else(|| {
             let amount = rest.first().map_or("", String::as_str);
             t!("parse.bad_amount", amount, usage = help.usage())
@@ -100,6 +103,32 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("quit", []) => Ok(Command::Quit),
         _ => Err(t!("parse.usage", usage = help.usage())),
     }
+}
+
+/// `:pin [<1-9>|off <app>]`: the slot comes first, so a name starting with a digit
+/// stays whole. Without arguments, lists the favorites.
+fn pin(rest: &[String], usage: &str) -> Result<Command, String> {
+    let Some((slot, app)) = rest.split_first() else {
+        return Ok(Command::Pin {
+            change: None,
+            app: None,
+        });
+    };
+    if app.is_empty() {
+        return Err(t!("parse.usage", usage));
+    }
+    let change = if slot.eq_ignore_ascii_case("off") {
+        PinChange::Off
+    } else {
+        match slot.parse() {
+            Ok(n @ 1..=9) => PinChange::Slot(n),
+            _ => return Err(t!("parse.bad_pin", slot, usage)),
+        }
+    };
+    Ok(Command::Pin {
+        change: Some(change),
+        app: Some(app.join(" ")),
+    })
 }
 
 /// `:goal [<amount>|off] [target]`, `:limit` likewise: the amount comes first so the
@@ -203,6 +232,7 @@ mod tests {
                     target: s(r"C:\Program Files\VS Code\Code.exe"),
                     category: None,
                     watch_exe: None,
+                    args: None,
                 },
             ),
             (
@@ -212,6 +242,7 @@ mod tests {
                     target: s("steam://rungameid/367520"),
                     category: Some(s("Jeux")),
                     watch_exe: None,
+                    args: None,
                 },
             ),
             (
@@ -327,6 +358,37 @@ mod tests {
         for (input, expected) in cases {
             assert_eq!(parse(input), Ok(expected), "input: {input}");
         }
+    }
+
+    #[test]
+    fn parses_pins() {
+        let pin = |change, app: Option<&str>| Command::Pin {
+            change,
+            app: app.map(s),
+        };
+        let cases = [
+            ("pin", pin(None, None)),
+            (
+                "pin 3 Elden Ring",
+                pin(Some(PinChange::Slot(3)), Some("Elden Ring")),
+            ),
+            // The slot comes first: a name starting with a digit stays whole.
+            (
+                "pin 1 7 Days to Die",
+                pin(Some(PinChange::Slot(1)), Some("7 Days to Die")),
+            ),
+            ("pin OFF Steam", pin(Some(PinChange::Off), Some("Steam"))),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(parse(input), Ok(expected), "input: {input}");
+        }
+        for bad in ["pin 0 Steam", "pin 10 Steam", "pin x Steam"] {
+            assert!(
+                parse(bad).unwrap_err().contains("pin [<1-9>|off <app>]"),
+                "{bad}"
+            );
+        }
+        assert_eq!(parse("pin 3"), Err(s("Usage : pin [<1-9>|off <app>]")));
     }
 
     #[test]

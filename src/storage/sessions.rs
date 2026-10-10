@@ -326,6 +326,7 @@ mod tests {
                 launch_target: "hades.exe".into(),
                 watch_exe: Some("hades.exe".into()),
                 category_id,
+                launch_args: None,
             })
             .unwrap();
         (db, app)

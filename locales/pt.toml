@@ -72,6 +72,15 @@ unreachable = "não foi possível acessar o GitHub"
 install_failed = "a atualização falhou"
 available = "v{version} disponível "
 
+[pin]
+set = "Favorito {slot}: {name} (Alt+{slot})"
+removed = "Removido dos favoritos: {name}"
+not_pinned = "{name} não é um favorito"
+full = "Os 9 favoritos estão ocupados: :pin <1-9> <app> substitui um"
+empty = "Nenhum favorito na posição {slot} (p num app, ou :pin {slot} <app>)"
+none = "Nenhum favorito: p num app, ou :pin <1-9> <app>"
+list = "Favoritos: {items}"
+
 [goals]
 goal = "Meta"
 limit = "Limite"
@@ -157,6 +166,7 @@ empty = "Comando vazio"
 unknown = "Comando desconhecido: {name} (:help para a lista)"
 bad_sort = "Ordem desconhecida: {name} (uso: {usage})"
 bad_amount = "Duração inválida: {amount} (uso: {usage})"
+bad_pin = "Posição inválida: {slot} (uso: {usage})"
 usage = "Uso: {usage}"
 unclosed_quote = "Aspas não fechadas"
 
@@ -195,6 +205,8 @@ help_name = "Nome exibido no CmdBoard."
 help_target = "O que é iniciado: um .exe ou atalho .lnk, um nome no PATH ou um link steam://…"
 help_category = "Uma categoria existente, ou uma nova que será criada."
 help_process = "Exe monitorado para contar o tempo de jogo (XP). Vazio: obtido do destino. Para um link steam://…, o exe do jogo (ex.: Hades.exe)."
+args = "Argumentos"
+help_args = "Passados ao destino ao iniciar: -dx12, -windowed, uma pasta ou um arquivo a abrir. Vazio: nenhum. A maioria dos links steam://… os ignora."
 required = "{label}: campo obrigatório"
 footer = "  * obrigatório · Enter no último campo: enviar"
 
@@ -237,6 +249,8 @@ no_activity = "Nenhuma atividade ainda"
 [apps]
 title = "Aplicativos · {sort}"
 search_title = "Busca ({count})"
+recent = "{icon} Recentes ({count})"
+recent_title = "Aplicativos · jogados por último"
 name = "Nome"
 level = "Nív"
 xp = "XP"
@@ -368,6 +382,7 @@ panel = "trocar de painel"
 launch = "iniciar o app selecionado"
 edit = "adicionar / editar / mover / remover (app ou categoria vazia)"
 sort = "mudar a ordem dos apps (nome, XP, recente, tempo); Estatísticas: pizza por categoria ou por app"
+pin = "fixar o app num favorito, ou desafixar; Alt+1-9 inicia um favorito de qualquer tela"
 search = "buscar um app em todas as categorias (Enter: ir até ele)"
 command = "linha de comando (↑↓ histórico, Tab completar, Esc cancelar)"
 screens = "Painel, Estatísticas, Recompensas, Armazenamento, Otimizar; 0 ou ?: Ajuda"
@@ -442,6 +457,10 @@ summary = "Estatísticas de todos os apps, ou de um"
 [cmd.theme]
 usage = "theme [nome]"
 summary = "Troca o tema (salvo). Sem nome: lista os temas"
+
+[cmd.pin]
+usage = "pin [<1-9>|off <app>]"
+summary = "Fixa um app num favorito, iniciado com Alt+<n> de qualquer tela; off desafixa. Sem argumentos: lista"
 
 [cmd.goal]
 usage = "goal [<duração>/day|week|off] [app|categoria]"

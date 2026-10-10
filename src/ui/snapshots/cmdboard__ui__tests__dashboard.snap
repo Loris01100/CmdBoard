@@ -4,10 +4,10 @@ expression: "screen_text(&app, 100, 30)"
 ---
  CmdBoard · Dashboard                                                       aucune session en cours 
 ╭ Catégories ──────╮╭ Applications · nom ─────────────────────────────────╮╭ Détails ──────────────╮
-│> Jeux (1)        ││  Nom                            Niv  XP       Temps ││Steam                  │
-│  Dev (1)         ││> Steam                          1    ░░░░░░░░ 0m    ││Niveau 1               │
-│  Outils (3)      ││                                                     ││       0/100 XP        │
-│                  ││                                                     ││                       │
+│  ★ Récents (0)   ││  Nom                            Niv  XP       Temps ││Steam                  │
+│> Jeux (1)        ││>   Steam                        1    ░░░░░░░░ 0m    ││Niveau 1               │
+│  Dev (1)         ││                                                     ││       0/100 XP        │
+│  Outils (3)      ││                                                     ││                       │
 │                  ││                                                     ││Temps total : 0m       │
 │                  ││                                                     ││Dernière : jamais      │
 │                  ││                                                     ││Récompenses : 🏆  0     │

@@ -7,6 +7,7 @@ mod goals;
 mod keys;
 mod library;
 mod optimize;
+mod pins;
 mod sessions;
 mod settings;
 mod storage;

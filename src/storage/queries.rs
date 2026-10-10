@@ -50,6 +50,7 @@ impl Database {
     pub fn apps(&self) -> anyhow::Result<Vec<AppEntry>> {
         let mut stmt = self.conn.prepare(
             "SELECT a.id, a.name, a.launch_target, a.watch_exe, a.category_id, a.total_xp,
+                a.launch_args, a.pin,
                 (SELECT COALESCE(SUM(duration_s), 0) FROM sessions s
                     WHERE s.app_id = a.id AND s.ended_at IS NOT NULL),
                 (SELECT MAX(ended_at) FROM sessions s WHERE s.app_id = a.id),
@@ -64,14 +65,16 @@ impl Database {
                 id: r.get(0)?,
                 name: r.get(1)?,
                 launch_target: r.get(2)?,
+                launch_args: r.get(6)?,
                 watch_exe: r.get(3)?,
                 category_id: r.get(4)?,
+                pin: r.get(7)?,
                 total_xp,
                 level,
                 xp,
-                total_secs: to_u64(r.get(6)?),
-                last_played: r.get(7)?,
-                rewards: r.get(8)?,
+                total_secs: to_u64(r.get(8)?),
+                last_played: r.get(9)?,
+                rewards: r.get(10)?,
             })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)
@@ -80,9 +83,15 @@ impl Database {
     pub fn add_app(&self, app: &NewApp) -> anyhow::Result<i64> {
         self.conn
             .execute(
-                "INSERT INTO apps (name, launch_target, watch_exe, category_id)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![app.name, app.launch_target, app.watch_exe, app.category_id],
+                "INSERT INTO apps (name, launch_target, watch_exe, category_id, launch_args)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    app.name,
+                    app.launch_target,
+                    app.watch_exe,
+                    app.category_id,
+                    app.launch_args
+                ],
             )
             .with_context(|| t!("error.cannot_add_app", name = app.name))?;
         Ok(self.conn.last_insert_rowid())
@@ -92,14 +101,16 @@ impl Database {
     pub fn update_app(&self, app_id: i64, app: &NewApp) -> anyhow::Result<()> {
         self.conn
             .execute(
-                "UPDATE apps SET name = ?2, launch_target = ?3, watch_exe = ?4, category_id = ?5
+                "UPDATE apps SET name = ?2, launch_target = ?3, watch_exe = ?4, category_id = ?5,
+                    launch_args = ?6
                  WHERE id = ?1",
                 params![
                     app_id,
                     app.name,
                     app.launch_target,
                     app.watch_exe,
-                    app.category_id
+                    app.category_id,
+                    app.launch_args
                 ],
             )
             .with_context(|| t!("error.cannot_edit_app", name = app.name))?;
@@ -113,6 +124,22 @@ impl Database {
                 [app_id, category_id],
             )
             .with_context(|| t!("error.cannot_move_app"))?;
+        Ok(())
+    }
+
+    /// Puts an app in favorite slot `pin`, taking the slot from the app that had it, or
+    /// takes it out of its slot (`None`).
+    pub fn set_pin(&self, app_id: i64, pin: Option<u8>) -> anyhow::Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        if let Some(pin) = pin {
+            self.conn
+                .execute("UPDATE apps SET pin = NULL WHERE pin = ?1", [pin])?;
+        }
+        self.conn.execute(
+            "UPDATE apps SET pin = ?2 WHERE id = ?1",
+            params![app_id, pin],
+        )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -375,6 +402,7 @@ mod tests {
                 launch_target: "steam://rungameid/1145360".into(),
                 watch_exe: Some("Hades.exe".into()),
                 category_id: cat,
+                launch_args: None,
             })
             .unwrap();
         (db, cat, app)
@@ -415,6 +443,7 @@ mod tests {
             launch_target: "x".into(),
             watch_exe: None,
             category_id: cat,
+            launch_args: None,
         };
         assert!(db.add_app(&dup).is_err());
     }
@@ -521,6 +550,7 @@ mod tests {
                 launch_target: "celeste.exe".into(),
                 watch_exe: None,
                 category_id: cat,
+                launch_args: None,
             })
             .unwrap();
         let pending = db.pending_rewards(hades).unwrap();
@@ -571,6 +601,7 @@ mod tests {
                 launch_target: "celeste.exe".into(),
                 watch_exe: None,
                 category_id: cat,
+                launch_args: None,
             })
             .unwrap();
         db.conn
@@ -593,6 +624,7 @@ mod tests {
                 launch_target: "code.exe".into(),
                 watch_exe: None,
                 category_id: dev,
+                launch_args: None,
             })
             .unwrap();
         // Noon UTC, like `profile_counts_today_and_streak`.

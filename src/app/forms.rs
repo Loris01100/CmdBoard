@@ -27,6 +27,7 @@ impl App {
                     &entry.launch_target,
                     self.category_of(entry),
                     entry.watch_exe.as_deref(),
+                    entry.launch_args.as_deref(),
                 )
             }
             FormKind::Move { app } => {

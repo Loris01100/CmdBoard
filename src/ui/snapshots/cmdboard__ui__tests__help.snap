@@ -8,6 +8,7 @@ expression: "screen_text(&app, 100, 30)"
 │  Tab ←→ h/l  changer de panneau                                                                  │
 │  Entrée      lancer l'app sélectionnée                                                           │
 │  a / e / m / dajouter / modifier / déplacer / supprimer (app ou catégorie vide)                  │
+│  p  Alt+1-9  épingler l'app à un favori, ou la retirer ; Alt+1-9 lance un favori depuis n'importe│
 │  s           changer le tri des apps (nom, XP, récent, temps) ; Stats : camembert par catégorie o│
 │  /           chercher une app dans toutes les catégories (Entrée : y aller)                      │
 │  Tab s d f r Stockage : Tab/←→ disque, s plus petits/plus gros d'abord, d/Suppr désinstalle, f do│
@@ -25,10 +26,9 @@ expression: "screen_text(&app, 100, 30)"
 │  :rmcat <catégorie>                         Supprime une catégorie vide, après confirmation      │
 │  :stats [app]                               Statistiques de toutes les apps, ou d'une seule      │
 │  :clear sessions|stats                      Efface l'historique des sessions, ou toutes les stats│
+│  :pin [<1-9>|off <app>]                     Épingle une app à un favori, lancé par Alt+<n> depuis│
 │  :goal [<durée>/day|week|off] [ap           Temps de jeu à atteindre par jour ou par semaine, pou│
 │  :limit [<durée>/day|week|off] [a           Temps de jeu à ne pas dépasser par jour ou par semain│
-│  :theme [nom]                               Change de thème (mémorisé). Sans nom : liste les thèm│
-│  :sort [name|xp|recent|time]                Trie les apps (mémorisé). Sans argument : tri actuel │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
                                                                                                     
  : commande   0-5 écrans   q quitter

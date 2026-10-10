@@ -4,7 +4,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::{App, Focus, Mode, MsgKind, Screen, clamp};
-use crate::command::Command;
+use crate::command::{Command, PinChange};
 use crate::popup::{FormKind, Popup};
 use crate::text_input::TextInput;
 
@@ -37,6 +37,9 @@ impl App {
 
     /// Normal-mode key bindings: global ones first, then the screen's.
     pub(super) fn key_to_command(&self, key: KeyEvent) -> Option<Command> {
+        if let Some(slot) = pin_slot(key) {
+            return Some(Command::LaunchPin { slot });
+        }
         Some(match key.code {
             KeyCode::Char('q') => Command::Quit,
             KeyCode::Char('1') => Command::Show(Screen::Dashboard),
@@ -70,6 +73,10 @@ impl App {
                 by: Some(self.sort.next()),
             },
             KeyCode::Char('e') => Command::OpenForm(FormKind::Edit { app: app()? }),
+            KeyCode::Char('p') => Command::Pin {
+                change: Some(PinChange::Toggle),
+                app: Some(app()?),
+            },
             KeyCode::Char('m') => Command::OpenForm(FormKind::Move { app: app()? }),
             KeyCode::Char('d') => match self.focus {
                 Focus::Categories => Command::RemoveCategory {
@@ -187,4 +194,22 @@ impl App {
         self.app_state
             .select(clamp(self.app_state.selected(), visible));
     }
+}
+
+/// `Alt+1` to `Alt+9`: a favorite slot. On AZERTY keyboards the digits need Shift, so
+/// the unshifted keys of that row (`&é"'(-è_ç`) count too. `AltGr` (`Ctrl+Alt`) types
+/// characters instead.
+fn pin_slot(key: KeyEvent) -> Option<u8> {
+    let alt = key.modifiers.contains(KeyModifiers::ALT);
+    if !alt || key.modifiers.contains(KeyModifiers::CONTROL) {
+        return None;
+    }
+    let KeyCode::Char(c) = key.code else {
+        return None;
+    };
+    let row = "123456789"
+        .chars()
+        .position(|k| k == c)
+        .or_else(|| "&é\"'(-è_ç".chars().position(|k| k == c))?;
+    u8::try_from(row + 1).ok()
 }

@@ -58,6 +58,8 @@ pub enum Command {
         target: String,
         category: Option<String>,
         watch_exe: Option<String>,
+        /// Arguments passed to the target, `None` for none.
+        args: Option<String>,
     },
     Move {
         app: String,
@@ -71,6 +73,7 @@ pub enum Command {
         target: String,
         category: String,
         watch_exe: Option<String>,
+        args: Option<String>,
     },
     /// Destructive: without `confirmed`, opens a confirmation popup first.
     RemoveApp {
@@ -116,6 +119,15 @@ pub enum Command {
     Lang {
         code: Option<String>,
     },
+    /// `:pin`: lists the favorites (`change: None`), or puts `app` in a slot or out of it.
+    Pin {
+        change: Option<PinChange>,
+        app: Option<String>,
+    },
+    /// `Alt+1` to `Alt+9`: launches the app in that favorite slot.
+    LaunchPin {
+        slot: u8,
+    },
     /// `:goal` or `:limit`: lists them (`change: None`), or sets or removes the one of
     /// `target`, an app or a category (`None`: every app together).
     Goal {
@@ -146,6 +158,16 @@ pub enum Command {
         command: Option<String>,
     },
     Quit,
+}
+
+/// What `:pin` does to an app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PinChange {
+    /// Slot 1 to 9, taken from the app that had it.
+    Slot(u8),
+    Off,
+    /// `p` on the dashboard: out of its slot if it has one, else into the first free one.
+    Toggle,
 }
 
 /// What `:goal` or `:limit` does to a target.
@@ -203,6 +225,10 @@ pub const COMMANDS: &[CommandHelp] = &[
     },
     CommandHelp {
         name: "clear",
+        aliases: &[],
+    },
+    CommandHelp {
+        name: "pin",
         aliases: &[],
     },
     CommandHelp {

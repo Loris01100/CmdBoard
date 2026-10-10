@@ -3,7 +3,8 @@ use super::*;
 #[test]
 fn sort_orders_apps_and_keeps_selection() {
     let mut app = App::with_defaults();
-    press(&mut app, KeyCode::Char('k')); // "Outils"
+    press(&mut app, KeyCode::Char('k')); // "Recent"
+    press(&mut app, KeyCode::Char('k')); // wraps to "Outils"
     press(&mut app, KeyCode::Char('l'));
     let names =
         |app: &App| -> Vec<String> { app.visible_apps().iter().map(|a| a.name.clone()).collect() };

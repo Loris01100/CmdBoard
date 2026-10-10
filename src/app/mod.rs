@@ -21,6 +21,7 @@ mod goals;
 mod keys;
 mod library;
 mod optimize;
+mod pins;
 mod sessions;
 mod settings;
 mod sort;
@@ -284,8 +285,7 @@ impl App {
         self.usage = self.db.usage()?;
         self.reward_state
             .select(clamp(self.reward_state.selected(), self.rewards.len()));
-        self.cat_state
-            .select(clamp(self.cat_state.selected(), self.categories.len()));
+        self.clamp_category_row();
         let visible = self.visible_apps().len();
         self.app_state
             .select(clamp(self.app_state.selected(), visible));

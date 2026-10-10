@@ -97,6 +97,11 @@ const MIGRATIONS: &[&str] = &[
         CHECK (app_id IS NULL OR category_id IS NULL)
     );
     CREATE UNIQUE INDEX goals_once ON goals(kind, IFNULL(app_id, 0), IFNULL(category_id, 0));",
+    // v7: arguments passed to the target, and favorite slots (`Alt+1` to `Alt+9`), one
+    // app per slot.
+    "ALTER TABLE apps ADD COLUMN launch_args TEXT;
+    ALTER TABLE apps ADD COLUMN pin INTEGER CHECK (pin BETWEEN 1 AND 9);
+    CREATE UNIQUE INDEX apps_pin ON apps(pin) WHERE pin IS NOT NULL;",
 ];
 
 pub struct Database {
@@ -183,6 +188,7 @@ impl Database {
                 launch_target: target.into(),
                 watch_exe: watch.map(Into::into),
                 category_id,
+                launch_args: None,
             })?;
         }
         Ok(())

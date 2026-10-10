@@ -13,12 +13,13 @@ use crate::ui::{
     widgets::{command_line, status_bar},
 };
 
-fn keys() -> [(String, String); 11] {
+fn keys() -> [(String, String); 12] {
     [
         ("j/k ↑↓".into(), t!("help.navigate")),
         ("Tab ←→ h/l".into(), t!("help.panel")),
         (t!("keys.enter"), t!("help.launch")),
         ("a / e / m / d".into(), t!("help.edit")),
+        ("p  Alt+1-9".into(), t!("help.pin")),
         ("s".into(), t!("help.sort")),
         ("/".into(), t!("help.search")),
         ("Tab s d f r".into(), t!("help.storage")),

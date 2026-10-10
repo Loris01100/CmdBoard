@@ -72,6 +72,15 @@ unreachable = "cannot reach GitHub"
 install_failed = "update failed"
 available = "v{version} available "
 
+[pin]
+set = "Favorite {slot}: {name} (Alt+{slot})"
+removed = "No longer a favorite: {name}"
+not_pinned = "{name} is not a favorite"
+full = "All 9 favorites are taken: :pin <1-9> <app> replaces one"
+empty = "No favorite in slot {slot} (p on an app, or :pin {slot} <app>)"
+none = "No favorites yet: p on an app, or :pin <1-9> <app>"
+list = "Favorites: {items}"
+
 [goals]
 goal = "Goal"
 limit = "Limit"
@@ -157,6 +166,7 @@ empty = "Empty command"
 unknown = "Unknown command: {name} (:help for the list)"
 bad_sort = "Unknown sort: {name} (usage: {usage})"
 bad_amount = "Invalid duration: {amount} (usage: {usage})"
+bad_pin = "Invalid slot: {slot} (usage: {usage})"
 usage = "Usage: {usage}"
 unclosed_quote = "Unclosed quote"
 
@@ -195,6 +205,8 @@ help_name = "Name shown in CmdBoard."
 help_target = "What gets launched: an .exe or .lnk shortcut, a name on the PATH, or a steam://… link"
 help_category = "An existing category, or a new one that will be created."
 help_process = "Exe watched to count play time (XP). Empty: taken from the target. For a steam://… link, the game's exe (e.g. Hades.exe)."
+args = "Arguments"
+help_args = "Passed to the target on launch: -dx12, -windowed, a folder or file to open. Empty: none. Most steam://… links ignore them."
 required = "{label}: required field"
 footer = "  * required · Enter on the last field: submit"
 
@@ -237,6 +249,8 @@ no_activity = "No activity yet"
 [apps]
 title = "Applications · {sort}"
 search_title = "Search ({count})"
+recent = "{icon} Recent ({count})"
+recent_title = "Applications · played last"
 name = "Name"
 level = "Lvl"
 xp = "XP"
@@ -368,6 +382,7 @@ panel = "switch panel"
 launch = "launch the selected app"
 edit = "add / edit / move / remove (app or empty category)"
 sort = "change the app order (name, XP, recent, time); Stats: pie per category or per app"
+pin = "pin the app to a favorite slot, or unpin it; Alt+1-9 launches a favorite from any screen"
 search = "search an app in every category (Enter: go there)"
 command = "command line (↑↓ history, Tab complete, Esc cancel)"
 screens = "Dashboard, Stats, Rewards, Storage, Optimize; 0 or ?: Help"
@@ -442,6 +457,10 @@ summary = "Statistics of every app, or of one"
 [cmd.theme]
 usage = "theme [name]"
 summary = "Switches theme (saved). Without a name: lists the themes"
+
+[cmd.pin]
+usage = "pin [<1-9>|off <app>]"
+summary = "Pins an app to a favorite slot, launched with Alt+<slot> from any screen; off unpins it. Without arguments: lists them"
 
 [cmd.goal]
 usage = "goal [<duration>/day|week|off] [app|category]"
