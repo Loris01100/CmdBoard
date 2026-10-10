@@ -4,6 +4,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::windows::fs::OpenOptionsExt;
+use std::path::Path;
 use std::ptr::null_mut;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -14,7 +15,7 @@ use windows_sys::Win32::System::Registry::{
     RegSetKeyValueW,
 };
 
-use crate::launcher::programs;
+use crate::launcher::programs::{self, Disk};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Bench {
@@ -257,11 +258,7 @@ fn disk(size: u64) -> Result<Score, String> {
     const FILE_FLAG_WRITE_THROUGH: u32 = 0x8000_0000;
     const CHUNK: usize = 4 << 20;
     let path = std::env::temp_dir().join("cmdboard-bench.tmp");
-    let free = programs::disks()
-        .into_iter()
-        .find(|d| path.to_string_lossy().to_uppercase().starts_with(d.letter))
-        .map_or(0, |d| d.free);
-    if free < size * 2 {
+    if short_of_space(&path, &programs::disks(), size) {
         return Err(t!("optimize.no_space"));
     }
     // Unbuffered I/O needs sector-aligned buffers.
@@ -298,6 +295,16 @@ fn disk(size: u64) -> Result<Score, String> {
     })();
     let _ = fs::remove_file(&path);
     result.map_err(|e| e.to_string())
+}
+
+/// Less than twice `size` free on the drive of `path`. A drive not listed (a network
+/// share, no letter) is not refused: a full drive then fails while writing.
+fn short_of_space(path: &Path, disks: &[Disk], size: u64) -> bool {
+    let letter = programs::drive_of(&path.to_string_lossy());
+    disks
+        .iter()
+        .find(|d| Some(d.letter) == letter)
+        .is_some_and(|d| d.free < size.saturating_mul(2))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -415,6 +422,28 @@ mod tests {
         assert!(write > 0.0 && read > 0.0);
         assert!(!std::env::temp_dir().join("cmdboard-bench.tmp").exists());
         assert!(disk(u64::MAX / 4).is_err()); // never that much free space
+    }
+
+    #[test]
+    fn space_check_only_refuses_a_known_full_drive() {
+        let disks = [Disk {
+            letter: 'C',
+            total: 1000,
+            free: 200,
+        }];
+        let cases = [
+            (r"C:\Users\me\AppData\Local\Temp", 100, false),
+            (r"c:\temp", 101, true),
+            (r"D:\Temp", u64::MAX, false), // drive not listed
+            (r"\\server\share\temp", u64::MAX, false),
+        ];
+        for (path, size, short) in cases {
+            assert_eq!(
+                short_of_space(Path::new(path), &disks, size),
+                short,
+                "{path}"
+            );
+        }
     }
 
     #[test]

@@ -107,7 +107,7 @@ fn read_program(key: &Key, sub: &str) -> Option<Program> {
 }
 
 /// `C` for `C:\...` or `"c:\..."`.
-fn drive_of(path: &str) -> Option<char> {
+pub fn drive_of(path: &str) -> Option<char> {
     let mut chars = path.trim_start_matches('"').chars();
     match (chars.next(), chars.next()) {
         (Some(letter), Some(':')) if letter.is_ascii_alphabetic() => {
