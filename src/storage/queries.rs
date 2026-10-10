@@ -692,7 +692,7 @@ mod tests {
         session(&db, app, 9_000, 120, 0); // already closed: untouched
 
         assert_eq!(
-            db.close_orphan_sessions().unwrap(),
+            db.close_orphan_sessions(&[]).unwrap(),
             [ClosedSession {
                 session_id: checkpointed,
                 secs: 600

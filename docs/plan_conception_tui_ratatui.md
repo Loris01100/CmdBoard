@@ -26,6 +26,7 @@ src/
 │   ├── library.rs       // apps et catégories : sélection, ajout, édition, suppression
 │   ├── forms.rs         // choix de l'app installée, formulaires
 │   ├── sessions.rs      // sessions suivies, animations d'XP, popups de level-up
+│   ├── background.rs    // passage des sessions au suivi en arrière-plan et retour
 │   ├── settings.rs      // thème, tri, langue, alias, export/import, mises à jour
 │   ├── storage.rs       // écran Stockage (StorageScreen) : disques, programmes
 │   ├── folders.rs       // explorateur de dossiers de l'écran Stockage
@@ -111,7 +112,7 @@ clippy.toml                     // taille maximale d'une fonction
 ```
 categories(id, name, color, icon)
 apps(id, name, launch_target, watch_exe, icon, category_id, total_xp)
-sessions(id, app_id, started_at, ended_at, duration_s, xp_gained)
+sessions(id, app_id, started_at, ended_at, duration_s, xp_gained, hidden, checkpoint_at)
 rewards(id, app_id NULL, code, name, description, rule, scope)
 unlocked_rewards(id, reward_id, app_id NULL, unlocked_at, session_id)
 ```
@@ -121,6 +122,7 @@ unlocked_rewards(id, reward_id, app_id NULL, unlocked_at, session_id)
 - `app_id NULL` dans `rewards` : récompense commune à toutes les apps. Sinon : récompense propre à cette app.
 - `scope` (migration v2) : `global` se débloque une seule fois en tout ; `app` se débloque une fois par app. Une récompense propre à une app (`app_id` renseigné) est traitée comme `app`.
 - `unlocked_rewards.app_id` : l'app pour laquelle une récompense `app` a été débloquée (`NULL` pour une `global`). Index unique sur `(reward_id, IFNULL(app_id, 0))` : pas de double déblocage.
+- `sessions.checkpoint_at` (migration v5) : dernier enregistrement d'une session ouverte (début, puis chaque point de sauvegarde). `NULL` pour une session ouverte avant v5. Sert à distinguer une session passée à l'autre process il y a un instant d'une session laissée par un crash (section 12).
 - Le niveau n'est pas stocké : il se déduit de `total_xp` (`core::xp::level_from_total`), ce qui évite toute incohérence. Le niveau global se déduit de la somme des `total_xp`.
 - Temps total, dernière session et nombre de récompenses d'une app sont agrégés depuis `sessions` et `unlocked_rewards` à la lecture.
 - Horodatages en secondes Unix (`INTEGER`). Les jours (XP du jour, streak) suivent le fuseau local via `date(..., 'unixepoch', 'localtime')`.
@@ -557,8 +559,8 @@ code = "marathon", scope = "app", rule = "session_minutes >= 180"
 4. **Temps réellement joué** : le tracker cumule lui-même le temps de chaque session, poll par poll, et l'envoie à chaque poll (`SessionProgress { played, idle }`) ; l'UI s'en sert pour le chrono du bandeau, les points de sauvegarde et la fermeture à la sortie. Un poll ne compte rien quand l'utilisateur est inactif : aucune entrée clavier / souris (`GetLastInputInfo`) ni manette XInput (changement de `dwPacketNumber`, Xbox et la plupart des autres via Steam Input) depuis `idle_minutes` minutes (`config.toml`, 10 par défaut, `0` désactive). Les entrées ne sont lues que si une session tourne. Jusqu'à `idle_minutes` d'inactivité comptent donc avant la pause. Un écart entre deux polls est plafonné à 10 s (`MAX_STEP`) : une mise en veille avec le jeu ouvert ne compte pas. En pause, le chrono s'arrête et affiche « en pause » (`session.idle`).
 5. Les sessions de moins de 60 s (`MIN_SESSION_SECS`) sont supprimées au lieu d'être enregistrées.
 6. Toutes les 60 s, `on_tick` enregistre `duration_s` des sessions en cours (point de sauvegarde).
-7. Au démarrage, fermer les sessions orphelines (crash précédent) à leur dernier point de sauvegarde : `ended_at = started_at + duration_s`, ou suppression sous 60 s. Un crash perd donc au plus une minute.
-8. À la sortie de CmdBoard, les sessions en cours sont fermées normalement. Une app qui continue de tourner n'est plus suivie.
+7. Au démarrage (`App::recover_sessions`), une session ouverte est **reprise** si son app tourne encore (`tracker::running_now`, une lecture des process) et si son `checkpoint_at` date de moins de 5 min (`HANDOVER_WINDOW_SECS`) : c'est l'autre process qui vient de la passer (point 8). Elle garde sa ligne et son temps joué, et le tracker la poursuit sans nouveau `SessionStarted` (`tracker::spawn` reçoit le temps déjà joué par app). Les autres sont orphelines (crash, extinction du PC) : fermées à leur dernier point de sauvegarde, `ended_at = started_at + duration_s`, ou supprimées sous 60 s. Un crash perd donc au plus une minute.
+8. **Suivi en arrière-plan** (`app/background.rs`, `config.toml` : `background = true` par défaut). En quittant, l'UI lance `cmdboard --background` (`instance::spawn_background` : `DETACHED_PROCESS`, sans console, sorti du job du terminal quand c'est permis, pour survivre à la fermeture de la fenêtre), lui passe ses sessions en cours (`hand_over_sessions` : point de sauvegarde, ligne laissée ouverte), puis affiche `background.started`. Ce process sans terminal attend que l'UI lâche l'instance (section 14), crée un `App` sur la base, reprend les sessions (point 7) et ne fait tourner que le tracker (`App::run_background`) : sessions, points de sauvegarde, XP et récompenses passent par le même code que dans l'UI, sans popups (le fil d'activité montre ensuite ce qui a été gagné). Pas de vérification de mise à jour ni de scan. Au démarrage, l'UI qui trouve l'instance prise demande l'arrêt (`instance::request_stop`, événement nommé `Local\CmdBoard.StopBackground` qui n'existe que tant que le suivi tourne) puis attend l'instance jusqu'à 10 s (`HANDOVER`) ; le suivi repasse ses sessions et quitte. `cmdboard --stop` fait de même sans ouvrir l'UI. Sans `background`, sans app à surveiller, ou si le lancement échoue, les sessions sont fermées normalement à la sortie. L'exe relancé est celui du démarrage (`current_exe` lu avant `:update`), qui contient la nouvelle version après une mise à jour. Pas de démarrage automatique avec Windows : après un redémarrage, le suivi reprend au prochain lancement de CmdBoard.
 9. Seules les sessions fermées (`ended_at` non NULL) comptent dans le temps total, la streak et l'XP du jour.
 
 Cas Steam / Epic / Battle.net : la commande de lancement (URI) et le process surveillé sont différents, d'où les deux champs séparés.
@@ -586,7 +588,7 @@ Pilotées par `Tick` et un compteur `frame_count` dans `App`. Un tick ne redessi
    - Steam : dossier lu dans `HKCU\Software\Valve\Steam\SteamPath` ; Epic : `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests`.
 3. Icônes impossibles dans un terminal : glyphe Nerd Font ou emoji par catégorie.
 4. Base de données dans `%APPDATA%` (crate `directories`).
-5. Une seule instance par session Windows (`src/instance.rs`, mutex nommé `Local\CmdBoard.SingleInstance`, pris dans `main.rs` avant d'ouvrir la base et tenu jusqu'à la sortie) : deux CmdBoard suivraient les mêmes process, enregistreraient chaque session deux fois et se fermeraient mutuellement leurs sessions comme orphelines. La seconde affiche `error.already_running` et quitte avant de prendre le terminal. Windows libère le mutex même après un crash.
+5. Une seule instance par session Windows (`src/instance.rs`, mutex nommé `Local\CmdBoard.SingleInstance`, pris dans `main.rs` avant d'ouvrir la base et tenu jusqu'à la sortie) : deux CmdBoard suivraient les mêmes process, enregistreraient chaque session deux fois et se fermeraient mutuellement leurs sessions comme orphelines. La seconde affiche `error.already_running` et quitte avant de prendre le terminal, sauf si c'est le suivi en arrière-plan qui tient l'instance : elle lui demande alors de s'arrêter et la reprend (section 12, point 8). Windows libère le mutex même après un crash.
 6. `config.toml` cassé : signalé au démarrage, et jamais réécrit. `config::save_value` refuse d'écrire dans un fichier illisible (comme `Aliases::save`), sinon la vérification de mise à jour quotidienne l'écraserait avec sa seule clé.
 
 ---
@@ -709,6 +711,7 @@ Le téléchargement tourne dans un thread temporaire qui renvoie `AppEvent::Upda
 ### Points d'attention
 
 - **SmartScreen** : sans signature de code, Windows affiche « Windows a protégé votre ordinateur » au premier lancement. Acceptable pour un projet perso. Sinon : Azure Trusted Signing.
+- **Suivi en arrière-plan** : `cmdboard --background` garde l'exe ouvert après la sortie de l'UI, ce qui bloquerait un `winget upgrade` ou un MSI (fichier utilisé). Le message `update.use_winget` demande donc de lancer `cmdboard --stop` d'abord. `:update` (installation hors Program Files) n'est pas concerné : l'UI tourne, donc le suivi est arrêté.
 - **Données** : la base vit dans `%APPDATA%`, hors du dossier d'installation. Elle survit aux mises à jour et aux désinstallations, et les migrations (section 3) font évoluer son schéma.
 
 ### Linux (hors périmètre)

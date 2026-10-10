@@ -7,7 +7,9 @@
 use rusqlite::params;
 
 use super::db::Database;
-use super::models::{ClosedSession, Reward, RewardUnlocked, RuleError, SessionOutcome};
+use super::models::{
+    ClosedSession, OpenSession, Reward, RewardUnlocked, RuleError, SessionOutcome,
+};
 use super::queries::unix_now;
 use super::{to_i64, to_u64};
 use crate::core::{
@@ -23,7 +25,7 @@ impl Database {
     /// Opens a session (`ended_at` stays NULL until it ends). Returns its id.
     pub fn start_session(&self, app_id: i64, started_at: i64) -> anyhow::Result<i64> {
         self.conn.execute(
-            "INSERT INTO sessions (app_id, started_at) VALUES (?1, ?2)",
+            "INSERT INTO sessions (app_id, started_at, checkpoint_at) VALUES (?1, ?2, ?2)",
             [app_id, started_at],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -32,10 +34,28 @@ impl Database {
     /// Saves the time played so far, so a crash loses at most one checkpoint interval.
     pub fn checkpoint_session(&self, id: i64, secs: u64) -> anyhow::Result<()> {
         self.conn.execute(
-            "UPDATE sessions SET duration_s = ?2 WHERE id = ?1 AND ended_at IS NULL",
-            params![id, to_i64(secs)],
+            "UPDATE sessions SET duration_s = ?2, checkpoint_at = ?3
+             WHERE id = ?1 AND ended_at IS NULL",
+            params![id, to_i64(secs), unix_now()],
         )?;
         Ok(())
+    }
+
+    /// Sessions not closed yet, oldest first.
+    pub fn open_sessions(&self) -> anyhow::Result<Vec<OpenSession>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, app_id, duration_s, checkpoint_at FROM sessions
+             WHERE ended_at IS NULL ORDER BY id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(OpenSession {
+                session_id: r.get(0)?,
+                app_id: r.get(1)?,
+                secs: to_u64(r.get(2)?),
+                checkpoint_at: r.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
     }
 
     /// Closes a session and awards its XP and rewards, all or nothing. Returns `None` if
@@ -56,13 +76,13 @@ impl Database {
         Ok(outcome)
     }
 
-    /// Closes the sessions a crash left open, at their last checkpoint, and awards them,
-    /// all or nothing.
-    pub fn recover_orphan_sessions(&self) -> anyhow::Result<Vec<SessionOutcome>> {
+    /// Closes the open sessions, except the `resumed` ones, at their last checkpoint and
+    /// awards them, all or nothing.
+    pub fn recover_orphan_sessions(&self, resumed: &[i64]) -> anyhow::Result<Vec<SessionOutcome>> {
         let now = unix_now();
         let tx = self.conn.unchecked_transaction()?;
         let outcomes = self
-            .close_orphan_sessions()?
+            .close_orphan_sessions(resumed)?
             .into_iter()
             .map(|s| self.reward_session(s.session_id, s.secs, now))
             .collect::<anyhow::Result<_>>()?;
@@ -103,19 +123,26 @@ impl Database {
         Ok(true)
     }
 
-    /// Closes the open sessions at their last checkpoint, without awarding them.
-    pub(super) fn close_orphan_sessions(&self) -> anyhow::Result<Vec<ClosedSession>> {
+    /// Closes the open sessions, except the `resumed` ones, at their last checkpoint,
+    /// without awarding them.
+    pub(super) fn close_orphan_sessions(
+        &self,
+        resumed: &[i64],
+    ) -> anyhow::Result<Vec<ClosedSession>> {
+        let resumed = serde_json::to_string(resumed)?;
         self.conn.execute(
-            "DELETE FROM sessions WHERE ended_at IS NULL AND duration_s < ?1",
-            [to_i64(MIN_SESSION_SECS)],
+            "DELETE FROM sessions WHERE ended_at IS NULL AND duration_s < ?1
+               AND id NOT IN (SELECT value FROM json_each(?2))",
+            params![to_i64(MIN_SESSION_SECS), resumed],
         )?;
         let kept = self
             .conn
             .prepare(
-                "UPDATE sessions SET ended_at = started_at + duration_s WHERE ended_at IS NULL
+                "UPDATE sessions SET ended_at = started_at + duration_s
+                 WHERE ended_at IS NULL AND id NOT IN (SELECT value FROM json_each(?1))
                  RETURNING id, duration_s",
             )?
-            .query_map([], |r| {
+            .query_map([resumed], |r| {
                 Ok(ClosedSession {
                     session_id: r.get(0)?,
                     secs: to_u64(r.get(1)?),
@@ -343,16 +370,40 @@ mod tests {
         assert!(db.close_session(id, 1_600, 600).is_err());
         assert_eq!(rows(&db), [(None, 0)]); // neither closed nor credited
         assert_eq!(db.apps().unwrap()[0].total_xp, 0);
-        assert!(db.recover_orphan_sessions().is_err()); // the same failure: still open
+        assert!(db.recover_orphan_sessions(&[]).is_err()); // the same failure: still open
         assert_eq!(rows(&db), [(None, 0)]);
 
         // Once the cause is gone, the next start recovers it.
         db.execute_for_tests("DROP TRIGGER fail");
-        let outcomes = db.recover_orphan_sessions().unwrap();
+        let outcomes = db.recover_orphan_sessions(&[]).unwrap();
         assert_eq!(outcomes.len(), 1);
         // 10 min; no streak bonus: the session ended in 1970, not today.
         assert_eq!(rows(&db), [(Some(1_600), 10)]);
         assert_eq!(db.apps().unwrap()[0].total_xp, 10);
+    }
+
+    #[test]
+    fn resumed_sessions_stay_open_through_recovery() {
+        let (db, app) = db_with_app();
+        let resumed = db.start_session(app, 1_000).unwrap();
+        let crashed = db.start_session(app, 2_000).unwrap();
+        db.checkpoint_session(resumed, 600).unwrap();
+        db.checkpoint_session(crashed, 600).unwrap();
+        let open = db.open_sessions().unwrap();
+        assert_eq!(open.len(), 2);
+        assert!(
+            open[0]
+                .checkpoint_at
+                .is_some_and(|at| at >= unix_now() - 60)
+        );
+
+        assert_eq!(db.recover_orphan_sessions(&[resumed]).unwrap().len(), 1);
+        let open = db.open_sessions().unwrap();
+        assert_eq!(
+            (open.len(), open[0].session_id, open[0].secs),
+            (1, resumed, 600)
+        );
+        assert_eq!(rows(&db), [(None, 0), (Some(2_600), 10)]);
     }
 
     #[test]

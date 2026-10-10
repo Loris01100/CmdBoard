@@ -20,6 +20,8 @@ pub struct Config {
     /// Minutes without keyboard, mouse or controller input after which play time stops
     /// counting. `idle_minutes = 0` always counts it.
     pub idle_minutes: u32,
+    /// `background = false` stops tracking sessions once `CmdBoard` is closed.
+    pub background: bool,
 }
 
 const DEFAULT_IDLE_MINUTES: u32 = 10;
@@ -33,6 +35,7 @@ impl Default for Config {
             update_check: true,
             last_update_check: None,
             idle_minutes: DEFAULT_IDLE_MINUTES,
+            background: true,
         }
     }
 }
@@ -63,10 +66,12 @@ impl Config {
                         .and_then(toml::Value::as_str)
                         .map(String::from)
                 };
-                let update_check = table
-                    .get("update_check")
-                    .and_then(toml::Value::as_bool)
-                    .unwrap_or(true);
+                let flag = |key: &str| {
+                    table
+                        .get(key)
+                        .and_then(toml::Value::as_bool)
+                        .unwrap_or(true)
+                };
                 let last_update_check = table
                     .get("last_update_check")
                     .and_then(toml::Value::as_integer);
@@ -80,9 +85,10 @@ impl Config {
                         theme: text("theme"),
                         sort: text("sort"),
                         lang: text("lang"),
-                        update_check,
+                        update_check: flag("update_check"),
                         last_update_check,
                         idle_minutes,
+                        background: flag("background"),
                     },
                     None,
                 )
@@ -146,7 +152,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             &path,
-            "other = 3\ntheme = \"terminal\"\nupdate_check = false\nidle_minutes = 0\n",
+            "other = 3\ntheme = \"terminal\"\nupdate_check = false\nidle_minutes = 0\nbackground = false\n",
         )
         .unwrap();
         save_value(&path, "theme", "catppuccin-latte").unwrap();
@@ -161,6 +167,7 @@ mod tests {
             (false, Some(1234))
         );
         assert_eq!(config.idle_limit(), None);
+        assert!(!config.background && Config::default().background);
         assert_eq!(
             Config::default().idle_limit(),
             Some(Duration::from_secs(600))

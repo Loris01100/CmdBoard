@@ -62,7 +62,7 @@ fn quitting_closes_running_sessions() {
     app.on_session_start(steam_id(&app));
     app.end_all_sessions().unwrap();
     assert!(app.active_sessions.is_empty());
-    assert!(app.db.recover_orphan_sessions().unwrap().is_empty()); // nothing left open
+    assert!(app.db.recover_orphan_sessions(&[]).unwrap().is_empty()); // nothing left open
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn orphan_sessions_earn_their_xp() {
     let id = app.db.start_session(steam, unix_now() - 600).unwrap();
     app.db.checkpoint_session(id, 600).unwrap(); // then CmdBoard "crashed"
 
-    app.close_orphan_sessions().unwrap();
+    app.close_orphan_sessions(&[]).unwrap();
     assert_eq!(app.find_app("Steam").unwrap().total_xp, 15); // 10 min + 5 streak
     assert_eq!(message_kind(&app), Some(MsgKind::Info));
     assert_eq!(popup_title(&app), Some("Premiers pas".into()));
@@ -203,14 +203,14 @@ fn running_sessions_checkpoint_every_minute() {
 
     // A crash now: the checkpointed time is recovered at the next start.
     app.active_sessions.clear();
-    app.close_orphan_sessions().unwrap();
+    app.close_orphan_sessions(&[]).unwrap();
     assert_eq!(app.find_app("Steam").unwrap().total_secs, 120);
 }
 
 #[test]
 fn orphan_recovery_reports_nothing_or_broken_rules() {
     let mut app = App::with_defaults();
-    app.close_orphan_sessions().unwrap();
+    app.close_orphan_sessions(&[]).unwrap();
     assert_eq!(app.message, None); // nothing was left open
 
     app.db
@@ -220,7 +220,7 @@ fn orphan_recovery_reports_nothing_or_broken_rules() {
         .start_session(steam_id(&app), unix_now() - 600)
         .unwrap();
     app.db.checkpoint_session(id, 600).unwrap();
-    app.close_orphan_sessions().unwrap();
+    app.close_orphan_sessions(&[]).unwrap();
     let (text, kind) = app.message.clone().unwrap();
     assert_eq!(kind, MsgKind::Error);
     assert!(text.contains("marathon"), "{text}");

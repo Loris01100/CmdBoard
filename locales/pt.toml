@@ -63,7 +63,7 @@ unknown_config = "config.toml: idioma desconhecido: {code}"
 [update]
 failed = "Atualização: {error}"
 up_to_date = "O CmdBoard está atualizado (v{version})"
-use_winget = "v{version} disponível. Instalado com MSI/winget: execute “winget upgrade CmdBoard”"
+use_winget = "v{version} disponível. Instalado com MSI/winget: feche o CmdBoard e execute “cmdboard --stop” e “winget upgrade CmdBoard”"
 installed = "Atualizado para v{version}: reinicie o CmdBoard"
 running = "verificação de atualização já em andamento"
 unavailable = "atualização indisponível"
@@ -71,6 +71,12 @@ searching = "Procurando atualização…"
 unreachable = "não foi possível acessar o GitHub"
 install_failed = "a atualização falhou"
 available = "v{version} disponível "
+
+[background]
+started = "As sessões continuam sendo acompanhadas em segundo plano (cmdboard --stop para parar, background = false no config.toml para desativar)"
+stopped = "Acompanhamento em segundo plano parado"
+not_running = "O acompanhamento em segundo plano não está em execução"
+stop_failed = "O acompanhamento em segundo plano não parou"
 
 [session]
 started = "Sessão iniciada: {name}"

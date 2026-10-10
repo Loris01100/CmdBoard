@@ -30,13 +30,19 @@ pub struct Watched {
 /// Starts the tracker. Send it the full watch list whenever apps change; it stops
 /// once either channel is closed. Play time stops counting once the user has not touched
 /// the keyboard, mouse or a controller for `idle_limit` (`None`: always counts).
-pub fn spawn(events: Sender<AppEvent>, idle_limit: Option<Duration>) -> Sender<Vec<Watched>> {
+/// `resumed` holds the sessions already running, by app id, with the time they were
+/// played before: they go on without a new `SessionStarted`.
+pub fn spawn(
+    events: Sender<AppEvent>,
+    idle_limit: Option<Duration>,
+    resumed: HashMap<i64, Duration>,
+) -> Sender<Vec<Watched>> {
     let (watch_tx, watch_rx) = mpsc::channel::<Vec<Watched>>();
     thread::spawn(move || {
         let mut system = System::new();
         let mut input = Input::default();
         let mut watched = Vec::new();
-        let mut played: HashMap<i64, Duration> = HashMap::new();
+        let mut played = resumed;
         let mut last_poll = Instant::now();
         loop {
             match watch_rx.recv_timeout(POLL) {
@@ -44,16 +50,7 @@ pub fn spawn(events: Sender<AppEvent>, idle_limit: Option<Duration>) -> Sender<V
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return,
             }
-            system.refresh_processes_specifics(
-                ProcessesToUpdate::All,
-                true,
-                ProcessRefreshKind::nothing(),
-            );
-            let names = system
-                .processes()
-                .values()
-                .map(|p| p.name().to_string_lossy());
-            let now_running = running_apps(&watched, names);
+            let now_running = poll_running(&mut system, &watched);
 
             // Input is only read while something is played.
             let now = Instant::now();
@@ -95,6 +92,21 @@ pub fn spawn(events: Sender<AppEvent>, idle_limit: Option<Duration>) -> Sender<V
         }
     });
     watch_tx
+}
+
+/// Watched apps running right now, read once: at startup, to resume the sessions the
+/// other `CmdBoard` process handed over.
+pub fn running_now(watched: &[Watched]) -> HashSet<i64> {
+    poll_running(&mut System::new(), watched)
+}
+
+fn poll_running(system: &mut System, watched: &[Watched]) -> HashSet<i64> {
+    system.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+    let names = system
+        .processes()
+        .values()
+        .map(|p| p.name().to_string_lossy());
+    running_apps(watched, names)
 }
 
 /// Play time a poll adds to running sessions: the time since the previous poll, capped
@@ -207,7 +219,7 @@ mod tests {
         let exe = std::env::current_exe().unwrap();
         let exe = exe.file_name().unwrap().to_string_lossy().into_owned();
         let (events, rx) = mpsc::channel();
-        let tracker = spawn(events, None);
+        let tracker = spawn(events, None, HashMap::new());
         tracker.send(vec![watched(7, &exe)]).unwrap();
         let wait = Duration::from_secs(30);
         assert!(matches!(
@@ -221,6 +233,35 @@ mod tests {
         assert!(matches!(
             ended,
             Some(AppEvent::SessionEnded { app_id: 7, .. })
+        ));
+    }
+
+    #[test]
+    fn resumed_session_goes_on_from_its_time_played() {
+        let exe = std::env::current_exe().unwrap();
+        let exe = exe.file_name().unwrap().to_string_lossy().into_owned();
+        let list = vec![watched(7, &exe)];
+        assert!(running_now(&list).contains(&7));
+
+        let (events, rx) = mpsc::channel();
+        let before = Duration::from_secs(600);
+        let tracker = spawn(events, None, HashMap::from([(7, before)]));
+        tracker.send(list).unwrap();
+        let wait = Duration::from_secs(30);
+        // No new start: the first report is the progress of the resumed session.
+        match rx.recv_timeout(wait).unwrap() {
+            AppEvent::SessionProgress { app_id, played, .. } => {
+                assert_eq!(app_id, 7);
+                assert!(played >= before);
+            }
+            other => panic!("{other:?}"),
+        }
+        tracker.send(Vec::new()).unwrap();
+        let ended = std::iter::from_fn(|| rx.recv_timeout(wait).ok())
+            .find(|e| !matches!(e, AppEvent::SessionProgress { .. }));
+        assert!(matches!(
+            ended,
+            Some(AppEvent::SessionEnded { app_id: 7, secs }) if secs >= 600
         ));
     }
 

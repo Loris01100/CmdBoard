@@ -63,7 +63,7 @@ unknown_config = "config.toml: unknown language: {code}"
 [update]
 failed = "Update: {error}"
 up_to_date = "CmdBoard is up to date (v{version})"
-use_winget = "v{version} available. Installed with MSI/winget: run “winget upgrade CmdBoard”"
+use_winget = "v{version} available. Installed with MSI/winget: quit CmdBoard, then run “cmdboard --stop” and “winget upgrade CmdBoard”"
 installed = "Updated to v{version}: restart CmdBoard"
 running = "update check already running"
 unavailable = "update unavailable"
@@ -71,6 +71,12 @@ searching = "Looking for an update…"
 unreachable = "cannot reach GitHub"
 install_failed = "update failed"
 available = "v{version} available "
+
+[background]
+started = "Sessions are still tracked in the background (cmdboard --stop to stop, background = false in config.toml to turn off)"
+stopped = "Background tracking stopped"
+not_running = "Background tracking is not running"
+stop_failed = "Background tracking did not stop"
 
 [session]
 started = "Session started: {name}"

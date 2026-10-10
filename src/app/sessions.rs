@@ -35,6 +35,19 @@ pub struct ActiveSession {
 }
 
 impl ActiveSession {
+    /// A session followed from now on, already `played` for that long.
+    pub(super) fn new(session_id: i64, played: Duration) -> Self {
+        let now = Instant::now();
+        Self {
+            session_id,
+            started: now.checked_sub(played).unwrap_or(now),
+            played,
+            idle: false,
+            reported: now,
+            last_checkpoint: now,
+        }
+    }
+
     /// Play time to display: the last report, plus the time since while it counts.
     /// Capped at one poll, so the timer never runs ahead of the next report.
     pub fn shown_secs(&self) -> u64 {
@@ -103,7 +116,7 @@ impl App {
         self.redraw |= filling || blinking || ticked;
     }
 
-    fn checkpoint_sessions(&mut self) {
+    pub(super) fn checkpoint_sessions(&mut self) {
         for session in self.active_sessions.values_mut() {
             if session.last_checkpoint.elapsed() < CHECKPOINT_EVERY {
                 continue;
@@ -127,18 +140,8 @@ impl App {
         };
         match self.db.start_session(app_id, unix_now()) {
             Ok(session_id) => {
-                let now = Instant::now();
-                self.active_sessions.insert(
-                    app_id,
-                    ActiveSession {
-                        session_id,
-                        started: now,
-                        played: Duration::ZERO,
-                        idle: false,
-                        reported: now,
-                        last_checkpoint: now,
-                    },
-                );
+                self.active_sessions
+                    .insert(app_id, ActiveSession::new(session_id, Duration::ZERO));
                 self.message = Some((t!("session.started", name), MsgKind::Info));
             }
             Err(e) => self.message = Some((format!("{e:#}"), MsgKind::Error)),
@@ -183,9 +186,10 @@ impl App {
         self.message = Some(message);
     }
 
-    /// At startup, closes the sessions a crash left open and rewards them.
-    pub fn close_orphan_sessions(&mut self) -> anyhow::Result<()> {
-        let outcomes = self.db.recover_orphan_sessions()?;
+    /// At startup, closes the sessions a crash left open, except the `resumed` ones, and
+    /// rewards them.
+    pub(super) fn close_orphan_sessions(&mut self, resumed: &[i64]) -> anyhow::Result<()> {
+        let outcomes = self.db.recover_orphan_sessions(resumed)?;
         if outcomes.is_empty() {
             return Ok(());
         }

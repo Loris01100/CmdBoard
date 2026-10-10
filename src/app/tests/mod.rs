@@ -1,6 +1,7 @@
 //! Behavior of `App` driven like the user would: keys, command lines and thread events.
 //! Each file covers one `app` module.
 
+mod background;
 mod forms;
 mod keys;
 mod library;

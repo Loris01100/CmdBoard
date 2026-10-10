@@ -7,10 +7,12 @@
 //! - `library`: apps and categories, their selection and changes
 //! - `forms`: the "add app" picker and the add/edit/move forms
 //! - `sessions`: tracked sessions, XP animations, level-up and reward popups
+//! - `background`: sessions handed over to and from the background tracker
 //! - `settings`: theme, sort, language, aliases, export/import, updates, history
 //! - `storage`, `optimize`: the Storage and Optimization screens
 //! - `folders`: the folder browser of the Storage screen
 
+mod background;
 mod commands;
 mod folders;
 mod forms;
@@ -333,10 +335,9 @@ impl App {
         self.start_storage_scan();
     }
 
-    fn send_watch_list(&self) {
-        let Some(tracker) = &self.tracker else { return };
-        let list = self
-            .apps
+    /// Apps with a process to watch.
+    fn watch_list(&self) -> Vec<Watched> {
+        self.apps
             .iter()
             .filter_map(|a| {
                 let exe = a.watch_exe.as_deref()?.trim();
@@ -345,9 +346,13 @@ impl App {
                     exe: exe.into(),
                 })
             })
-            .collect();
+            .collect()
+    }
+
+    fn send_watch_list(&self) {
+        let Some(tracker) = &self.tracker else { return };
         // A closed channel means the tracker died: sessions just stop being tracked.
-        let _ = tracker.send(list);
+        let _ = tracker.send(self.watch_list());
     }
 
     /// Runs `work` in a short-lived thread that reports through the event channel.
@@ -365,7 +370,7 @@ impl App {
     /// Main loop: waits for an event, handles it with every one already queued, then
     /// draws once if the screen changed. Idle, a tick draws nothing; a burst of events (a
     /// folder being measured) costs one draw. Key events are already filtered on `Press`
-    /// by the event thread.
+    /// by the event thread. Running sessions are left to `quit_sessions`.
     pub fn run<B: Backend>(
         &mut self,
         terminal: &mut Terminal<B>,
@@ -390,7 +395,7 @@ impl App {
                 }
             }
         }
-        self.end_all_sessions()
+        Ok(())
     }
 
     /// Routes one event from the event, tracker or a short-lived thread.

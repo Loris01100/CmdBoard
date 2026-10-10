@@ -82,6 +82,9 @@ const MIGRATIONS: &[&str] = &[
         ('legende', 'Légende', 'Jouer 365 jours de suite', 'streak_days >= 365', 'global');",
     // v4: `:clear sessions` hides sessions from the history; stats still count them.
     "ALTER TABLE sessions ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;",
+    // v5: when an open session was last saved, so the next CmdBoard process (the UI or
+    // the background tracker) resumes it if it was handed over moments ago.
+    "ALTER TABLE sessions ADD COLUMN checkpoint_at INTEGER;",
 ];
 
 pub struct Database {

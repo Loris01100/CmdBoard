@@ -111,6 +111,18 @@ pub enum Activity {
     Reward { name: String, at: i64 },
 }
 
+/// A session still open in the database: running, handed over by the other `CmdBoard`
+/// process, or left by a crash.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenSession {
+    pub session_id: i64,
+    pub app_id: i64,
+    /// Time played at the last checkpoint.
+    pub secs: u64,
+    /// When it was last saved, `None` for a session opened before migration v5.
+    pub checkpoint_at: Option<i64>,
+}
+
 /// A session closed by `close_orphan_sessions`, still to be awarded its XP.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClosedSession {
