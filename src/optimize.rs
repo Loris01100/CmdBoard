@@ -40,6 +40,79 @@ impl Bench {
             Bench::Disk => t!("optimize.disk"),
         }
     }
+
+    /// Where Fair, Fast and Very fast start, from release builds: one core scores about
+    /// 160 × its GHz; a Ryzen 5 3600X with DDR4 scores 680, 6 300 and 15 GB/s.
+    fn thresholds(self) -> [f64; 3] {
+        const GB: f64 = (1u64 << 30) as f64;
+        const MB: f64 = (1u64 << 20) as f64;
+        match self {
+            Bench::CpuSingle => [400.0, 550.0, 750.0],
+            Bench::CpuMulti => [2_000.0, 4_500.0, 9_000.0],
+            Bench::Memory => [5.0 * GB, 12.0 * GB, 25.0 * GB],
+            // Read speed: hard drive, SATA SSD, NVMe SSD, recent NVMe SSD.
+            Bench::Disk => [200.0 * MB, 1_000.0 * MB, 2_500.0 * MB],
+        }
+    }
+}
+
+/// How a score compares with common PCs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Tier {
+    Slow,
+    Fair,
+    Fast,
+    VeryFast,
+}
+
+impl Tier {
+    const ALL: [Tier; 4] = [Tier::Slow, Tier::Fair, Tier::Fast, Tier::VeryFast];
+
+    /// The disk says what kind of drive it probably is.
+    pub fn label(self, bench: Bench) -> String {
+        match (bench, self) {
+            (Bench::Disk, Tier::Slow) => t!("optimize.hdd"),
+            (Bench::Disk, Tier::Fair) => t!("optimize.ssd"),
+            (Bench::Disk, Tier::Fast) => t!("optimize.nvme"),
+            (Bench::Disk, Tier::VeryFast) => t!("optimize.nvme_fast"),
+            (_, Tier::Slow) => t!("optimize.slow"),
+            (_, Tier::Fair) => t!("optimize.fair"),
+            (_, Tier::Fast) => t!("optimize.fast"),
+            (_, Tier::VeryFast) => t!("optimize.very_fast"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rating {
+    pub tier: Tier,
+    /// Position on a gauge, from 0 to 1: a quarter per tier, logarithmic within it.
+    pub gauge: f64,
+}
+
+pub fn rate(bench: Bench, score: Score) -> Rating {
+    let value = match score {
+        Score::Ops(n) | Score::Bytes(n) => n,
+        Score::Disk { read, .. } => read,
+    };
+    let [fair, fast, very_fast] = bench.thresholds();
+    let index = [fair, fast, very_fast]
+        .iter()
+        .filter(|&&t| value >= t)
+        .count();
+    let bounds = [fair / 2.0, fair, fast, very_fast, very_fast * 2.0];
+    let (low, high) = (bounds[index], bounds[index + 1]);
+    let within = if value > 0.0 {
+        ((value / low).ln() / (high / low).ln()).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    #[expect(clippy::cast_precision_loss, reason = "index is at most 3")]
+    let gauge = (index as f64 + within) / 4.0;
+    Rating {
+        tier: Tier::ALL[index],
+        gauge,
+    }
 }
 
 /// What a benchmark measured, per second.
@@ -308,6 +381,53 @@ mod tests {
         assert!(write > 0.0 && read > 0.0);
         assert!(!std::env::temp_dir().join("cmdboard-bench.tmp").exists());
         assert!(disk(u64::MAX / 4).is_err()); // never that much free space
+    }
+
+    #[test]
+    fn ratings_follow_thresholds() {
+        let mb = |n: f64| n * f64::from(1u32 << 20);
+        let cases = [
+            (Bench::CpuSingle, Score::Ops(0.0), Tier::Slow, 0.0),
+            (Bench::CpuSingle, Score::Ops(399.9), Tier::Slow, 0.25),
+            (Bench::CpuSingle, Score::Ops(400.0), Tier::Fair, 0.25),
+            (Bench::CpuSingle, Score::Ops(678.0), Tier::Fast, 0.67),
+            (Bench::CpuMulti, Score::Ops(6_319.0), Tier::Fast, 0.62),
+            (Bench::CpuMulti, Score::Ops(9_000.0), Tier::VeryFast, 0.75),
+            (Bench::CpuMulti, Score::Ops(1e9), Tier::VeryFast, 1.0),
+            (
+                Bench::Memory,
+                Score::Bytes(mb(15.0 * 1024.0)),
+                Tier::Fast,
+                0.58,
+            ),
+            (
+                Bench::Disk,
+                Score::Disk {
+                    write: 1e12,
+                    read: mb(150.0),
+                },
+                Tier::Slow,
+                0.15,
+            ),
+            (
+                Bench::Disk,
+                Score::Disk {
+                    write: 0.0,
+                    read: mb(3_000.0),
+                },
+                Tier::VeryFast,
+                0.82,
+            ),
+        ];
+        for (bench, score, tier, gauge) in cases {
+            let rating = rate(bench, score);
+            assert_eq!(rating.tier, tier, "{bench:?} {score:?}");
+            assert!((rating.gauge - gauge).abs() < 0.01, "{bench:?} {rating:?}");
+        }
+        assert_ne!(
+            Tier::Slow.label(Bench::Disk),
+            Tier::Slow.label(Bench::Memory)
+        );
     }
 
     #[test]

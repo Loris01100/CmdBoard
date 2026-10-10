@@ -15,7 +15,6 @@ use crate::storage::{
 };
 use crate::ui::{
     icons, layout,
-    screens::optimize::format_score,
     widgets::{
         app_table, category_list, command_line, format_ago, format_clock, format_duration,
         profile_panel, status_bar, xp_bar,
@@ -282,7 +281,7 @@ fn activity_spans(app: &App) -> Vec<Span<'static>> {
             spans.push(Span::raw(format!(
                 "{} {}",
                 bench.label(),
-                format_score(*score)
+                crate::optimize::rate(bench, *score).tier.label(bench),
             )));
             spans.push(Span::raw(GAP));
         }
@@ -330,7 +329,7 @@ mod tests {
         app.optimize
             .on_finished(Bench::CpuSingle, false, Ok(Score::Ops(1234.0)));
         let still = ticker(&app);
-        assert!(still.contains("Marathon (Hades)") && still.contains("1234 M op/s"));
+        assert!(still.contains("Marathon (Hades)") && still.contains("Très rapide"));
         app.frame_count = 5;
         assert_eq!(ticker(&app), still, "fits: does not move");
         assert!(!scrolls(&app));
