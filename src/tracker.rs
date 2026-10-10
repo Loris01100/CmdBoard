@@ -41,16 +41,21 @@ pub fn spawn(
     thread::spawn(move || {
         let mut system = System::new();
         let mut input = Input::default();
-        let mut watched = Vec::new();
+        let mut watched = WatchIndex::new();
         let mut played = resumed;
         let mut last_poll = Instant::now();
         loop {
             match watch_rx.recv_timeout(POLL) {
-                Ok(list) => watched = watch_rx.try_iter().last().unwrap_or(list),
+                Ok(list) => watched = index(&watch_rx.try_iter().last().unwrap_or(list)),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return,
             }
-            let now_running = poll_running(&mut system, &watched);
+            // Nothing to look for: the processes are not listed, and running sessions end.
+            let now_running = if watched.is_empty() {
+                HashSet::new()
+            } else {
+                poll_running(&mut system, &watched)
+            };
 
             // Input is only read while something is played.
             let now = Instant::now();
@@ -97,10 +102,10 @@ pub fn spawn(
 /// Watched apps running right now, read once: at startup, to resume the sessions the
 /// other `CmdBoard` process handed over.
 pub fn running_now(watched: &[Watched]) -> HashSet<i64> {
-    poll_running(&mut System::new(), watched)
+    poll_running(&mut System::new(), &index(watched))
 }
 
-fn poll_running(system: &mut System, watched: &[Watched]) -> HashSet<i64> {
+fn poll_running(system: &mut System, watched: &WatchIndex) -> HashSet<i64> {
     system.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
     let names = system
         .processes()
@@ -175,29 +180,47 @@ fn pad_packet(slot: u32) -> Option<u32> {
     (status == 0).then_some(state.dwPacketNumber)
 }
 
+/// Watched app ids by `exe_key`, built once per watch list rather than at every poll.
+type WatchIndex = HashMap<String, Vec<i64>>;
+
+fn index(watched: &[Watched]) -> WatchIndex {
+    let mut index = WatchIndex::new();
+    for w in watched {
+        index.entry(exe_key(&w.exe)).or_default().push(w.app_id);
+    }
+    index
+}
+
 /// File name of `exe`, lowercased: `watch_exe` may hold a full path.
 fn exe_key(exe: &str) -> String {
     let exe = exe.trim();
-    Path::new(exe)
+    let name = Path::new(exe)
         .file_name()
-        .map_or(exe.into(), |n| n.to_string_lossy().into_owned())
-        .to_lowercase()
+        .map_or(exe.into(), |n| n.to_string_lossy());
+    // Lowercased like process names (`lowercase_into`), so both always match.
+    name.chars().flat_map(char::to_lowercase).collect()
+}
+
+/// `text` lowercased into `buffer`, reused so process names allocate nothing.
+fn lowercase_into<'a>(buffer: &'a mut String, text: &str) -> &'a String {
+    buffer.clear();
+    buffer.extend(text.chars().flat_map(char::to_lowercase));
+    buffer
 }
 
 /// Apps with at least one process running, matched on exe name ignoring case.
 fn running_apps<S: AsRef<str>>(
-    watched: &[Watched],
+    watched: &WatchIndex,
     process_names: impl IntoIterator<Item = S>,
 ) -> HashSet<i64> {
-    let running: HashSet<String> = process_names
-        .into_iter()
-        .map(|n| n.as_ref().to_lowercase())
-        .collect();
-    watched
-        .iter()
-        .filter(|w| running.contains(&exe_key(&w.exe)))
-        .map(|w| w.app_id)
-        .collect()
+    let mut running = HashSet::new();
+    let mut buffer = String::new();
+    for name in process_names {
+        if let Some(ids) = watched.get(lowercase_into(&mut buffer, name.as_ref())) {
+            running.extend(ids);
+        }
+    }
+    running
 }
 
 /// Apps that started and apps that stopped between two polls, sorted.
@@ -278,15 +301,16 @@ mod tests {
             watched(1, "Hades.exe"),
             watched(2, r"C:\Program Files\VS Code\Code.EXE"),
             watched(3, "steam.exe"),
+            watched(4, "ÉPOPÉE.exe"),
         ];
-        let running = running_apps(&list, ["hades.exe", "code.exe", "explorer.exe"]);
-        assert_eq!(running, HashSet::from([1, 2]));
+        let names = ["hades.exe", "code.exe", "explorer.exe", "Épopée.EXE"];
+        assert_eq!(running_apps(&index(&list), names), HashSet::from([1, 2, 4]));
     }
 
     #[test]
     fn several_instances_count_once_and_apps_can_share_an_exe() {
         let list = [watched(1, "steam.exe"), watched(2, "steam.exe")];
-        let running = running_apps(&list, ["steam.exe", "steam.exe"]);
+        let running = running_apps(&index(&list), ["steam.exe", "steam.exe"]);
         assert_eq!(running, HashSet::from([1, 2]));
     }
 
