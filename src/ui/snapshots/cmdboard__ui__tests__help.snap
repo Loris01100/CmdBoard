@@ -25,10 +25,10 @@ expression: "screen_text(&app, 100, 30)"
 │  :rmcat <catégorie>                         Supprime une catégorie vide, après confirmation      │
 │  :stats [app]                               Statistiques de toutes les apps, ou d'une seule      │
 │  :clear sessions|stats                      Efface l'historique des sessions, ou toutes les stats│
+│  :goal [<durée>/day|week|off] [ap           Temps de jeu à atteindre par jour ou par semaine, pou│
+│  :limit [<durée>/day|week|off] [a           Temps de jeu à ne pas dépasser par jour ou par semain│
 │  :theme [nom]                               Change de thème (mémorisé). Sans nom : liste les thèm│
 │  :sort [name|xp|recent|time]                Trie les apps (mémorisé). Sans argument : tri actuel │
-│  :lang [en|fr|pt]                           Change de langue (mémorisée). Sans argument : liste l│
-│  :group <nom> <app>, <app>…                 Crée (ou remplace) un alias :<nom> qui lance ces apps│
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
                                                                                                     
  : commande   0-5 écrans   q quitter

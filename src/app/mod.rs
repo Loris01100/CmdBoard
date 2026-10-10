@@ -7,6 +7,7 @@
 //! - `library`: apps and categories, their selection and changes
 //! - `forms`: the "add app" picker and the add/edit/move forms
 //! - `sessions`: tracked sessions, XP animations, level-up and reward popups
+//! - `goals`: goals and limits on play time, and their popups
 //! - `background`: sessions handed over to and from the background tracker
 //! - `settings`: theme, sort, language, aliases, export/import, updates, history
 //! - `storage`, `optimize`: the Storage and Optimization screens
@@ -16,6 +17,7 @@ mod background;
 mod commands;
 mod folders;
 mod forms;
+mod goals;
 mod keys;
 mod library;
 mod optimize;
@@ -26,7 +28,7 @@ mod storage;
 #[cfg(test)]
 mod tests;
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -44,7 +46,7 @@ use crate::launcher::scan::Shortcut;
 use crate::popup::Popup;
 use crate::storage::{
     Database,
-    models::{Activity, AppEntry, Category, Profile, RewardView, Stats},
+    models::{Activity, AppEntry, Category, Goal, Profile, RewardView, Stats, Usage},
     unix_now,
 };
 use crate::text_input::TextInput;
@@ -55,6 +57,7 @@ use crate::ui::{
 };
 use crate::update;
 
+pub use goals::{kind_label, this_period};
 use optimize::OptimizeScreen;
 use sessions::{ActiveSession, XpAnim};
 pub use sort::AppSort;
@@ -138,6 +141,11 @@ pub struct App {
     pub activity: Vec<Activity>,
     /// Every reward, for the Rewards screen.
     pub rewards: Vec<RewardView>,
+    /// Goals and limits, and the time played this day and week they count.
+    pub goals: Vec<Goal>,
+    pub usage: Usage,
+    /// `(goal id, period)` of the goals and limits already reached: announced once.
+    goals_reached: HashSet<(i64, i64)>,
     pub reward_state: TableState,
     /// Stats screen data, for `stats_app` or every app.
     pub stats: Stats,
@@ -213,6 +221,9 @@ impl App {
             profile: Profile::default(),
             activity: Vec::new(),
             rewards: Vec::new(),
+            goals: Vec::new(),
+            usage: Usage::default(),
+            goals_reached: HashSet::new(),
             reward_state: TableState::default(),
             stats: Stats::default(),
             stats_app: None,
@@ -246,6 +257,7 @@ impl App {
             should_quit: false,
         };
         app.reload()?;
+        app.check_goals(false);
         Ok(app)
     }
 
@@ -268,6 +280,8 @@ impl App {
             self.stats.sessions.len(),
         ));
         self.rewards = self.db.reward_views()?;
+        self.goals = self.db.goals()?;
+        self.usage = self.db.usage()?;
         self.reward_state
             .select(clamp(self.reward_state.selected(), self.rewards.len()));
         self.cat_state

@@ -1,7 +1,8 @@
 //! Text typed after `:` -> `Command`.
 
-use super::{Command, find_help};
+use super::{Command, GoalChange, find_help};
 use crate::app::AppSort;
+use crate::core::goals::{self, GoalKind};
 use crate::popup::FormKind;
 
 pub fn parse(input: &str) -> Result<Command, String> {
@@ -55,6 +56,10 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("clear", [what]) if what.eq_ignore_ascii_case("stats") => {
             Ok(Command::ClearStats { confirmed: false })
         }
+        ("goal" | "limit", _) => goal(help.name, rest).ok_or_else(|| {
+            let amount = rest.first().map_or("", String::as_str);
+            t!("parse.bad_amount", amount, usage = help.usage())
+        }),
         ("theme", []) => Ok(Command::Theme { name: None }),
         ("theme", [name]) => Ok(Command::Theme {
             name: Some(name.clone()),
@@ -95,6 +100,30 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("quit", []) => Ok(Command::Quit),
         _ => Err(t!("parse.usage", usage = help.usage())),
     }
+}
+
+/// `:goal [<amount>|off] [target]`, `:limit` likewise: the amount comes first so the
+/// target, the rest of the line, needs no quotes. `None` for a malformed amount.
+fn goal(name: &str, rest: &[String]) -> Option<Command> {
+    let kind = GoalKind::parse(name)?;
+    let Some((amount, target)) = rest.split_first() else {
+        return Some(Command::Goal {
+            kind,
+            change: None,
+            target: None,
+        });
+    };
+    let change = if amount.eq_ignore_ascii_case("off") {
+        GoalChange::Remove
+    } else {
+        let (minutes, period) = goals::parse_amount(amount)?;
+        GoalChange::Set { minutes, period }
+    };
+    Some(Command::Goal {
+        kind,
+        change: Some(change),
+        target: (!target.is_empty()).then(|| target.join(" ")),
+    })
 }
 
 /// `:group name app, app…`: apps are comma-separated, so their names need no quotes.
@@ -301,6 +330,43 @@ mod tests {
     }
 
     #[test]
+    fn parses_goals_and_limits() {
+        use crate::core::goals::Period;
+        let set = |minutes, period| Some(GoalChange::Set { minutes, period });
+        let cases = [
+            ("goal", GoalKind::Goal, None, None),
+            (
+                "goal 10h/week Elden Ring",
+                GoalKind::Goal,
+                set(600, Period::Week),
+                Some("Elden Ring"),
+            ),
+            (
+                "limit 2h/day Jeux",
+                GoalKind::Limit,
+                set(120, Period::Day),
+                Some("Jeux"),
+            ),
+            ("limit 3h/d", GoalKind::Limit, set(180, Period::Day), None),
+            (
+                "limit OFF Jeux",
+                GoalKind::Limit,
+                Some(GoalChange::Remove),
+                Some("Jeux"),
+            ),
+            ("goal off", GoalKind::Goal, Some(GoalChange::Remove), None),
+        ];
+        for (input, kind, change, target) in cases {
+            let expected = Command::Goal {
+                kind,
+                change,
+                target: target.map(s),
+            };
+            assert_eq!(parse(input), Ok(expected), "input: {input}");
+        }
+    }
+
+    #[test]
     fn rejects_invalid_commands() {
         let cases = [
             ("", "Commande vide"),
@@ -323,6 +389,14 @@ mod tests {
                 "Tri inconnu : size (usage : sort [name|xp|recent|time])",
             ),
             (r#"launch "Hades"#, "Guillemet non fermé"),
+            (
+                "goal Hades 2h/day",
+                "Durée invalide : Hades (usage : goal [<durée>/day|week|off] [app|catégorie])",
+            ),
+            (
+                "limit 25h/day",
+                "Durée invalide : 25h/day (usage : limit [<durée>/day|week|off] [app|catégorie])",
+            ),
         ];
         for (input, expected) in cases {
             assert_eq!(parse(input), Err(s(expected)), "input: {input}");

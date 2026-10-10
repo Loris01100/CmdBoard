@@ -4,6 +4,7 @@ pub mod line;
 pub mod parser;
 
 use crate::app::{AppSort, Focus, Screen};
+use crate::core::goals::{GoalKind, Period};
 use crate::popup::FormKind;
 
 /// Every user action. Keys, the `:` command line and aliases are translated
@@ -115,6 +116,13 @@ pub enum Command {
     Lang {
         code: Option<String>,
     },
+    /// `:goal` or `:limit`: lists them (`change: None`), or sets or removes the one of
+    /// `target`, an app or a category (`None`: every app together).
+    Goal {
+        kind: GoalKind,
+        change: Option<GoalChange>,
+        target: Option<String>,
+    },
     /// Saves an alias launching these apps in order (`commands.toml`).
     Group {
         name: String,
@@ -138,6 +146,13 @@ pub enum Command {
         command: Option<String>,
     },
     Quit,
+}
+
+/// What `:goal` or `:limit` does to a target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GoalChange {
+    Set { minutes: u32, period: Period },
+    Remove,
 }
 
 /// Command line reference, used by `:help` and the Help screen. Usage and summary are
@@ -188,6 +203,14 @@ pub const COMMANDS: &[CommandHelp] = &[
     },
     CommandHelp {
         name: "clear",
+        aliases: &[],
+    },
+    CommandHelp {
+        name: "goal",
+        aliases: &[],
+    },
+    CommandHelp {
+        name: "limit",
         aliases: &[],
     },
     CommandHelp {

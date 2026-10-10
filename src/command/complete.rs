@@ -34,6 +34,8 @@ enum Kind {
     Command,
     App,
     Category,
+    /// An app or a category, for `:goal` and `:limit`.
+    Target,
     Program,
     Theme,
     Sort,
@@ -75,6 +77,14 @@ pub fn complete(line: &str, sources: &Sources) -> Option<Completion> {
             &[None, None, Some(Kind::Category)],
             sources,
         ),
+        // The amount, then the rest of the line names an app or a category.
+        "goal" | "limit" => {
+            let rest = &line[rest_start..];
+            let amount = rest.find(char::is_whitespace)?;
+            let after = &rest[amount..];
+            let start = rest_start + amount + (after.len() - after.trim_start().len());
+            whole(line, start, Kind::Target, sources)
+        }
         _ => None,
     }
 }
@@ -144,6 +154,7 @@ fn build(
             .collect(),
         Kind::App => sources.apps.clone(),
         Kind::Category => sources.categories.clone(),
+        Kind::Target => [&sources.apps[..], &sources.categories[..]].concat(),
         Kind::Program => sources.programs.clone(),
         Kind::Theme => sources.themes.clone(),
         Kind::Sort => AppSort::ALL.iter().map(|s| s.name()).collect(),
@@ -204,6 +215,13 @@ mod tests {
             ),
             ("add Hades steam://x je", Some("add Hades steam://x Jeux")),
             ("add Had", None), // the name is free text
+            ("goal 10h/week ste", Some("goal 10h/week Steam")),
+            ("limit 2h/day je", Some("limit 2h/day Jeux")),
+            (
+                "limit 2h/day windows t",
+                Some("limit 2h/day Windows Terminal"),
+            ),
+            ("limit 2h/d", None), // the amount is free text
             ("quit x", None),
             ("fly x", None),
             ("launch zzz", None),

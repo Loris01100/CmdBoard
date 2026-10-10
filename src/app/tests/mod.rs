@@ -3,6 +3,7 @@
 
 mod background;
 mod forms;
+mod goals;
 mod keys;
 mod library;
 mod optimize;

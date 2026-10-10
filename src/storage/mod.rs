@@ -1,5 +1,6 @@
 mod backup;
 pub mod db;
+mod goals;
 pub mod models;
 mod queries;
 mod sessions;

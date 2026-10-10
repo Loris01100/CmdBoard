@@ -6,9 +6,13 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::app::App;
+use crate::app::{App, kind_label, this_period};
+use crate::core::goals::{self, GoalKind, Status};
 use crate::optimize::Bench;
-use crate::storage::{models::Activity, unix_now};
+use crate::storage::{
+    models::{Activity, Goal},
+    unix_now,
+};
 use crate::ui::{
     icons, layout,
     screens::optimize::format_score,
@@ -39,10 +43,22 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
 fn render_header(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let title = Line::from(vec![
+    let mut title = Line::from(vec![
         Span::styled(" CmdBoard", theme.title),
         Span::styled(format!(" · {}", app.screen.title()), theme.muted()),
     ]);
+    if let Some((goal, _)) = app.worst_limit() {
+        let short = t!(
+            "goals.short",
+            target = app.goal_target_name(goal.target),
+            used = goals::format_hm(app.goal_secs(goal)),
+            total = goals::format_hm(u64::from(goal.minutes) * 60)
+        );
+        title.push_span(Span::styled(
+            format!("  {} {short}", icons::LIMIT),
+            goal_style(app, goal).add_modifier(Modifier::BOLD),
+        ));
+    }
     frame.render_widget(Paragraph::new(title), area);
     frame.render_widget(Paragraph::new(session_line(app).right_aligned()), area);
 }
@@ -115,7 +131,7 @@ fn render_details(frame: &mut Frame, area: Rect, app: &App) {
     let last = entry
         .last_played
         .map_or_else(|| t!("never"), |t| format_ago(unix_now() - t));
-    let rest_text = vec![
+    let mut rest_text = vec![
         Line::from(""),
         Line::from(t!(
             "dashboard.total_time",
@@ -127,6 +143,27 @@ fn render_details(frame: &mut Frame, area: Rect, app: &App) {
             icon = icons::TROPHY,
             count = entry.rewards
         )),
+    ];
+    // Two lines each, as the panel is narrow: what it counts, then how far it is.
+    rest_text.extend(app.goals_for(entry).flat_map(|goal| {
+        let style = goal_style(app, goal);
+        let label = t!(
+            "goals.label",
+            kind = kind_label(goal.kind),
+            target = app.goal_target_name(goal.target)
+        );
+        let amount = t!(
+            "goals.amount",
+            used = goals::format_hm(app.goal_secs(goal)),
+            total = goals::format_hm(u64::from(goal.minutes) * 60),
+            period = this_period(goal.period)
+        );
+        [
+            Line::styled(format!("{} {label}", icons::GOAL), style),
+            Line::styled(format!("  {amount}"), style),
+        ]
+    }));
+    rest_text.extend([
         Line::from(""),
         Line::styled(
             t!("dashboard.target", target = entry.launch_target),
@@ -139,8 +176,19 @@ fn render_details(frame: &mut Frame, area: Rect, app: &App) {
             ),
             theme.muted(),
         ),
-    ];
+    ]);
     frame.render_widget(Paragraph::new(rest_text), rest);
+}
+
+/// A goal reached is good news; a limit is a warning when close, an error once reached.
+fn goal_style(app: &App, goal: &Goal) -> Style {
+    let theme = &app.theme;
+    match (goal.kind, app.goal_status(goal)) {
+        (GoalKind::Goal, Status::Reached) => Style::new().fg(theme.success),
+        (GoalKind::Limit, Status::Near) => Style::new().fg(theme.warning),
+        (GoalKind::Limit, Status::Reached) => Style::new().fg(theme.error),
+        _ => Style::new(),
+    }
 }
 
 /// Space between two events of the ticker.

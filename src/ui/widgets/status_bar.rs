@@ -50,7 +50,7 @@ fn hints(app: &App) -> Vec<(String, &'static str)> {
             (t!("keys.confirm_keys"), "hint.yes"),
             ("Esc/n".into(), "hint.cancel"),
         ],
-        (Mode::Popup(Popup::LevelUp(_) | Popup::RewardUnlocked(_)), _) => {
+        (Mode::Popup(Popup::LevelUp(_) | Popup::RewardUnlocked(_) | Popup::GoalReached(_)), _) => {
             vec![(format!("{enter}/Esc"), "hint.continue")]
         }
         (Mode::Popup(Popup::Picker(_)), _) => vec![

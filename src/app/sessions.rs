@@ -112,6 +112,11 @@ impl App {
             unix_now() / 60,
         );
         let ticked = clock != self.shown_clock;
+        if clock.1 != self.shown_clock.1 {
+            // A new minute, maybe a new day or week for goals and limits.
+            self.refresh_usage();
+            self.check_goals(true);
+        }
         self.shown_clock = clock;
         self.redraw |= filling || blinking || ticked;
     }
@@ -153,6 +158,7 @@ impl App {
             session.played = played;
             session.idle = idle;
             session.reported = Instant::now();
+            self.check_goals(true);
         }
     }
 
@@ -184,6 +190,7 @@ impl App {
             Err(e) => (format!("{e:#}"), MsgKind::Error),
         };
         self.message = Some(message);
+        self.check_goals(true);
     }
 
     /// At startup, closes the sessions a crash left open, except the `resumed` ones, and

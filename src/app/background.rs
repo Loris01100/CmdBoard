@@ -54,6 +54,8 @@ impl App {
             ids.push(open.session_id);
         }
         self.close_orphan_sessions(&ids)?;
+        // Reached before the handover: not announced again.
+        self.check_goals(false);
         Ok(resumed)
     }
 

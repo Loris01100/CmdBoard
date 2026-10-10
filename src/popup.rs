@@ -1,6 +1,7 @@
-//! Popup state: confirmations, forms, level-ups and unlocked rewards. Rendering lives in `ui/widgets/popup.rs`.
+//! Popup state: confirmations, forms, level-ups, unlocked rewards and goals reached. Rendering lives in `ui/widgets/popup.rs`.
 
 use crate::command::Command;
+use crate::core::goals::{GoalKind, Period};
 use crate::launcher::launch;
 use crate::text_input::TextInput;
 
@@ -16,6 +17,19 @@ pub enum Popup {
     Form(Form),
     LevelUp(LevelUp),
     RewardUnlocked(RewardUnlocked),
+    GoalReached(GoalReached),
+}
+
+/// A goal or a limit reached for the first time in its current day or week.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GoalReached {
+    pub kind: GoalKind,
+    /// App, category, or "all apps".
+    pub target: String,
+    /// Time played in the period so far.
+    pub secs: u64,
+    pub minutes: u32,
+    pub period: Period,
 }
 
 /// A reward a session just unlocked.

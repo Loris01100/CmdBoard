@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+
+use crate::core::goals::{GoalKind, Period};
+
 #[derive(Debug, Clone)]
 pub struct Category {
     pub id: i64,
@@ -163,4 +167,34 @@ pub struct Profile {
     pub xp: u32,
     pub streak_days: u32,
     pub xp_today: u32,
+}
+
+/// What a goal or limit counts the time of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GoalTarget {
+    /// Every app together.
+    All,
+    App(i64),
+    Category(i64),
+}
+
+/// A goal or limit set with `:goal` or `:limit`. A target has at most one of each kind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Goal {
+    pub id: i64,
+    pub kind: GoalKind,
+    pub target: GoalTarget,
+    pub minutes: u32,
+    pub period: Period,
+}
+
+/// Time played in finished sessions during the current day and week, by app.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Usage {
+    /// Today, as a local Julian day number.
+    pub day: i64,
+    /// Monday of this week, as a local Julian day number.
+    pub week: i64,
+    /// `(today, this week)` in seconds, by app id; apps not played this week are absent.
+    pub by_app: HashMap<i64, (u64, u64)>,
 }

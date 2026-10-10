@@ -84,6 +84,11 @@ impl App {
             Command::Theme { name } => return self.theme_command(name.as_deref()),
             Command::Sort { by } => return self.sort_command(by),
             Command::Lang { code } => return self.lang_command(code.as_deref()),
+            Command::Goal {
+                kind,
+                change,
+                target,
+            } => return self.goal_command(kind, change, target.as_deref()),
             Command::Group { name, apps } => return self.save_group(&name, &apps),
             Command::Export { path, confirmed } => return self.export(path, confirmed),
             Command::Import { path, confirmed } => return self.import(path, confirmed),

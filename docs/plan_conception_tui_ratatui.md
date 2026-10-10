@@ -26,6 +26,7 @@ src/
 │   ├── library.rs       // apps et catégories : sélection, ajout, édition, suppression
 │   ├── forms.rs         // choix de l'app installée, formulaires
 │   ├── sessions.rs      // sessions suivies, animations d'XP, popups de level-up
+│   ├── goals.rs         // objectifs et limites : temps fait, annonces
 │   ├── background.rs    // passage des sessions au suivi en arrière-plan et retour
 │   ├── settings.rs      // thème, tri, langue, alias, export/import, mises à jour
 │   ├── storage.rs       // écran Stockage (StorageScreen) : disques, programmes
@@ -41,10 +42,12 @@ src/
 │   └── alias.rs         // chargement de commands.toml
 ├── core/
 │   ├── xp.rs            // formules XP / niveaux
+│   ├── goals.rs         // objectifs et limites : durées, périodes, états
 │   └── rewards.rs       // moteur de règles
 ├── storage/
 │   ├── db.rs            // connexion SQLite, migrations, contenu de départ
 │   ├── queries.rs       // CRUD et agrégats (temps joué, profil, récompenses)
+│   ├── goals.rs         // objectifs et limites, temps du jour et de la semaine
 │   ├── sessions.rs      // sessions : début, points de sauvegarde, fermeture + XP + récompenses
 │   ├── backup.rs        // :export / :import en JSON
 │   └── models.rs        // App, Category, Session, Reward
@@ -115,6 +118,7 @@ apps(id, name, launch_target, watch_exe, icon, category_id, total_xp)
 sessions(id, app_id, started_at, ended_at, duration_s, xp_gained, hidden, checkpoint_at)
 rewards(id, app_id NULL, code, name, description, rule, scope)
 unlocked_rewards(id, reward_id, app_id NULL, unlocked_at, session_id)
+goals(id, kind, app_id NULL, category_id NULL, minutes, period)
 ```
 
 - `launch_target` : chemin ou URI de lancement (`steam://rungameid/...`). Disponibilité (`launch::is_available`, pour les apps de départ) : chemin absolu existant, exe sur le `PATH`, ou URI dont le schéma (RFC 3986 : lettre puis lettres, chiffres, `+ - .`) a une clé `HKEY_CLASSES_ROOT\<schéma>`, lue par l'API registre sans lancer `reg.exe`.
@@ -123,6 +127,7 @@ unlocked_rewards(id, reward_id, app_id NULL, unlocked_at, session_id)
 - `scope` (migration v2) : `global` se débloque une seule fois en tout ; `app` se débloque une fois par app. Une récompense propre à une app (`app_id` renseigné) est traitée comme `app`.
 - `unlocked_rewards.app_id` : l'app pour laquelle une récompense `app` a été débloquée (`NULL` pour une `global`). Index unique sur `(reward_id, IFNULL(app_id, 0))` : pas de double déblocage.
 - `sessions.checkpoint_at` (migration v5) : dernier enregistrement d'une session ouverte (début, puis chaque point de sauvegarde). `NULL` pour une session ouverte avant v5. Sert à distinguer une session passée à l'autre process il y a un instant d'une session laissée par un crash (section 12).
+- `goals` (migration v6) : objectifs (`kind = 'goal'`, temps à atteindre) et limites (`'limit'`, temps à ne pas dépasser), en minutes par jour ou par semaine (`period = 'day' | 'week'`), sur une app (`app_id`), une catégorie (`category_id`) ou toutes les apps (les deux `NULL`). Index unique sur `(kind, IFNULL(app_id, 0), IFNULL(category_id, 0))` : au plus un objectif et une limite par cible. Supprimer l'app ou la catégorie les supprime (`ON DELETE CASCADE`).
 - Le niveau n'est pas stocké : il se déduit de `total_xp` (`core::xp::level_from_total`), ce qui évite toute incohérence. Le niveau global se déduit de la somme des `total_xp`.
 - Temps total, dernière session et nombre de récompenses d'une app sont agrégés depuis `sessions` et `unlocked_rewards` à la lecture.
 - Horodatages en secondes Unix (`INTEGER`). Les jours (XP du jour, streak) suivent le fuseau local via `date(..., 'unixepoch', 'localtime')`.
@@ -266,6 +271,8 @@ La table `COMMANDS` (`command/mod.rs`) décrit chaque commande (nom, alias, usag
 | `stats` | | `stats [app]` (sans argument : toutes les apps ; avec : filtre jusqu'au prochain `:stats`) |
 | `theme` | | `theme [nom]` (sans nom : liste les thèmes et l'actuel ; nom complété par Tab) |
 | `group` | | `group <nom> <app>, <app>…` (apps séparées par des virgules, sans guillemets ; écrit l'alias `<nom> = "launch A; launch B"` dans `commands.toml`, le remplace s'il existe, et le recharge aussitôt) |
+| `goal` | | `goal [<durée>/day\|week\|off] [app\|catégorie]` (sans argument : liste les objectifs et le temps fait ; la durée d'abord pour que la cible, le reste de la ligne, se passe de guillemets ; sans cible : toutes les apps ; `off` retire ; voir section 11) |
+| `limit` | | `limit [<durée>/day\|week\|off] [app\|catégorie]` (même syntaxe, pour une limite) |
 | `export` | | `export [fichier]` (JSON des apps et sessions terminées ; sans argument : `Documents\cmdboard-<aaaa-mm-jj>.json` ; fichier existant : confirmation avant de le remplacer, la commande confirmée porte le chemin résolu) |
 | `import` | | `import <fichier>` (fusionne un export ; confirmation s'il ajoute des apps, voir ci-dessous) |
 | `uninstall` | | `uninstall <programme>` (programme installé, complété par Tab ; confirmation, puis lance son propre désinstalleur, voir écran Stockage) |
@@ -345,6 +352,7 @@ Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le pa
 - Formulaire de modification (`FormKind::Edit`, touche `e` ou `:edit <app>`) : mêmes champs, pré-remplis avec l'app, focus sur le nom. Vider Process le déduit à nouveau de la cible.
 - **Level-up** : ouverte quand une app ou le profil gagne un niveau (fin de session). Bordure qui alterne de couleur à chaque `Tick`. `Entrée`, `Esc` ou `Espace` la ferment.
 - **Récompense débloquée** : une popup par récompense, après celle de level-up, mêmes touches et même clignotement.
+- **Objectif ou limite atteint** (`Popup::GoalReached`) : une popup la première fois qu'un objectif (bordure `success`) ou une limite (bordure `error`) est atteint dans sa période, mêmes touches que le level-up, sans clignotement.
 - Une popup déclenchée par un événement (level-up, récompense) n'interrompt pas une saisie : elle attend dans une file (`pending_popups`) que l'utilisateur revienne en mode Normal.
 - Les popups se dessinent par-dessus l'écran courant (`Clear` puis cadre centré).
 
@@ -384,6 +392,8 @@ let cols = Layout::horizontal([
     Constraint::Min(25),         // détails
 ]).split(rows[1]);
 ```
+
+Le panneau **Détails** liste, sous les récompenses, les objectifs et limites que compte l'app sélectionnée (les siens, ceux de sa catégorie, ceux de toutes les apps), sur deux lignes chacun : « ◎ Limite · Jeux » puis « 1h52 / 2h aujourd'hui ». Couleur : objectif atteint en `success`, limite à 80 % en `warning`, atteinte en `error`. Le header affiche la limite la plus proche ou la plus dépassée, dès 80 % : « ⚠ Jeux 1h52/2h », même couleur, visible aussi quand le panneau Détails est masqué.
 
 Le panneau **Activité** mélange les 10 derniers événements, du plus récent au plus ancien : sessions terminées non masquées (app, durée, XP, il y a combien de temps) et récompenses débloquées (`Database::activity`, rechargé à chaque `reload()`, une récompense avant la session qui l'a débloquée), puis le dernier résultat réussi de chaque benchmark de la session en cours (`bench_results`, non enregistré). S'il dépasse la largeur, il défile de droite à gauche en boucle, d'une cellule par `Tick` (`frame_count`), sans état supplémentaire ; sinon il reste fixe.
 
@@ -550,6 +560,15 @@ code = "marathon", scope = "app", rule = "session_minutes >= 180"
 **Évaluation** : après chaque session gardée (fin normale, sortie de CmdBoard, orpheline au démarrage), une fois l'XP attribuée pour que les niveaux comptent. `storage/sessions.rs` calcule les faits (`session_facts_at`) et la liste des récompenses encore à débloquer pour l'app (`pending_rewards`), `core::rewards::evaluate` tranche, `storage` enregistre, dans la transaction de fermeture. `app/sessions.rs` n'affiche que le résultat (`SessionOutcome`) : animations, popups, message. Une règle cassée n'empêche pas les autres : l'erreur s'affiche dans la ligne de message.
 
 ---
+
+### Objectifs et limites (`:goal`, `:limit`)
+
+Temps de jeu par jour ou par semaine, sur une app, une catégorie ou toutes les apps : un **objectif** est atteint en jouant assez, une **limite** en jouant trop. Ils ne rapportent ni XP ni récompense, et n'empêchent rien de se lancer : ce sont des repères.
+
+- **Syntaxe de la durée** (`core/goals.rs`, `parse_amount`) : `2h/day`, `1h30/week`, `90m/d`, `45/w` (minutes) ; refusée si nulle ou plus longue que la période (`25h/day`). L'affichage (`format_hm` : `1h05`, `45m`, `2h`) se relit avec la même syntaxe.
+- **Temps compté** (`App::goal_secs`) : sessions terminées de la période (`Database::usage`, jour local et semaine du lundi au dimanche, une session compte le jour de sa fin, comme l'XP du jour) plus les sessions en cours, pour les apps de la cible. Relu à chaque `reload()` et chaque minute (changement de jour).
+- **États** (`core::goals::status`) : en dessous, proche (80 %), atteint (100 %).
+- **Annonce** (`App::check_goals`) : à chaque progression de session, fin de session et minute, un objectif ou une limite atteint pour la première fois dans sa période (`(id, jour ou lundi)` gardé en mémoire) ouvre une popup. Ce qui est déjà atteint au démarrage, à la reprise des sessions ou au moment où on le définit n'est pas annoncé. Le suivi en arrière-plan (section 12) ne montre rien : seuls le header et le panneau Détails le signalent au retour.
 
 ## 12. Détection des sessions
 

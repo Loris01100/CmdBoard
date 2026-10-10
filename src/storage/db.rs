@@ -85,6 +85,18 @@ const MIGRATIONS: &[&str] = &[
     // v5: when an open session was last saved, so the next CmdBoard process (the UI or
     // the background tracker) resumes it if it was handed over moments ago.
     "ALTER TABLE sessions ADD COLUMN checkpoint_at INTEGER;",
+    // v6: play time goals and limits, per day or week, on one app, one category or
+    // (both NULL) every app. At most one of each kind per target.
+    "CREATE TABLE goals (
+        id          INTEGER PRIMARY KEY,
+        kind        TEXT NOT NULL CHECK (kind IN ('goal', 'limit')),
+        app_id      INTEGER REFERENCES apps(id) ON DELETE CASCADE,
+        category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
+        minutes     INTEGER NOT NULL CHECK (minutes > 0),
+        period      TEXT NOT NULL CHECK (period IN ('day', 'week')),
+        CHECK (app_id IS NULL OR category_id IS NULL)
+    );
+    CREATE UNIQUE INDEX goals_once ON goals(kind, IFNULL(app_id, 0), IFNULL(category_id, 0));",
 ];
 
 pub struct Database {

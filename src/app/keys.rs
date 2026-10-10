@@ -128,7 +128,7 @@ impl App {
                 KeyCode::Esc | KeyCode::Char('n' | 'N') => self.cancel_popup(),
                 _ => {}
             },
-            Popup::LevelUp(_) | Popup::RewardUnlocked(_) => {
+            Popup::LevelUp(_) | Popup::RewardUnlocked(_) | Popup::GoalReached(_) => {
                 if matches!(key.code, KeyCode::Enter | KeyCode::Esc | KeyCode::Char(' ')) {
                     self.mode = Mode::Normal;
                     self.show_pending_popup();

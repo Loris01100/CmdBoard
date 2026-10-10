@@ -150,6 +150,39 @@ mod tests {
     }
 
     #[test]
+    fn goals_show_in_header_details_and_popup() {
+        use crate::app::Mode;
+        use std::time::Duration;
+        let mut app = App::with_defaults();
+        let steam = app.find_app("Steam").unwrap().id;
+        app.run_line("limit 1m/day Steam");
+        app.run_line("goal 1h/week");
+        let calm = screen_text(&app, 120, 30);
+        assert!(!calm.contains('⚠'), "{calm}");
+        assert!(calm.contains("◎ Limite · Steam "), "{calm}");
+        assert!(calm.contains("  0m / 1m aujourd'hui "), "{calm}");
+        assert!(calm.contains("◎ Objectif · toutes les apps "), "{calm}");
+        assert!(calm.contains("  0m / 1h cette semaine "), "{calm}");
+
+        app.on_session_start(steam);
+        app.on_session_progress(steam, Duration::from_secs(70), false);
+        let popup = screen_text(&app, 120, 30);
+        assert!(popup.contains("Limite atteinte"), "{popup}");
+        assert!(popup.contains("1m / 1m aujourd'hui"), "{popup}");
+
+        app.mode = Mode::Normal;
+        let mut terminal = Terminal::new(TestBackend::new(120, 30)).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let header: String = (0..120).map(|x| buffer[(x, 0)].symbol()).collect();
+        let x = header.chars().position(|c| c == '⚠').unwrap();
+        assert!(header.contains("⚠ Steam 1m/1m"), "{header}");
+        // Past the limit: the error color, in the header and the Details panel.
+        let x = u16::try_from(x).unwrap();
+        assert_eq!(buffer[(x, 0)].fg, app.theme.error);
+    }
+
+    #[test]
     #[expect(
         clippy::too_many_lines,
         reason = "table-driven: one rendering scenario per rare state"

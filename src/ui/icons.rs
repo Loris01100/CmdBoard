@@ -15,3 +15,7 @@ pub const STAR: &str = "★";
 pub const DOT: &str = "●";
 /// Heatmap day.
 pub const SQUARE: &str = "■";
+/// A limit close to or past its target (header).
+pub const LIMIT: &str = "⚠";
+/// A goal or limit in the Details panel.
+pub const GOAL: &str = "◎";

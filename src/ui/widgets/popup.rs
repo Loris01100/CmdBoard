@@ -6,8 +6,9 @@ use ratatui::{
     widgets::{Clear, Paragraph, Wrap},
 };
 
-use crate::app::App;
-use crate::popup::{Form, LevelUp, Picker, Popup, RewardUnlocked};
+use crate::app::{App, this_period};
+use crate::core::goals::{self, GoalKind};
+use crate::popup::{Form, GoalReached, LevelUp, Picker, Popup, RewardUnlocked};
 use crate::ui::icons;
 use crate::ui::layout::cells;
 
@@ -21,7 +22,54 @@ pub fn render(frame: &mut Frame, popup: &Popup, app: &App) {
         Popup::Form(form) => render_form(frame, form, app),
         Popup::LevelUp(level_up) => render_level_up(frame, level_up, app),
         Popup::RewardUnlocked(reward) => render_reward(frame, reward, app),
+        Popup::GoalReached(goal) => render_goal(frame, goal, app),
     }
+}
+
+/// A goal reached (success color) or a limit reached (error color). It does not blink:
+/// a limit is a warning, not a celebration.
+fn render_goal(frame: &mut Frame, goal: &GoalReached, app: &App) {
+    let theme = &app.theme;
+    let (title, headline, accent) = match goal.kind {
+        GoalKind::Goal => (
+            t!("popup.goal_title"),
+            t!("popup.goal_reached"),
+            theme.success,
+        ),
+        GoalKind::Limit => (
+            t!("popup.limit_title"),
+            t!("popup.limit_reached"),
+            theme.error,
+        ),
+    };
+    let amount = t!(
+        "goals.amount",
+        used = goals::format_hm(goal.secs),
+        total = goals::format_hm(u64::from(goal.minutes) * 60),
+        period = this_period(goal.period)
+    );
+    let text = vec![
+        Line::styled(
+            headline,
+            Style::new().fg(accent).add_modifier(Modifier::BOLD),
+        )
+        .centered(),
+        Line::from(""),
+        Line::styled(goal.target.clone(), theme.title).centered(),
+        Line::from(amount).centered(),
+        Line::from(""),
+        Line::styled(t!("popup.continue"), theme.muted()).centered(),
+    ];
+    let area = centered(
+        frame.area(),
+        popup_width(frame.area()).min(44),
+        cells(text.len() + 2),
+    );
+    let block = theme
+        .panel(&title, true)
+        .border_style(Style::new().fg(accent));
+    frame.render_widget(Clear, area);
+    frame.render_widget(Paragraph::new(text).block(block), area);
 }
 
 /// Announces an unlocked reward. Blinks like the level-up popup.
