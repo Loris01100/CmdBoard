@@ -28,6 +28,7 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/Loris01100/CmdBoar
 ```
 
 **MSI**: download `cmdboard-x86_64-pc-windows-msvc.msi` from the [latest release](https://github.com/Loris01100/CmdBoard/releases/latest).
+It adds CmdBoard to the Start Menu and the Desktop; untick either shortcut during setup if you do not want it.
 
 **From source**
 

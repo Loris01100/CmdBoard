@@ -19,5 +19,6 @@ hosting = "github"
 install-updater = false
 #Duplicate 
 source-tarball = false
-# release.yml is hand-edited (pinned action SHAs, verified dist download, job-level permissions)
-allow-dirty = ["ci"]
+# release.yml is hand-edited (pinned action SHAs, verified dist download, job-level permissions);
+# wix/main.wxs is hand-edited (Start Menu and Desktop shortcuts)
+allow-dirty = ["ci", "msi"]

@@ -131,6 +131,46 @@
                     </Directory>
                 </Directory>
             </Directory>
+
+            <!--
+              Shortcuts. The install is per-machine, so these resolve to the
+              all-users Start Menu and Desktop. A shortcut cannot be a KeyPath,
+              hence the HKMU registry values (HKLM for a per-machine install).
+            -->
+            <Directory Id='ProgramMenuFolder'>
+                <Component Id='StartMenuShortcut' Guid='D6CBA803-82CA-48B7-B125-6D0B4FE1A6FB'>
+                    <Shortcut
+                        Id='StartMenuShortcut'
+                        Name='CmdBoard'
+                        Description='Terminal dashboard to launch apps and track play time'
+                        Target='[#exe0]'
+                        WorkingDirectory='Bin'/>
+                    <RegistryValue
+                        Root='HKMU'
+                        Key='Software\Loris01100\cmdboard'
+                        Name='StartMenuShortcut'
+                        Type='integer'
+                        Value='1'
+                        KeyPath='yes'/>
+                </Component>
+            </Directory>
+            <Directory Id='DesktopFolder'>
+                <Component Id='DesktopShortcut' Guid='0C0A03A7-2223-4B32-B58B-9310E8C665C3'>
+                    <Shortcut
+                        Id='DesktopShortcut'
+                        Name='CmdBoard'
+                        Description='Terminal dashboard to launch apps and track play time'
+                        Target='[#exe0]'
+                        WorkingDirectory='Bin'/>
+                    <RegistryValue
+                        Root='HKMU'
+                        Key='Software\Loris01100\cmdboard'
+                        Name='DesktopShortcut'
+                        Type='integer'
+                        Value='1'
+                        KeyPath='yes'/>
+                </Component>
+            </Directory>
         </Directory>
 
         <Feature
@@ -158,6 +198,25 @@
                 Level='1'
                 Absent='allow'>
                 <ComponentRef Id='Path'/>
+            </Feature>
+
+            <Feature
+                Id='StartMenu'
+                Title='Start Menu shortcut'
+                Description='Add a [ProductName] shortcut to the Start Menu.'
+                Level='1'
+                Absent='allow'>
+                <ComponentRef Id='StartMenuShortcut'/>
+            </Feature>
+
+            <!-- On by default so silent installs (winget) get it too. -->
+            <Feature
+                Id='Desktop'
+                Title='Desktop shortcut'
+                Description='Add a [ProductName] shortcut to the Desktop.'
+                Level='1'
+                Absent='allow'>
+                <ComponentRef Id='DesktopShortcut'/>
             </Feature>
         </Feature>
 
