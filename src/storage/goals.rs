@@ -70,7 +70,7 @@ impl Database {
 
     /// Every goal and limit, in the order they were set.
     pub fn goals(&self) -> anyhow::Result<Vec<Goal>> {
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare_cached(
             "SELECT id, kind, app_id, category_id, minutes, period FROM goals ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -108,7 +108,7 @@ impl Database {
     pub(super) fn usage_at(&self, now: i64) -> anyhow::Result<Usage> {
         // Day numbers for `Usage`, and the Unix times at which today and this week began,
         // so the sessions are found by `ended_at` through its index.
-        let (day_number, week, day_start, week_start): (i64, i64, i64, i64) = self.conn.query_row(
+        let (day_number, week, day_start, week_start): (i64, i64, i64, i64) = self.cached_row(
             &format!(
                 "SELECT {}, {}, {}, {}",
                 day("?1"),
@@ -119,7 +119,7 @@ impl Database {
             [now],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )?;
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare_cached(
             "SELECT app_id, SUM(CASE WHEN ended_at >= ?1 THEN duration_s ELSE 0 END),
                 SUM(duration_s)
              FROM sessions WHERE ended_at >= ?2

@@ -355,7 +355,7 @@ mod tests {
 
         // Running all: the next ones wait, no verdict yet.
         app.optimize.running = Some(Bench::CpuMulti);
-        app.optimize.queue = vec![Bench::Memory, Bench::Disk];
+        app.optimize.queue = [Bench::Memory, Bench::Disk].into();
         app.optimize
             .on_finished(Bench::CpuSingle, false, Ok(Score::Ops(678.0)));
         app.optimize.running = Some(Bench::CpuMulti);

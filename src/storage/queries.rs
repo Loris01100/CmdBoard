@@ -21,7 +21,7 @@ impl Database {
     pub fn categories(&self) -> anyhow::Result<Vec<Category>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, name FROM categories ORDER BY id")?;
+            .prepare_cached("SELECT id, name FROM categories ORDER BY id")?;
         let rows = stmt.query_map([], |r| {
             Ok(Category {
                 id: r.get(0)?,
@@ -48,7 +48,7 @@ impl Database {
 
     /// All apps sorted by name, with time played, last session and rewards aggregated.
     pub fn apps(&self) -> anyhow::Result<Vec<AppEntry>> {
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare_cached(
             "SELECT a.id, a.name, a.launch_target, a.watch_exe, a.category_id, a.total_xp,
                 a.launch_args, a.pin,
                 (SELECT COALESCE(SUM(duration_s), 0) FROM sessions s
@@ -167,13 +167,12 @@ impl Database {
     /// Global profile as of `now` (Unix seconds). Days follow the local time zone.
     pub(super) fn profile_at(&self, now: i64) -> anyhow::Result<Profile> {
         let total_xp: u32 =
-            self.conn
-                .query_row("SELECT COALESCE(SUM(total_xp), 0) FROM apps", [], |r| {
-                    r.get(0)
-                })?;
+            self.cached_row("SELECT COALESCE(SUM(total_xp), 0) FROM apps", [], |r| {
+                r.get(0)
+            })?;
         let (level, xp) = xp::level_from_total(total_xp);
 
-        let xp_today: u32 = self.conn.query_row(
+        let xp_today: u32 = self.cached_row(
             "SELECT COALESCE(SUM(xp_gained), 0) FROM sessions
              WHERE ended_at IS NOT NULL
                AND date(ended_at, 'unixepoch', 'localtime') = date(?1, 'unixepoch', 'localtime')",
@@ -182,10 +181,8 @@ impl Database {
         )?;
 
         let day = "CAST(julianday(date(?1, 'unixepoch', 'localtime')) AS INTEGER)";
-        let today: i64 = self
-            .conn
-            .query_row(&format!("SELECT {day}"), [now], |r| r.get(0))?;
-        let mut stmt = self.conn.prepare(
+        let today: i64 = self.cached_row(&format!("SELECT {day}"), [now], |r| r.get(0))?;
+        let mut stmt = self.conn.prepare_cached(
             "SELECT DISTINCT CAST(julianday(date(ended_at, 'unixepoch', 'localtime')) AS INTEGER) AS d
              FROM sessions WHERE ended_at IS NOT NULL ORDER BY d DESC",
         )?;
@@ -205,7 +202,7 @@ impl Database {
     /// Latest finished sessions (not hidden) and unlocked rewards, newest first.
     /// A reward comes before the session that unlocked it.
     pub fn activity(&self, limit: u32) -> anyhow::Result<Vec<Activity>> {
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare_cached(
             "SELECT r.code, r.name, a.name, u.unlocked_at FROM unlocked_rewards u
              JOIN rewards r ON r.id = u.reward_id
              LEFT JOIN apps a ON a.id = u.app_id
@@ -225,7 +222,7 @@ impl Database {
         })?;
         let mut events = rewards.collect::<Result<Vec<_>, _>>()?;
 
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare_cached(
             "SELECT a.name, s.duration_s, s.xp_gained, s.ended_at FROM sessions s
              JOIN apps a ON a.id = s.app_id
              WHERE s.ended_at IS NOT NULL AND NOT s.hidden
@@ -256,7 +253,7 @@ impl Database {
     }
 
     fn stats_at(&self, app_id: Option<i64>, now: i64) -> anyhow::Result<Stats> {
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare_cached(
             "SELECT a.name, strftime('%d/%m/%Y %H:%M', s.started_at, 'unixepoch', 'localtime'),
                 s.duration_s, s.xp_gained
              FROM sessions s JOIN apps a ON a.id = s.app_id
@@ -274,7 +271,7 @@ impl Database {
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
-        let (session_count, total_secs, longest_secs): (u32, i64, i64) = self.conn.query_row(
+        let (session_count, total_secs, longest_secs): (u32, i64, i64) = self.cached_row(
             "SELECT COUNT(*), COALESCE(SUM(duration_s), 0), COALESCE(MAX(duration_s), 0)
              FROM sessions WHERE ended_at IS NOT NULL AND (?1 IS NULL OR app_id = ?1)",
             [app_id],
@@ -283,7 +280,7 @@ impl Database {
 
         // Time per `name`, most played first.
         let totals = |name: &str, group: &str| -> anyhow::Result<Vec<(String, u64)>> {
-            let mut stmt = self.conn.prepare(&format!(
+            let mut stmt = self.conn.prepare_cached(&format!(
                 "SELECT {name}, SUM(s.duration_s) AS secs
                  FROM sessions s JOIN apps a ON a.id = s.app_id
                  JOIN categories c ON c.id = a.category_id
@@ -301,10 +298,8 @@ impl Database {
         let day = |column: &str| {
             format!("CAST(julianday(date({column}, 'unixepoch', 'localtime')) AS INTEGER)")
         };
-        let today: i64 = self
-            .conn
-            .query_row(&format!("SELECT {}", day("?1")), [now], |r| r.get(0))?;
-        let mut stmt = self.conn.prepare(&format!(
+        let today: i64 = self.cached_row(&format!("SELECT {}", day("?1")), [now], |r| r.get(0))?;
+        let mut stmt = self.conn.prepare_cached(&format!(
             "SELECT {} AS d, SUM(duration_s) FROM sessions
              WHERE ended_at IS NOT NULL AND (?1 IS NULL OR app_id = ?1)
              GROUP BY d HAVING d > ?2 - {ACTIVITY_DAYS} AND d <= ?2",
@@ -334,7 +329,7 @@ impl Database {
 
     /// Every reward with its unlocks, in definition order.
     pub fn reward_views(&self) -> anyhow::Result<Vec<RewardView>> {
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare_cached(
             "SELECT r.id, r.name, r.description, r.rule,
                 r.scope = 'app' OR r.app_id IS NOT NULL, a.name, r.code
              FROM rewards r LEFT JOIN apps a ON a.id = r.app_id
@@ -355,7 +350,7 @@ impl Database {
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare_cached(
             "SELECT u.reward_id, a.name,
                 strftime('%d/%m/%Y', u.unlocked_at, 'unixepoch', 'localtime')
              FROM unlocked_rewards u LEFT JOIN apps a ON a.id = u.app_id

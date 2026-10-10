@@ -1,7 +1,7 @@
 //! Optimization screen: PC details, benchmarks run in a short-lived thread, and the
 //! Windows gaming settings. Nothing is saved.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use anyhow::{Context, bail};
 use crossterm::event::{KeyCode, KeyEvent};
@@ -26,7 +26,7 @@ pub struct OptimizeScreen {
     pub heavy: bool,
     pub running: Option<Bench>,
     /// Benchmarks still to run after `running`, for `a`.
-    pub queue: Vec<Bench>,
+    pub queue: VecDeque<Bench>,
     /// Last result of each benchmark, with whether it ran heavy.
     pub results: HashMap<Bench, (bool, Result<Score, String>)>,
 }
@@ -41,7 +41,7 @@ impl Default for OptimizeScreen {
             gaming_focus: false,
             heavy: false,
             running: None,
-            queue: Vec::new(),
+            queue: VecDeque::new(),
             results: HashMap::new(),
         }
     }
@@ -108,7 +108,7 @@ impl App {
         let [first, rest @ ..] = Bench::ALL;
         self.bench(first)?;
         if self.optimize.running.is_some() {
-            self.optimize.queue = rest.to_vec();
+            self.optimize.queue = rest.into();
         }
         Ok(())
     }
@@ -121,8 +121,7 @@ impl App {
         result: Result<Score, String>,
     ) {
         self.optimize.on_finished(bench, heavy, result);
-        if !self.optimize.queue.is_empty() {
-            let next = self.optimize.queue.remove(0);
+        if let Some(next) = self.optimize.queue.pop_front() {
             self.start_bench(next, heavy);
         }
     }

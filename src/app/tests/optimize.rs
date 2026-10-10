@@ -43,7 +43,7 @@ fn run_all_queues_every_benchmark() {
     assert_eq!(message_kind(&app), Some(MsgKind::Error));
 
     // A finished benchmark is recorded, then the next one would start.
-    app.optimize.queue = vec![Bench::Memory, Bench::Disk];
+    app.optimize.queue = [Bench::Memory, Bench::Disk].into();
     app.on_bench_finished(Bench::CpuMulti, true, Ok(Score::Ops(6_300.0)));
     assert!(app.optimize.results.contains_key(&Bench::CpuMulti));
     assert_eq!((app.optimize.running, app.optimize.queue.len()), (None, 0));

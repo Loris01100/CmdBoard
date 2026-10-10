@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
-use rusqlite::Connection;
+use rusqlite::{Connection, Params, Row};
 
 use super::models::NewApp;
 use crate::launcher::launch;
@@ -107,11 +107,24 @@ const MIGRATIONS: &[&str] = &[
     "CREATE INDEX sessions_ended_at ON sessions(ended_at);",
 ];
 
+/// Statements kept prepared (`prepare_cached`); `App::reload` alone runs about 20.
+const STATEMENT_CACHE: usize = 32;
+
 pub struct Database {
     pub(super) conn: Connection,
 }
 
 impl Database {
+    /// `Connection::query_row` through the statement cache, for queries run often.
+    pub(super) fn cached_row<T>(
+        &self,
+        sql: &str,
+        params: impl Params,
+        row: impl FnOnce(&Row<'_>) -> rusqlite::Result<T>,
+    ) -> rusqlite::Result<T> {
+        self.conn.prepare_cached(sql)?.query_row(params, row)
+    }
+
     /// Opens (or creates) the user database in `%APPDATA%\CmdBoard`.
     /// A brand-new database is filled with a few starter apps.
     pub fn open_default() -> anyhow::Result<Self> {
@@ -152,6 +165,8 @@ impl Database {
         // support keeps the rollback journal.
         conn.pragma_update_and_check(None, "journal_mode", "WAL", |_| Ok(()))?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
+        // Room for every statement `App::reload` runs, prepared once and then reused.
+        conn.set_prepared_statement_cache_capacity(STATEMENT_CACHE);
         let previous_version = migrate(&mut conn)?;
         Ok((Self { conn }, previous_version))
     }
