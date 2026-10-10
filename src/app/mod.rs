@@ -150,6 +150,8 @@ pub struct App {
     pub reward_state: TableState,
     /// Stats screen data, for `stats_app` or every app.
     pub stats: Stats,
+    /// `stats` predates the last write: read again when the Stats screen shows.
+    stats_stale: bool,
     pub stats_app: Option<i64>,
     pub stats_state: TableState,
     /// The Stats pie shows the time per app instead of per category.
@@ -227,6 +229,7 @@ impl App {
             goals_reached: HashSet::new(),
             reward_state: TableState::default(),
             stats: Stats::default(),
+            stats_stale: true,
             stats_app: None,
             stats_state: TableState::default(),
             stats_by_app: false,
@@ -275,11 +278,9 @@ impl App {
         {
             self.stats_app = None; // the app was removed
         }
-        self.stats = self.db.stats(self.stats_app)?;
-        self.stats_state.select(clamp(
-            self.stats_state.selected(),
-            self.stats.sessions.len(),
-        ));
+        // The heaviest queries: run now only if the Stats screen shows them.
+        self.stats_stale = true;
+        self.refresh_stats()?;
         self.rewards = self.db.reward_views()?;
         self.goals = self.db.goals()?;
         self.usage = self.db.usage()?;

@@ -259,7 +259,7 @@ fn threads_report_through_the_event_channel() {
     };
     app.attach_events(tx, &config);
     assert!(app.storage.scanning && !app.update_running);
-    app.show(Screen::Storage); // already scanning: no second thread
+    app.show(Screen::Storage).unwrap(); // already scanning: no second thread
 
     app.open_folder(Some(dir.clone()), None);
     app.execute(Command::OpenForm(FormKind::Add)); // the picker scans the installed apps

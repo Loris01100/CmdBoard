@@ -25,7 +25,7 @@ impl App {
     pub(super) fn run_command(&mut self, command: Command) -> Outcome {
         match command {
             // navigation, bound to keys
-            Command::Show(screen) => self.show(screen),
+            Command::Show(screen) => self.show(screen)?,
             Command::SelectNext => self.move_selection(true),
             Command::SelectPrev => self.move_selection(false),
             Command::FocusPanel(focus) => self.focus = focus,
@@ -169,13 +169,15 @@ impl App {
         )))
     }
 
-    pub(super) fn show(&mut self, screen: Screen) {
+    pub(super) fn show(&mut self, screen: Screen) -> anyhow::Result<()> {
         self.screen = screen;
         match screen {
             Screen::Storage => self.start_storage_scan(),
             Screen::Optimize => self.optimize.open(),
+            Screen::Stats => self.refresh_stats()?,
             _ => {}
         }
+        Ok(())
     }
 
     /// `:stats [app]`: the Stats screen, for one app or every app.
@@ -184,10 +186,25 @@ impl App {
             Some(app) => Some(self.app_named(app)?.id),
             None => None,
         };
-        self.stats = self.db.stats(self.stats_app)?;
+        self.stats_stale = true;
+        self.show(Screen::Stats)?;
         self.stats_state =
             TableState::default().with_selected((!self.stats.sessions.is_empty()).then_some(0));
-        self.screen = Screen::Stats;
+        Ok(())
+    }
+
+    /// Reads the stats again if a write made them stale, only while the Stats screen
+    /// shows them: `reload` runs after every write, and these queries read every session.
+    pub(super) fn refresh_stats(&mut self) -> anyhow::Result<()> {
+        if self.screen != Screen::Stats || !self.stats_stale {
+            return Ok(());
+        }
+        self.stats = self.db.stats(self.stats_app)?;
+        self.stats_stale = false;
+        self.stats_state.select(super::clamp(
+            self.stats_state.selected(),
+            self.stats.sessions.len(),
+        ));
         Ok(())
     }
 

@@ -1,6 +1,22 @@
 use super::*;
 
 #[test]
+fn stats_are_read_when_their_screen_shows() {
+    let mut app = App::with_defaults();
+    let steam = steam_id(&app);
+    app.on_session_start(steam);
+    app.on_session_end(steam, 42 * 60);
+    // Elsewhere, a write leaves the stats for later.
+    assert_eq!(app.stats.session_count, 0);
+    app.execute(Command::Show(Screen::Stats));
+    assert_eq!(app.stats.session_count, 1);
+    // On the Stats screen, they follow each write.
+    app.on_session_start(steam);
+    app.on_session_end(steam, 10 * 60);
+    assert_eq!(app.stats.session_count, 2);
+}
+
+#[test]
 fn session_is_recorded_from_start_to_end() {
     let mut app = App::with_defaults();
     let steam = steam_id(&app);
