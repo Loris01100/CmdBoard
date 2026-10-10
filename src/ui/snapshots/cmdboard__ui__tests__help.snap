@@ -12,7 +12,7 @@ expression: "screen_text(&app, 100, 30)"
 │  s           changer le tri des apps (nom, XP, récent, temps) ; Stats : camembert par catégorie o│
 │  /           chercher une app dans toutes les catégories (Entrée : y aller)                      │
 │  Tab s d f r Stockage : Tab/←→ disque, s plus petits/plus gros d'abord, d/Suppr désinstalle, f do│
-│  Tab n o     Optimisation : Tab tests ↔ Gaming, Entrée lance le test ou bascule le réglage, n lég│
+│  Tab n o     Optimisation : Tab tests ↔ Gaming, Entrée lance le test ou bascule le réglage, n tes│
 │  :           ligne de commande (↑↓ historique, Tab compléter, Esc annuler)                       │
 │  1-5  0 ?    Dashboard, Stats, Récompenses, Stockage, Optimisation ; 0 ou ? : Aide               │
 │  q  Ctrl-C   quitter                                                                             │

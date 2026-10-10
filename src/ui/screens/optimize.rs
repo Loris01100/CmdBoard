@@ -71,54 +71,57 @@ fn draw_system(frame: &mut Frame, area: Rect, app: &App) {
 const GAUGE: usize = 10;
 /// The result column: the gauge, a space and the verdict.
 const RESULT_WIDTH: u16 = 24;
-const LEVEL_WIDTH: u16 = 7;
 
 fn draw_benches(frame: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
-    let level = |heavy: bool| {
-        if heavy {
-            t!("optimize.heavy")
-        } else {
-            t!("optimize.light")
-        }
+    let mode = if app.optimize.heavy {
+        t!("optimize.heavy")
+    } else {
+        t!("optimize.light")
     };
-    let title = t!("optimize.benches", level = level(app.optimize.heavy));
-    // Test, verdict, raw measure and level of each benchmark.
+    let title = t!("optimize.benches", mode = mode);
+    // Test, verdict and raw measure of each benchmark; the test notes a result
+    // measured in the other mode.
     let cells: Vec<_> = Bench::ALL
         .iter()
         .map(|&bench| {
-            let (result, measure, heavy) =
-                match (app.optimize.running, app.optimize.results.get(&bench)) {
-                    (Some(running), _) if running == bench => (
-                        Line::styled(t!("optimize.running"), Style::new().fg(theme.warning)),
-                        String::new(),
-                        String::new(),
-                    ),
-                    (_, Some((heavy, Ok(score)))) => (
-                        verdict(app, bench, *score),
-                        format_score(*score),
-                        level(*heavy),
-                    ),
-                    (_, Some((heavy, Err(e)))) => (
-                        Line::styled(e.clone(), Style::new().fg(theme.error)),
-                        String::new(),
-                        level(*heavy),
-                    ),
-                    (_, None) => (
-                        Line::styled("—", theme.muted()),
-                        String::new(),
-                        String::new(),
-                    ),
+            let result = app.optimize.results.get(&bench);
+            let mut label = vec![Span::raw(bench.label())];
+            if let Some((heavy, _)) = result
+                && *heavy != app.optimize.heavy
+            {
+                let other = if *heavy {
+                    t!("optimize.heavy_marker")
+                } else {
+                    t!("optimize.light_marker")
                 };
-            (bench.label(), result, measure, heavy)
+                label.push(Span::styled(format!(" · {other}"), theme.muted()));
+            }
+            let (result, measure) = match (app.optimize.running, result) {
+                (Some(running), _) if running == bench => (
+                    Line::styled(t!("optimize.running"), Style::new().fg(theme.warning)),
+                    String::new(),
+                ),
+                (_, Some((_, Ok(score)))) => (verdict(app, bench, *score), format_score(*score)),
+                (_, Some((_, Err(e)))) => (
+                    Line::styled(e.clone(), Style::new().fg(theme.error)),
+                    String::new(),
+                ),
+                (_, None) => (Line::styled("—", theme.muted()), String::new()),
+            };
+            (Line::from(label), result, measure)
         })
         .collect();
     // The raw measure is the first to go when room runs out.
-    let width = |text: &str| u16::try_from(Line::raw(text).width()).unwrap_or(u16::MAX);
+    let width = |line: &Line| u16::try_from(line.width()).unwrap_or(u16::MAX);
     let label_width = cells.iter().map(|c| width(&c.0)).max().unwrap_or(0);
-    let measure_width = cells.iter().map(|c| width(&c.2)).max().unwrap_or(0);
-    // Borders, highlight symbol and the gaps between the four columns.
-    let needed = label_width + RESULT_WIDTH + measure_width + LEVEL_WIDTH + 7;
+    let measure_width = cells
+        .iter()
+        .map(|c| width(&Line::raw(c.2.as_str())))
+        .max()
+        .unwrap_or(0);
+    // Borders, highlight symbol and the gaps between the three columns.
+    let needed = label_width + RESULT_WIDTH + measure_width + 6;
     let show_measure = measure_width > 0 && needed <= area.width;
 
     let mut header = vec![t!("optimize.test"), t!("optimize.result")];
@@ -127,16 +130,13 @@ fn draw_benches(frame: &mut Frame, area: Rect, app: &App) {
         header.push(t!("optimize.measure"));
         widths.push(Constraint::Length(measure_width));
     }
-    header.push(t!("optimize.level"));
-    widths.push(Constraint::Length(LEVEL_WIDTH));
-    let rows = cells.into_iter().map(|(label, result, measure, heavy)| {
+    let rows = cells.into_iter().map(|(label, result, measure)| {
         let mut row = vec![Cell::from(label), Cell::from(result)];
         if show_measure {
             row.push(Cell::from(
                 Line::styled(measure, theme.muted()).alignment(Alignment::Right),
             ));
         }
-        row.push(Cell::from(Span::styled(heavy, theme.muted())));
         Row::new(row)
     });
     let focused = !app.optimize.gaming_focus;
@@ -252,10 +252,15 @@ mod tests {
         assert!(text.contains("Ryzen 7 · 8 cœurs / 16 threads"), "{text}");
         assert!(text.contains("32 Go"), "{text}");
         assert!(text.contains("█████████░ Très rapide"), "{text}");
+        assert!(
+            text.contains("Test rapide (3 s) · n pour changer"),
+            "{text}"
+        );
+        assert!(!text.contains("Niveau"), "{text}");
         assert!(text.contains("Mesure") && text.contains("1234 M op/s"));
 
         // Without room for the raw measure, the verdict stays.
-        let text = screen(&app, 120, 30);
+        let text = screen(&app, 100, 30);
         assert!(text.contains("Très rapide") && !text.contains("op/s"));
         app.optimize.results.clear();
         assert!(!screen(&app, 140, 30).contains("Mesure"));
@@ -265,7 +270,10 @@ mod tests {
             .on_finished(Bench::Memory, true, Err("mémoire insuffisante".into()));
         app.optimize.running = Some(Bench::Disk);
         let text = screen(&app, 140, 30);
-        assert!(text.contains("mémoire insuffisante") && text.contains("lourd"));
+        // Measured in the other mode: marked next to the test.
+        assert!(text.contains("Mémoire (copie) · complet  "), "{text}");
+        assert!(text.contains("mémoire insuffisante"));
+        assert!(!text.contains("Processeur (1 cœur) ·"), "{text}");
         assert!(text.contains("en cours…"), "{text}");
         assert!(
             text.contains("Mode Jeu") && text.contains("activé"),
