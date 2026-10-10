@@ -234,3 +234,51 @@ fn xp_display_without_animation_and_unknown_app() {
     assert!(app.xp_anims.is_empty() && app.profile_anim.is_none());
     assert_eq!(app.mode, Mode::Normal);
 }
+
+/// One tick from a drawn screen: whether it asks for a redraw.
+fn tick_redraws(app: &mut App) -> bool {
+    app.redraw = false;
+    app.handle(AppEvent::Tick);
+    app.redraw
+}
+
+/// Idle: a tick draws nothing. Two tries, as a new minute redraws once (the "… ago").
+fn settles(app: &mut App) -> bool {
+    !tick_redraws(app) || !tick_redraws(app)
+}
+
+#[test]
+fn ticks_redraw_only_when_something_moves() {
+    let mut app = App::with_defaults();
+    assert!(app.redraw, "the first frame");
+    assert!(settles(&mut app));
+    app.redraw = false;
+    app.handle(AppEvent::Resize);
+    assert!(app.redraw);
+
+    // A session timer: redraws when the shown second changes.
+    let steam = steam_id(&app);
+    app.handle(AppEvent::SessionStarted { app_id: steam });
+    app.handle(AppEvent::SessionProgress {
+        app_id: steam,
+        played: Duration::from_secs(5),
+        idle: true, // the timer holds still between reports
+    });
+    assert!(tick_redraws(&mut app), "the timer shows 5 s");
+    assert!(settles(&mut app));
+
+    // Closing it fills the XP bars up to their last frame, then a blinking popup.
+    app.handle(AppEvent::SessionEnded {
+        app_id: steam,
+        secs: 42 * 60,
+    });
+    assert!(matches!(app.mode, Mode::Popup(_)));
+    for _ in 0..XP_ANIM_FRAMES {
+        assert!(tick_redraws(&mut app));
+    }
+    assert!(tick_redraws(&mut app), "the popup blinks");
+    while matches!(app.mode, Mode::Popup(_)) {
+        press(&mut app, KeyCode::Enter);
+    }
+    assert!(settles(&mut app));
+}

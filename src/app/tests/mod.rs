@@ -273,3 +273,18 @@ fn threads_report_through_the_event_channel() {
     assert_eq!(app.storage.visible_entries()[0].name, "sub");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn queued_events_cost_one_draw() {
+    use ratatui::{Terminal, backend::TestBackend};
+    let mut app = App::with_defaults();
+    let mut terminal = Terminal::new(TestBackend::new(80, 30)).unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    for _ in 0..3 {
+        tx.send(AppEvent::Resize).unwrap();
+    }
+    tx.send(AppEvent::Key(KeyCode::Char('q').into())).unwrap();
+    app.run(&mut terminal, &rx).unwrap();
+    // The first frame only: the queued events, quit included, were handled together.
+    assert_eq!(terminal.get_frame().count(), 1);
+}

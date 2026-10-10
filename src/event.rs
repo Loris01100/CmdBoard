@@ -13,13 +13,16 @@ use crate::launcher::{
 };
 use crate::update;
 
-/// Drives animations and the live session timer.
+/// Drives animations and the live session timer. A tick only redraws when something on
+/// screen moves (`App::on_tick`).
 pub const TICK: Duration = Duration::from_millis(250);
 
 /// Everything the UI thread reacts to, whichever thread it comes from.
 #[derive(Debug)]
 pub enum AppEvent {
     Key(KeyEvent),
+    /// The terminal was resized: the screen is drawn again.
+    Resize,
     Tick,
     /// A watched process appeared (sent by the tracker).
     SessionStarted {
@@ -77,7 +80,7 @@ pub enum AppEvent {
     },
 }
 
-/// Reads the keyboard and sends a `Tick` every `TICK`. Stops once the UI thread is gone.
+/// Reads the keyboard and resizes, and sends a `Tick` every `TICK`. Stops once the UI thread is gone.
 pub fn spawn(tx: Sender<AppEvent>) {
     thread::spawn(move || {
         let mut next_tick = Instant::now() + TICK;
@@ -89,6 +92,7 @@ pub fn spawn(tx: Sender<AppEvent>) {
                     Ok(Event::Key(key)) if key.kind == KeyEventKind::Press => {
                         Some(AppEvent::Key(key))
                     }
+                    Ok(Event::Resize(..)) => Some(AppEvent::Resize),
                     Ok(_) => None,
                     Err(_) => return,
                 },

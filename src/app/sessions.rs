@@ -72,16 +72,35 @@ impl XpAnim {
 }
 
 impl App {
-    /// Each tick redraws (live timer, animations); running sessions also checkpoint here.
+    /// Advances the animations and checkpoints running sessions. Asks for a redraw only
+    /// when something on screen moves: an XP bar (up to its last frame), a blinking popup,
+    /// a session timer or the minute (the "… ago" times). The activity ticker is
+    /// `ui::animates`'s call, as only the layout knows whether it scrolls.
     pub fn on_tick(&mut self) {
         self.frame_count += 1;
         let frame = self.frame_count;
+        let filling = !self.xp_anims.is_empty() || self.profile_anim.is_some();
         self.xp_anims.retain(|_, anim| !anim.is_done(frame));
         if self.profile_anim.is_some_and(|anim| anim.is_done(frame)) {
             self.profile_anim = None;
         }
         self.show_pending_popup();
         self.checkpoint_sessions();
+
+        let blinking = matches!(
+            self.mode,
+            Mode::Popup(Popup::LevelUp(_) | Popup::RewardUnlocked(_))
+        );
+        let clock = (
+            self.active_sessions
+                .values()
+                .map(ActiveSession::shown_secs)
+                .sum(),
+            unix_now() / 60,
+        );
+        let ticked = clock != self.shown_clock;
+        self.shown_clock = clock;
+        self.redraw |= filling || blinking || ticked;
     }
 
     fn checkpoint_sessions(&mut self) {
@@ -93,6 +112,7 @@ impl App {
             let secs = session.played.as_secs();
             if let Err(e) = self.db.checkpoint_session(session.session_id, secs) {
                 self.message = Some((format!("{e:#}"), MsgKind::Error));
+                self.redraw = true;
             }
         }
     }

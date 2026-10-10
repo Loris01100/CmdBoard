@@ -104,7 +104,7 @@ fn draw_programs(frame: &mut Frame, area: Rect, app: &App) {
         Some(letter) => format!("{letter}:"),
         None => t!("storage.all_disks"),
     };
-    let order = if app.storage.ascending {
+    let order = if app.storage.ascending() {
         t!("storage.smallest_first")
     } else {
         t!("storage.biggest_first")
@@ -173,7 +173,7 @@ fn draw_folders(frame: &mut Frame, area: Rect, app: &App) {
         Some(dir) => dir.display().to_string(),
         None => t!("storage.drives"),
     };
-    let order = if app.storage.ascending {
+    let order = if app.storage.ascending() {
         t!("storage.smallest_first")
     } else {
         t!("storage.biggest_first")

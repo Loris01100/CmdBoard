@@ -9,8 +9,10 @@
 //! - `sessions`: tracked sessions, XP animations, level-up and reward popups
 //! - `settings`: theme, sort, language, aliases, export/import, updates, history
 //! - `storage`, `optimize`: the Storage and Optimization screens
+//! - `folders`: the folder browser of the Storage screen
 
 mod commands;
+mod folders;
 mod forms;
 mod keys;
 mod library;
@@ -27,7 +29,9 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender};
 
 use ratatui::{
-    DefaultTerminal,
+    Terminal,
+    backend::Backend,
+    layout::Rect,
     widgets::{ListState, TableState},
 };
 
@@ -104,6 +108,9 @@ pub enum MsgKind {
 
 type Message = (String, MsgKind);
 
+/// Most queued events handled before drawing again, so a flood cannot freeze the screen.
+const MAX_BATCH: usize = 256;
+
 /// What a command reports: a message to show, or nothing.
 type Outcome = anyhow::Result<Option<Message>>;
 
@@ -146,6 +153,11 @@ pub struct App {
     pub active_sessions: HashMap<i64, ActiveSession>,
     /// Incremented on each tick.
     pub frame_count: u64,
+    /// Something on screen changed since the last draw.
+    redraw: bool,
+    /// Session clock (seconds played, every session) and minute of the last tick: a tick
+    /// redraws when one of them changes.
+    shown_clock: (u64, i64),
     /// XP bars still filling up, by app id.
     xp_anims: HashMap<i64, XpAnim>,
     profile_anim: Option<XpAnim>,
@@ -208,6 +220,8 @@ impl App {
             search_restore: None,
             active_sessions: HashMap::new(),
             frame_count: 0,
+            redraw: true,
+            shown_clock: (0, 0),
             xp_anims: HashMap::new(),
             profile_anim: None,
             pending_popups: VecDeque::new(),
@@ -348,24 +362,45 @@ impl App {
         true
     }
 
-    /// Main loop: redraw, then handle the next event from the event or tracker thread.
-    /// Key events are already filtered on `Press` by the event thread.
-    pub fn run(
+    /// Main loop: waits for an event, handles it with every one already queued, then
+    /// draws once if the screen changed. Idle, a tick draws nothing; a burst of events (a
+    /// folder being measured) costs one draw. Key events are already filtered on `Press`
+    /// by the event thread.
+    pub fn run<B: Backend>(
         &mut self,
-        terminal: &mut DefaultTerminal,
+        terminal: &mut Terminal<B>,
         events: &Receiver<AppEvent>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<()>
+    where
+        B::Error: Send + Sync + 'static,
+    {
         while !self.should_quit {
-            terminal.draw(|f| ui::draw(f, self))?;
-            self.handle(events.recv()?);
+            if std::mem::take(&mut self.redraw) {
+                terminal.draw(|f| ui::draw(f, self))?;
+            }
+            let first = events.recv()?;
+            for event in std::iter::once(first).chain(events.try_iter().take(MAX_BATCH)) {
+                if matches!(event, AppEvent::Tick) && !self.redraw {
+                    let size = terminal.size()?;
+                    self.redraw = ui::animates(self, Rect::new(0, 0, size.width, size.height));
+                }
+                self.handle(event);
+                if self.should_quit {
+                    break;
+                }
+            }
         }
         self.end_all_sessions()
     }
 
     /// Routes one event from the event, tracker or a short-lived thread.
     pub fn handle(&mut self, event: AppEvent) {
+        // A tick redraws only when something moves (`on_tick`); any other event may
+        // change the screen.
+        self.redraw |= !matches!(event, AppEvent::Tick);
         match event {
             AppEvent::Key(key) => self.on_key(key),
+            AppEvent::Resize => {}
             AppEvent::Tick => self.on_tick(),
             AppEvent::SessionStarted { app_id } => self.on_session_start(app_id),
             AppEvent::SessionProgress {

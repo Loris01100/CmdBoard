@@ -4,9 +4,15 @@ mod screens;
 pub mod theme;
 mod widgets;
 
-use ratatui::Frame;
+use ratatui::{Frame, layout::Rect};
 
 use crate::app::{App, Mode, Screen};
+
+/// Whether the next tick moves something only the layout knows of: the activity ticker,
+/// when its events do not fit. `App::on_tick` covers the rest. `area`: the whole terminal.
+pub fn animates(app: &App, area: Rect) -> bool {
+    app.screen == Screen::Dashboard && screens::dashboard::ticker_scrolls(app, area)
+}
 
 /// Pure rendering: reads `app`, never mutates it.
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -263,7 +269,7 @@ mod tests {
             }],
         );
         app.storage.disk = Some('C');
-        app.storage.ascending = true;
+        app.execute(Command::ToggleStorageOrder); // smallest first
         assert!(screen_text(&app, 120, 30).contains("Hades"));
         app.execute(Command::ToggleFolders);
         let dir = std::path::PathBuf::from(r"C:\");

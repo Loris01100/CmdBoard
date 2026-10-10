@@ -154,6 +154,51 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    let spans = activity_spans(app);
+    if spans.is_empty() {
+        let empty = Paragraph::new(t!("dashboard.no_activity")).style(theme.muted());
+        frame.render_widget(empty, inner);
+        return;
+    }
+    let Some(cycle) = overflow(&spans, inner.width) else {
+        frame.render_widget(Paragraph::new(Line::from(spans)), inner);
+        return;
+    };
+    // Enough copies to fill the panel from any offset within one cycle.
+    let copies = inner.width as usize / cycle + 2;
+    let offset = u16::try_from(app.frame_count % cycle as u64).unwrap_or(0);
+    let looped: Vec<_> = spans
+        .iter()
+        .cycle()
+        .take(spans.len() * copies)
+        .cloned()
+        .collect();
+    let ticker = Paragraph::new(Line::from(looped)).scroll((0, offset));
+    frame.render_widget(ticker, inner);
+}
+
+/// The ticker scrolls on each tick: there is one, and its events do not fit. `area`: the
+/// whole terminal.
+pub fn ticker_scrolls(app: &App, area: Rect) -> bool {
+    let Some(activity) = layout::dashboard(area, command_line::height(app)).activity else {
+        return false;
+    };
+    let inner = app
+        .theme
+        .panel(&t!("dashboard.activity"), false)
+        .inner(activity);
+    overflow(&activity_spans(app), inner.width).is_some()
+}
+
+/// Width of one loop of the ticker, when its events do not fit in `width`.
+fn overflow(spans: &[Span], width: u16) -> Option<usize> {
+    let cycle: usize = spans.iter().map(Span::width).sum();
+    (cycle.saturating_sub(GAP.len()) > usize::from(width)).then_some(cycle)
+}
+
+/// The ticker's events, each followed by a gap.
+fn activity_spans(app: &App) -> Vec<Span<'static>> {
+    let theme = &app.theme;
     let now = unix_now();
     let mut spans = Vec::new();
     for event in &app.activity {
@@ -194,28 +239,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App) {
             spans.push(Span::raw(GAP));
         }
     }
-    if spans.is_empty() {
-        let empty = Paragraph::new(t!("dashboard.no_activity")).style(theme.muted());
-        frame.render_widget(empty, inner);
-        return;
-    }
-
-    let cycle = Line::from(spans.clone()).width();
-    if cycle - GAP.len() <= inner.width as usize {
-        frame.render_widget(Paragraph::new(Line::from(spans)), inner);
-        return;
-    }
-    // Enough copies to fill the panel from any offset within one cycle.
-    let copies = inner.width as usize / cycle + 2;
-    let offset = u16::try_from(app.frame_count % cycle as u64).unwrap_or(0);
-    let looped: Vec<_> = spans
-        .iter()
-        .cycle()
-        .take(spans.len() * copies)
-        .cloned()
-        .collect();
-    let ticker = Paragraph::new(Line::from(looped)).scroll((0, offset));
-    frame.render_widget(ticker, inner);
+    spans
 }
 
 #[cfg(test)]
@@ -223,7 +247,7 @@ mod tests {
     use crate::app::App;
     use crate::optimize::{Bench, Score};
     use crate::storage::{models::Activity, unix_now};
-    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui::{Terminal, backend::TestBackend, layout::Rect};
 
     /// The rows of the dashboard, as text.
     fn rows(app: &App) -> Vec<String> {
@@ -244,9 +268,12 @@ mod tests {
 
     #[test]
     fn activity_scrolls_only_when_too_long() {
+        // The size `ticker` renders at; tells the main loop whether a tick redraws.
+        let scrolls = |app: &App| super::ticker_scrolls(app, Rect::new(0, 0, 80, 30));
         let mut app = App::with_defaults();
         app.activity.clear();
         assert!(ticker(&app).contains("Aucune activité"));
+        assert!(!scrolls(&app));
 
         app.activity = vec![Activity::Reward {
             name: "Marathon (Hades)".into(),
@@ -258,6 +285,7 @@ mod tests {
         assert!(still.contains("Marathon (Hades)") && still.contains("1234 M op/s"));
         app.frame_count = 5;
         assert_eq!(ticker(&app), still, "fits: does not move");
+        assert!(!scrolls(&app));
 
         for i in 0..5 {
             app.activity.push(Activity::Session {
@@ -273,6 +301,9 @@ mod tests {
         app.frame_count = 4;
         let next = ticker(&app);
         assert_ne!(next, start, "too long: scrolls each tick");
+        assert!(scrolls(&app));
+        // Too short a terminal hides the ticker: nothing moves.
+        assert!(!super::ticker_scrolls(&app, Rect::new(0, 0, 80, 20)));
         // One cell to the left: the start without its first cell (│ border, then text).
         let inner = |row: &str| row.chars().skip(1).take(70).collect::<String>();
         assert_eq!(

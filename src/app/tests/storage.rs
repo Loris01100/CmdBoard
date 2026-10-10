@@ -227,3 +227,33 @@ fn refresh_reads_the_drives_and_the_shown_folder_again() {
     assert!(!app.storage.folder_sizes.contains_key(&dir.join("Hades")));
     assert!(app.storage.folder_sizes.contains_key(&other));
 }
+
+#[test]
+fn measured_folders_take_their_place_ties_by_name() {
+    let mut app = App::with_defaults();
+    let dir = PathBuf::from(r"C:\Jeux");
+    let folder = |name: &str| Entry {
+        name: name.into(),
+        path: dir.join(name),
+        is_dir: true,
+        size: None,
+    };
+    app.open_folder(Some(dir.clone()), None);
+    app.on_folder_listed(&dir, vec![folder("c"), folder("B"), folder("a")]);
+    let names = |app: &App| -> Vec<String> {
+        app.storage
+            .visible_entries()
+            .iter()
+            .map(|e| e.name.clone())
+            .collect()
+    };
+    assert_eq!(names(&app), ["a", "B", "c"]); // unmeasured: by name, ignoring case
+
+    app.storage.on_folder_sized(dir.join("c"), 5);
+    app.storage.on_folder_sized(dir.join("a"), 5);
+    assert_eq!(names(&app), ["a", "c", "B"]); // same size: by name, not by arrival
+    app.storage.on_folder_sized(dir.join("B"), 9);
+    assert_eq!(names(&app), ["B", "a", "c"]);
+    app.execute(Command::ToggleStorageOrder);
+    assert_eq!(names(&app), ["a", "c", "B"]);
+}
