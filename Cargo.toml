@@ -56,3 +56,6 @@ assert_is_empty = "allow"
 [dev-dependencies]
 insta = "1.49.0"
 proptest = "1.11.0"
+
+[build-dependencies]
+embed-resource = "3.0.12"

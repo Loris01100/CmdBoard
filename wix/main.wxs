@@ -144,7 +144,8 @@
                         Name='CmdBoard'
                         Description='Terminal dashboard to launch apps and track play time'
                         Target='[#exe0]'
-                        WorkingDirectory='Bin'/>
+                        WorkingDirectory='Bin'
+                        Icon='ProductICO'/>
                     <RegistryValue
                         Root='HKMU'
                         Key='Software\Loris01100\cmdboard'
@@ -161,7 +162,8 @@
                         Name='CmdBoard'
                         Description='Terminal dashboard to launch apps and track play time'
                         Target='[#exe0]'
-                        WorkingDirectory='Bin'/>
+                        WorkingDirectory='Bin'
+                        Icon='ProductICO'/>
                     <RegistryValue
                         Root='HKMU'
                         Key='Software\Loris01100\cmdboard'
@@ -224,13 +226,11 @@
 
         
         <!--
-          Uncomment the following `Icon` and `Property` tags to change the product icon.
-
-          The product icon is the graphic that appears in the Add/Remove
-          Programs control panel for the application.
+          Product icon: shown in Add/Remove Programs and on the shortcuts.
+          The path is relative to the package root, where cargo-wix runs.
         -->
-        <!--<Icon Id='ProductICO' SourceFile='wix\Product.ico'/>-->
-        <!--<Property Id='ARPPRODUCTICON' Value='ProductICO' />-->
+        <Icon Id='ProductICO' SourceFile='assets\cmdboard.ico'/>
+        <Property Id='ARPPRODUCTICON' Value='ProductICO' />
 
         <Property Id='ARPHELPLINK' Value='https://github.com/Loris01100/CmdBoard'/>
         

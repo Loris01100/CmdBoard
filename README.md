@@ -1,4 +1,4 @@
-# CmdBoard
+# <img src="assets/icon.png" alt="" width="40" align="top"> CmdBoard
 
 A terminal dashboard for Windows: launch your apps and games from one place, track your play time, and earn XP, levels and rewards as you go.
 

@@ -723,6 +723,8 @@ ou en téléchargeant le `.msi` depuis la page Releases.
 
 **Raccourcis (MSI)** : `wix/main.wxs` est modifié à la main (d'où `allow-dirty = ["ci", "msi"]` dans `dist-workspace.toml`, sinon `dist` le régénérerait). Deux sous-fonctionnalités cochées par défaut, décochables dans l'installeur : « Start Menu shortcut » et « Desktop shortcut », chacune un raccourci `CmdBoard` vers `cmdboard.exe` (installation par machine : menu Démarrer et Bureau de tous les utilisateurs). Cochées par défaut pour que l'installation silencieuse de winget les crée aussi. Comme un raccourci ne peut pas servir de `KeyPath`, chaque composant a une valeur `HKMU\Software\Loris01100\cmdboard`. Le désinstalleur retire les deux. L'installeur PowerShell (généré par `dist`) n'en crée pas.
 
+**Icône** : `assets/cmdboard.ico` (16 à 256 px, générée depuis `assets/icon.png`) est intégrée à `cmdboard.exe` par `build.rs` (crate `embed-resource`, script `assets/cmdboard.rc`), donc visible dans l'Explorateur, la barre des tâches et tout raccourci vers l'exe. Sans compilateur de ressources (`rc.exe`), le build passe quand même, sans icône (`manifest_optional`). Le MSI la reprend (`<Icon Id='ProductICO'>`) pour les deux raccourcis et l'entrée « Programmes et fonctionnalités » (`ARPPRODUCTICON`). Le terminal (Windows Terminal) garde sa propre icône.
+
 **À ne jamais changer** : les GUID `upgrade-guid` et `path-guid` que `dist init` écrit dans `Cargo.toml` (`[package.metadata.wix]`). S'ils changent, le MSI n'est plus reconnu comme une mise à jour et installe une seconde copie.
 
 ### Mises à jour
