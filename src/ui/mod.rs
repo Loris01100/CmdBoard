@@ -95,6 +95,18 @@ mod tests {
         assert!(render(&app).contains("aucune session en cours"));
         app.on_session_start(app.find_app("Steam").unwrap().id);
         assert!(render(&app).contains("▶ Steam 0:00"));
+        // A running library game not added yet, after the sessions.
+        app.handle(crate::event::AppEvent::LibraryScanned(vec![
+            crate::launcher::scan::Shortcut {
+                name: "Hades".into(),
+                target: "steam://rungameid/1145360".into(),
+                watch_exe: Some("Hades.exe".into()),
+            },
+        ]));
+        app.handle(crate::event::AppEvent::UnaddedRunning(vec![
+            "hades.exe".into(),
+        ]));
+        assert!(render(&app).contains("▶ Steam 0:00  + Hades est lancé · n pour l'ajouter"));
     }
 
     #[test]

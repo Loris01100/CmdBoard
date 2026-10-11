@@ -10,6 +10,7 @@
 //! - `goals`: goals and limits on play time, and their popups
 //! - `notices`: Windows notifications, limit reached and break reminder
 //! - `playtime`: Steam play time from before `CmdBoard`, given as XP once per app
+//! - `suggestions`: a running library game not added yet, offered on the dashboard
 //! - `background`: sessions handed over to and from the background tracker
 //! - `settings`: theme, sort, language, aliases, export/import, updates, history
 //! - `storage`, `optimize`: the Storage and Optimization screens
@@ -30,6 +31,7 @@ mod sessions;
 mod settings;
 mod sort;
 mod storage;
+mod suggestions;
 #[cfg(test)]
 mod tests;
 
@@ -55,7 +57,7 @@ use crate::storage::{
     unix_now,
 };
 use crate::text_input::TextInput;
-use crate::tracker::Watched;
+use crate::tracker::{WatchList, Watched};
 use crate::ui::{
     self,
     theme::{self, Theme},
@@ -201,7 +203,9 @@ pub struct App {
     /// Only `App` writes: `ui/` cannot reach the database.
     db: Database,
     /// Receives the watch list after each reload. `None` in tests.
-    tracker: Option<Sender<Vec<Watched>>>,
+    tracker: Option<Sender<WatchList>>,
+    /// Library games, to suggest the one running that is not added.
+    suggestions: suggestions::Suggestions,
     /// Lets short-lived threads report back. `None` in tests: they never start.
     events: Option<Sender<AppEvent>>,
     update_running: bool,
@@ -261,6 +265,7 @@ impl App {
             config_path: None,
             db,
             tracker: None,
+            suggestions: suggestions::Suggestions::default(),
             events: None,
             update_running: false,
             update_available: None,
@@ -339,7 +344,7 @@ impl App {
     }
 
     /// Connects the session tracker and sends it the current watch list.
-    pub fn attach_tracker(&mut self, tracker: Sender<Vec<Watched>>) {
+    pub fn attach_tracker(&mut self, tracker: Sender<WatchList>) {
         self.tracker = Some(tracker);
         self.send_watch_list();
     }
@@ -377,7 +382,7 @@ impl App {
     fn send_watch_list(&self) {
         let Some(tracker) = &self.tracker else { return };
         // A closed channel means the tracker died: sessions just stop being tracked.
-        let _ = tracker.send(self.watch_list());
+        let _ = tracker.send(self.full_watch_list());
     }
 
     /// Runs `work` in a short-lived thread that reports through the event channel.
@@ -455,6 +460,8 @@ impl App {
                 result,
             } => self.on_bench_finished(bench, heavy, result),
             AppEvent::ShortcutsScanned(found) => self.on_shortcuts_scanned(found),
+            AppEvent::LibraryScanned(games) => self.on_library_scanned(games),
+            AppEvent::UnaddedRunning(exes) => self.on_unadded_running(exes),
         }
         self.send_notices();
     }

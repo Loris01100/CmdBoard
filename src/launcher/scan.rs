@@ -143,6 +143,25 @@ fn url_of(text: &str) -> Option<String> {
     (!web && url.contains("://")).then(|| url.to_string())
 }
 
+/// Games of the launchers' libraries (Steam, Epic, GOG, Ubisoft Connect), each with the
+/// exe it runs when it could be found: what the dashboard suggests adding once running.
+/// Not the Start Menu or the Store, which hold more than games.
+pub fn library_games() -> Vec<Shortcut> {
+    let sources: [fn() -> Vec<Shortcut>; 4] = [
+        steam_games,
+        epic_games,
+        stores::gog_games,
+        stores::ubisoft_games,
+    ];
+    let mut found: Vec<Shortcut> = sources
+        .par_iter()
+        .flat_map_iter(|source| source())
+        .collect();
+    found.sort_by_key(|s| s.name.to_lowercase());
+    found.dedup_by_key(|s| s.name.to_lowercase());
+    found
+}
+
 /// Installed Steam games: every library of `libraryfolders.vdf`, every `appmanifest_*.acf`.
 fn steam_games() -> Vec<Shortcut> {
     let Some(steam) = steam_dir() else {

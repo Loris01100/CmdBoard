@@ -121,6 +121,10 @@ break_body = "Vous jouez à {name} depuis {time}"
 imported = "Steam : {time} de jeu avant CmdBoard · +{xp} XP"
 added = "Steam : {time} de jeu avant CmdBoard, +{xp} XP"
 
+[suggestion]
+running = "{icon} {name} est lancé · n pour l'ajouter"
+none = "Aucun jeu lancé à ajouter"
+
 [autostart]
 on = "Le suivi en arrière-plan démarre désormais avec Windows"
 off = "Le suivi en arrière-plan ne démarre plus avec Windows"

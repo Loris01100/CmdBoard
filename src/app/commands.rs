@@ -41,6 +41,7 @@ impl App {
 
             // apps and categories
             Command::OpenForm(kind) => self.open_form(kind)?,
+            Command::AddRunning => return Ok(self.add_running()),
             Command::Launch { app } => return self.launch(&app),
             Command::Add {
                 name,

@@ -13,6 +13,7 @@ mod playtime;
 mod sessions;
 mod settings;
 mod storage;
+mod suggestions;
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};

@@ -69,6 +69,7 @@ impl App {
                 Focus::Apps => Command::Launch { app: app()? },
             },
             KeyCode::Char('a') => Command::OpenForm(FormKind::Add),
+            KeyCode::Char('n') if self.suggestion().is_some() => Command::AddRunning,
             KeyCode::Char('s') => Command::Sort {
                 by: Some(self.sort.next()),
             },

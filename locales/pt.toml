@@ -121,6 +121,10 @@ break_body = "Você está jogando {name} há {time}"
 imported = "Steam: {time} jogados antes do CmdBoard · +{xp} XP"
 added = "Steam: {time} jogados antes do CmdBoard, +{xp} XP"
 
+[suggestion]
+running = "{icon} {name} está aberto · n para adicionar"
+none = "Nenhum jogo aberto para adicionar"
+
 [autostart]
 on = "O acompanhamento em segundo plano agora inicia com o Windows"
 off = "O acompanhamento em segundo plano não inicia mais com o Windows"

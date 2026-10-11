@@ -101,6 +101,8 @@ pub enum Command {
         confirmed: bool,
     },
     OpenForm(FormKind),
+    /// Dashboard, `n`: opens the add form for the running library game not added yet.
+    AddRunning,
     /// Selects an app in its category (Enter in the `/` search).
     Select {
         app: String,

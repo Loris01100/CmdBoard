@@ -121,6 +121,10 @@ break_body = "You have been playing {name} for {time}"
 imported = "Steam: {time} played before CmdBoard · +{xp} XP"
 added = "Steam: {time} played before CmdBoard, +{xp} XP"
 
+[suggestion]
+running = "{icon} {name} is running · n to add it"
+none = "No running game to add"
+
 [autostart]
 on = "Background tracking now starts with Windows"
 off = "Background tracking no longer starts with Windows"

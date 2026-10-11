@@ -62,7 +62,8 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(session_line(app).right_aligned()), area);
 }
 
-/// Live timer of each running session, oldest first. Reads the clock, not `app`'s state.
+/// Live timer of each running session, oldest first, then a running game not added
+/// yet. Reads the clock, not `app`'s state.
 fn session_line(app: &App) -> Line<'static> {
     let theme = &app.theme;
     let mut sessions: Vec<_> = app
@@ -70,8 +71,15 @@ fn session_line(app: &App) -> Line<'static> {
         .iter()
         .filter_map(|(id, s)| Some((app.apps.iter().find(|a| a.id == *id)?, s)))
         .collect();
+    let suggestion = app.suggestion().map(|game| {
+        let text = t!("suggestion.running", icon = icons::ADD, name = game.name);
+        Span::styled(format!("{text}  "), Style::new().fg(theme.info))
+    });
     if sessions.is_empty() {
-        return Line::styled(t!("session.none_running"), theme.muted());
+        return suggestion.map_or_else(
+            || Line::styled(t!("session.none_running"), theme.muted()),
+            Line::from,
+        );
     }
     sessions.sort_by_key(|(_, session)| session.started);
     let mut spans = Vec::new();
@@ -92,6 +100,7 @@ fn session_line(app: &App) -> Line<'static> {
             ));
         }
     }
+    spans.extend(suggestion);
     Line::from(spans)
 }
 

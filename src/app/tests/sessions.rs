@@ -191,7 +191,7 @@ fn tracker_receives_watch_list_on_reload() {
     let mut app = App::with_defaults();
     let (tx, rx) = std::sync::mpsc::channel();
     app.attach_tracker(tx);
-    let list = rx.try_recv().unwrap();
+    let list = rx.try_recv().unwrap().apps;
     assert_eq!(list.len(), 4); // Explorateur has no watch_exe
     assert!(list.contains(&Watched {
         app_id: steam_id(&app),
@@ -199,7 +199,7 @@ fn tracker_receives_watch_list_on_reload() {
     }));
 
     run(&mut app, "add Paint mspaint.exe");
-    let list = rx.try_iter().last().unwrap();
+    let list = rx.try_iter().last().unwrap().apps;
     assert!(list.iter().any(|w| w.exe == "mspaint.exe"));
 }
 

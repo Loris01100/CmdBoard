@@ -47,6 +47,12 @@ pub enum AppEvent {
     },
     /// Installed apps found by a short-lived scan thread, for the "add app" picker.
     ShortcutsScanned(Vec<Shortcut>),
+    /// Library games found at startup by a short-lived scan thread, to suggest adding
+    /// the one running.
+    LibraryScanned(Vec<Shortcut>),
+    /// `exe_key`s of the library games not added that run now (sent by the tracker when
+    /// they change).
+    UnaddedRunning(Vec<String>),
     /// Disks and installed programs read by a short-lived thread, for the Storage screen.
     StorageScanned {
         disks: Vec<Disk>,

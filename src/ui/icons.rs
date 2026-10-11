@@ -19,3 +19,5 @@ pub const SQUARE: &str = "■";
 pub const LIMIT: &str = "⚠";
 /// A goal or limit in the Details panel.
 pub const GOAL: &str = "◎";
+/// A running game that could be added.
+pub const ADD: &str = "+";

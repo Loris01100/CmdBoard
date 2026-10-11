@@ -1,7 +1,9 @@
 //! Session tracker thread: polls running processes with `sysinfo` and reports when a
 //! watched app starts or stops, and how long it has really been played (plan section 12).
+//! It also reports which library games not added to `CmdBoard` are running, so the
+//! dashboard can suggest adding them.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::mpsc::{self, RecvTimeoutError, SendError, Sender};
@@ -28,6 +30,23 @@ pub struct Watched {
     pub exe: String,
 }
 
+/// What the tracker looks for: the apps to track, and the exes of library games not
+/// added yet, only reported while running (`AppEvent::UnaddedRunning`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WatchList {
+    pub apps: Vec<Watched>,
+    pub unadded: Vec<String>,
+}
+
+impl From<Vec<Watched>> for WatchList {
+    fn from(apps: Vec<Watched>) -> Self {
+        Self {
+            apps,
+            unadded: Vec::new(),
+        }
+    }
+}
+
 /// Starts the tracker. Send it the full watch list whenever apps change; it stops
 /// once either channel is closed. Play time stops counting once the user has not touched
 /// the keyboard, mouse or a controller for `idle_limit` (`None`: always counts).
@@ -37,11 +56,12 @@ pub fn spawn(
     events: Sender<AppEvent>,
     idle_limit: Option<Duration>,
     resumed: HashMap<i64, Duration>,
-) -> Sender<Vec<Watched>> {
-    let (watch_tx, watch_rx) = mpsc::channel::<Vec<Watched>>();
+) -> Sender<WatchList> {
+    let (watch_tx, watch_rx) = mpsc::channel::<WatchList>();
     thread::spawn(move || {
         let mut system = System::new();
-        let mut watched = WatchIndex::new();
+        let mut watched = Index::default();
+        let mut unadded_running = BTreeSet::new();
         let mut sessions = Sessions {
             events,
             idle_limit,
@@ -51,18 +71,29 @@ pub fn spawn(
         };
         loop {
             match watch_rx.recv_timeout(POLL) {
-                Ok(list) => watched = index(&watch_rx.try_iter().last().unwrap_or(list)),
+                Ok(list) => watched = Index::new(&watch_rx.try_iter().last().unwrap_or(list)),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return,
             }
             // Nothing to look for: the processes are not listed, and running sessions end.
             let now_running = if watched.is_empty() {
-                HashSet::new()
+                Running::default()
             } else {
                 poll_running(&mut system, &watched)
             };
-            if sessions.update(&now_running).is_err() {
+            if sessions.update(&now_running.apps).is_err() {
                 return;
+            }
+            if now_running.unadded != unadded_running {
+                let exes = now_running.unadded.iter().cloned().collect();
+                if sessions
+                    .events
+                    .send(AppEvent::UnaddedRunning(exes))
+                    .is_err()
+                {
+                    return;
+                }
+                unadded_running = now_running.unadded;
             }
         }
     });
@@ -118,16 +149,17 @@ impl Sessions {
 /// Watched apps running right now, read once: at startup, to resume the sessions the
 /// other `CmdBoard` process handed over.
 pub fn running_now(watched: &[Watched]) -> HashSet<i64> {
-    poll_running(&mut System::new(), &index(watched))
+    let list = WatchList::from(watched.to_vec());
+    poll_running(&mut System::new(), &Index::new(&list)).apps
 }
 
-fn poll_running(system: &mut System, watched: &WatchIndex) -> HashSet<i64> {
+fn poll_running(system: &mut System, watched: &Index) -> Running {
     system.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
     let names = system
         .processes()
         .values()
         .map(|p| p.name().to_string_lossy());
-    running_apps(watched, names)
+    running(watched, names)
 }
 
 /// Play time a poll adds to running sessions: the time since the previous poll, capped
@@ -196,19 +228,39 @@ fn pad_packet(slot: u32) -> Option<u32> {
     (status == 0).then_some(state.dwPacketNumber)
 }
 
-/// Watched app ids by `exe_key`, built once per watch list rather than at every poll.
-type WatchIndex = HashMap<String, Vec<i64>>;
-
-fn index(watched: &[Watched]) -> WatchIndex {
-    let mut index = WatchIndex::new();
-    for w in watched {
-        index.entry(exe_key(&w.exe)).or_default().push(w.app_id);
-    }
-    index
+/// A watch list by `exe_key`, built once per list rather than at every poll.
+#[derive(Debug, Default)]
+struct Index {
+    apps: HashMap<String, Vec<i64>>,
+    unadded: HashSet<String>,
 }
 
-/// File name of `exe`, lowercased: `watch_exe` may hold a full path.
-fn exe_key(exe: &str) -> String {
+impl Index {
+    fn new(list: &WatchList) -> Self {
+        let mut apps: HashMap<String, Vec<i64>> = HashMap::new();
+        for w in &list.apps {
+            apps.entry(exe_key(&w.exe)).or_default().push(w.app_id);
+        }
+        let unadded = list.unadded.iter().map(|exe| exe_key(exe)).collect();
+        Self { apps, unadded }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.apps.is_empty() && self.unadded.is_empty()
+    }
+}
+
+/// What one poll found running.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Running {
+    apps: HashSet<i64>,
+    /// `exe_key`s of library games not added.
+    unadded: BTreeSet<String>,
+}
+
+/// File name of `exe`, lowercased: `watch_exe` may hold a full path. Process names are
+/// matched on it.
+pub fn exe_key(exe: &str) -> String {
     let exe = exe.trim();
     let name = Path::new(exe)
         .file_name()
@@ -224,16 +276,18 @@ fn lowercase_into<'a>(buffer: &'a mut String, text: &str) -> &'a String {
     buffer
 }
 
-/// Apps with at least one process running, matched on exe name ignoring case.
-fn running_apps<S: AsRef<str>>(
-    watched: &WatchIndex,
-    process_names: impl IntoIterator<Item = S>,
-) -> HashSet<i64> {
-    let mut running = HashSet::new();
+/// Apps with at least one process running, and library games not added that run,
+/// matched on exe name ignoring case.
+fn running<S: AsRef<str>>(watched: &Index, process_names: impl IntoIterator<Item = S>) -> Running {
+    let mut running = Running::default();
     let mut buffer = String::new();
     for name in process_names {
-        if let Some(ids) = watched.get(lowercase_into(&mut buffer, name.as_ref())) {
-            running.extend(ids);
+        let key = lowercase_into(&mut buffer, name.as_ref());
+        if let Some(ids) = watched.apps.get(key) {
+            running.apps.extend(ids);
+        }
+        if watched.unadded.contains(key) {
+            running.unadded.insert(key.clone());
         }
     }
     running
@@ -259,13 +313,13 @@ mod tests {
         let exe = exe.file_name().unwrap().to_string_lossy().into_owned();
         let (events, rx) = mpsc::channel();
         let tracker = spawn(events, None, HashMap::new());
-        tracker.send(vec![watched(7, &exe)]).unwrap();
+        tracker.send(vec![watched(7, &exe)].into()).unwrap();
         let wait = Duration::from_secs(30);
         assert!(matches!(
             rx.recv_timeout(wait).unwrap(),
             AppEvent::SessionStarted { app_id: 7 }
         ));
-        tracker.send(Vec::new()).unwrap();
+        tracker.send(WatchList::default()).unwrap();
         // Progress reports may come first.
         let ended = std::iter::from_fn(|| rx.recv_timeout(wait).ok())
             .find(|e| !matches!(e, AppEvent::SessionProgress { .. }));
@@ -285,7 +339,7 @@ mod tests {
         let (events, rx) = mpsc::channel();
         let before = Duration::from_secs(600);
         let tracker = spawn(events, None, HashMap::from([(7, before)]));
-        tracker.send(list).unwrap();
+        tracker.send(list.into()).unwrap();
         let wait = Duration::from_secs(30);
         // No new start: the first report is the progress of the resumed session.
         match rx.recv_timeout(wait).unwrap() {
@@ -295,7 +349,7 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
-        tracker.send(Vec::new()).unwrap();
+        tracker.send(WatchList::default()).unwrap();
         let ended = std::iter::from_fn(|| rx.recv_timeout(wait).ok())
             .find(|e| !matches!(e, AppEvent::SessionProgress { .. }));
         assert!(matches!(
@@ -320,14 +374,42 @@ mod tests {
             watched(4, "ÉPOPÉE.exe"),
         ];
         let names = ["hades.exe", "code.exe", "explorer.exe", "Épopée.EXE"];
-        assert_eq!(running_apps(&index(&list), names), HashSet::from([1, 2, 4]));
+        let index = Index::new(&list.to_vec().into());
+        assert_eq!(running(&index, names).apps, HashSet::from([1, 2, 4]));
     }
 
     #[test]
     fn several_instances_count_once_and_apps_can_share_an_exe() {
         let list = [watched(1, "steam.exe"), watched(2, "steam.exe")];
-        let running = running_apps(&index(&list), ["steam.exe", "steam.exe"]);
-        assert_eq!(running, HashSet::from([1, 2]));
+        let index = Index::new(&list.to_vec().into());
+        let found = running(&index, ["steam.exe", "steam.exe"]);
+        assert_eq!(found.apps, HashSet::from([1, 2]));
+    }
+
+    #[test]
+    fn unadded_games_are_reported_apart_from_apps() {
+        let list = WatchList {
+            apps: vec![watched(1, "steam.exe")],
+            unadded: vec![
+                r"D:\Games\ELDEN RING\eldenring.exe".into(),
+                "hades.exe".into(),
+            ],
+        };
+        let found = running(&Index::new(&list), ["EldenRing.exe", "steam.exe"]);
+        assert_eq!(
+            found,
+            Running {
+                apps: HashSet::from([1]),
+                unadded: BTreeSet::from(["eldenring.exe".into()]),
+            }
+        );
+        // Unadded games alone are enough to list the processes.
+        assert!(Index::new(&WatchList::default()).is_empty());
+        let only_unadded = WatchList {
+            apps: Vec::new(),
+            unadded: list.unadded,
+        };
+        assert!(!Index::new(&only_unadded).is_empty());
     }
 
     #[test]

@@ -79,6 +79,7 @@ fn main() -> anyhow::Result<()> {
     let (tx, rx) = mpsc::channel();
     app.attach_tracker(tracker::spawn(tx.clone(), config.idle_limit(), resumed));
     app.attach_events(tx.clone(), &config);
+    app.start_library_scan();
     event::spawn(tx);
 
     let mut terminal = ratatui::init(); // also installs the panic hook
