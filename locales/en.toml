@@ -111,6 +111,12 @@ not_set = "Nothing to remove: {kind} · {target}"
 list = "{kind}: {items}"
 empty = "{kind}: — (usage: {usage})"
 
+[notify]
+limit_title = "Limit reached"
+limit_body = "{target}: {used} / {total} {period}"
+break_title = "Time for a break?"
+break_body = "You have been playing {name} for {time}"
+
 [autostart]
 on = "Background tracking now starts with Windows"
 off = "Background tracking no longer starts with Windows"

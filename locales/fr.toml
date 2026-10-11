@@ -111,6 +111,12 @@ not_set = "Rien à supprimer : {kind} · {target}"
 list = "{kind} : {items}"
 empty = "{kind} : — (usage : {usage})"
 
+[notify]
+limit_title = "Limite atteinte"
+limit_body = "{target} : {used} / {total} {period}"
+break_title = "Une pause ?"
+break_body = "Vous jouez à {name} depuis {time}"
+
 [autostart]
 on = "Le suivi en arrière-plan démarre désormais avec Windows"
 off = "Le suivi en arrière-plan ne démarre plus avec Windows"

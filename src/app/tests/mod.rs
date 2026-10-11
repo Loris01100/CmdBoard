@@ -6,6 +6,7 @@ mod forms;
 mod goals;
 mod keys;
 mod library;
+mod notices;
 mod optimize;
 mod pins;
 mod sessions;

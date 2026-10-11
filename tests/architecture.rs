@@ -58,6 +58,7 @@ const LAYERS: &[Layer] = &[
             "config.rs",
             "event.rs",
             "instance.rs",
+            "notify.rs",
             "optimize.rs",
             "tracker.rs",
             "update.rs",

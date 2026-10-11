@@ -111,6 +111,12 @@ not_set = "Nada para remover: {kind} · {target}"
 list = "{kind}: {items}"
 empty = "{kind}: — (uso: {usage})"
 
+[notify]
+limit_title = "Limite atingido"
+limit_body = "{target}: {used} / {total} {period}"
+break_title = "Hora de uma pausa?"
+break_body = "Você está jogando {name} há {time}"
+
 [autostart]
 on = "O acompanhamento em segundo plano agora inicia com o Windows"
 off = "O acompanhamento em segundo plano não inicia mais com o Windows"

@@ -32,6 +32,10 @@ pub struct ActiveSession {
     /// When `played` was reported.
     reported: Instant,
     pub(super) last_checkpoint: Instant,
+    /// `played` when the current stretch without a break began (`app/notices.rs`).
+    pub(super) stretch_from: Duration,
+    /// `played` at which to suggest a break, worked out at the first report.
+    pub(super) next_break: Option<Duration>,
 }
 
 impl ActiveSession {
@@ -45,6 +49,8 @@ impl ActiveSession {
             idle: false,
             reported: now,
             last_checkpoint: now,
+            stretch_from: Duration::ZERO,
+            next_break: None,
         }
     }
 
@@ -158,6 +164,7 @@ impl App {
             session.played = played;
             session.idle = idle;
             session.reported = Instant::now();
+            self.check_break(app_id);
             self.check_goals(true);
         }
     }

@@ -10,6 +10,7 @@ mod event;
 mod fuzzy;
 mod instance;
 mod launcher;
+mod notify;
 mod optimize;
 mod popup;
 mod storage;
@@ -71,6 +72,7 @@ fn main() -> anyhow::Result<()> {
         app.message = Some((warnings.join(" · "), MsgKind::Error));
     }
 
+    app.attach_notifications(&config);
     let (tx, rx) = mpsc::channel();
     app.attach_tracker(tracker::spawn(tx.clone(), config.idle_limit(), resumed));
     app.attach_events(tx.clone(), &config);
@@ -109,6 +111,7 @@ fn run_background(config: &Config) -> anyhow::Result<()> {
     };
     let mut app = App::new(Database::open_default()?)?;
     let resumed = app.recover_sessions()?;
+    app.attach_notifications(config);
     let (tx, rx) = mpsc::channel();
     app.attach_tracker(tracker::spawn(tx, config.idle_limit(), resumed));
     app.run_background(&rx, || stop.is_requested())

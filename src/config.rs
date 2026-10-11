@@ -6,6 +6,10 @@ use std::time::Duration;
 use anyhow::Context;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "one field per independent on/off key of config.toml"
+)]
 pub struct Config {
     /// Theme name chosen with `:theme`; `None` picks one from the terminal's colors.
     pub theme: Option<String>,
@@ -24,6 +28,11 @@ pub struct Config {
     pub background: bool,
     /// `autostart = true` starts the background tracker at Windows sign-in.
     pub autostart: bool,
+    /// `notifications = false` turns off Windows notifications (limit reached, break).
+    pub notifications: bool,
+    /// Minutes of play without an idle pause after which a notification suggests a
+    /// break, again each time as long. `break_minutes = 0`, the default, never does.
+    pub break_minutes: u32,
 }
 
 const DEFAULT_IDLE_MINUTES: u32 = 10;
@@ -39,6 +48,8 @@ impl Default for Config {
             idle_minutes: DEFAULT_IDLE_MINUTES,
             background: true,
             autostart: false,
+            notifications: true,
+            break_minutes: 0,
         }
     }
 }
@@ -48,6 +59,11 @@ impl Config {
     /// with background tracking turned off.
     pub fn starts_at_sign_in(&self) -> bool {
         self.autostart && self.background
+    }
+
+    /// After how much play a break is suggested, `None` if never.
+    pub fn break_after(&self) -> Option<Duration> {
+        (self.break_minutes > 0).then(|| Duration::from_secs(u64::from(self.break_minutes) * 60))
     }
 
     /// After how long without input play time stops counting, `None` if it always counts.
@@ -84,11 +100,13 @@ impl Config {
                 let last_update_check = table
                     .get("last_update_check")
                     .and_then(toml::Value::as_integer);
-                let idle_minutes = table
-                    .get("idle_minutes")
-                    .and_then(toml::Value::as_integer)
-                    .and_then(|m| u32::try_from(m).ok())
-                    .unwrap_or(DEFAULT_IDLE_MINUTES);
+                let minutes = |key: &str, default: u32| {
+                    table
+                        .get(key)
+                        .and_then(toml::Value::as_integer)
+                        .and_then(|m| u32::try_from(m).ok())
+                        .unwrap_or(default)
+                };
                 (
                     Self {
                         theme: text("theme"),
@@ -96,9 +114,11 @@ impl Config {
                         lang: text("lang"),
                         update_check: flag("update_check", true),
                         last_update_check,
-                        idle_minutes,
+                        idle_minutes: minutes("idle_minutes", DEFAULT_IDLE_MINUTES),
                         background: flag("background", true),
                         autostart: flag("autostart", false),
+                        notifications: flag("notifications", true),
+                        break_minutes: minutes("break_minutes", 0),
                     },
                     None,
                 )
@@ -162,7 +182,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             &path,
-            "other = 3\ntheme = \"terminal\"\nupdate_check = false\nidle_minutes = 0\nbackground = false\nautostart = true\n",
+            "other = 3\ntheme = \"terminal\"\nupdate_check = false\nidle_minutes = 0\nbackground = false\nautostart = true\nnotifications = false\nbreak_minutes = 90\n",
         )
         .unwrap();
         save_value(&path, "theme", "catppuccin-latte").unwrap();
@@ -181,6 +201,9 @@ mod tests {
         // Opt-in, and only with background tracking.
         assert!(config.autostart && !config.starts_at_sign_in());
         assert!(!Config::default().autostart);
+        assert!(!config.notifications && Config::default().notifications);
+        assert_eq!(config.break_after(), Some(Duration::from_mins(90)));
+        assert_eq!(Config::default().break_after(), None);
         assert_eq!(
             Config::default().idle_limit(),
             Some(Duration::from_secs(600))

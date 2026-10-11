@@ -167,7 +167,8 @@ impl App {
     }
 
     /// Notes the goals and limits reached in their current period and, with
-    /// `announce`, queues a popup for each one reached since the last check.
+    /// `announce`, queues a popup for each one reached since the last check, and a
+    /// Windows notification for a limit.
     pub(super) fn check_goals(&mut self, announce: bool) {
         let reached: Vec<(Goal, u64)> = self
             .goals
@@ -182,6 +183,9 @@ impl App {
             };
             if !self.goals_reached.insert((goal.id, period)) || !announce {
                 continue;
+            }
+            if goal.kind == GoalKind::Limit {
+                self.notify_limit(&goal, secs);
             }
             self.pending_popups
                 .push_back(Popup::GoalReached(GoalReached {
