@@ -121,6 +121,11 @@ pub enum Command {
     Lang {
         code: Option<String>,
     },
+    /// Starts the background tracker at Windows sign-in, or stops doing so, and remembers
+    /// it; `None` tells whether it does.
+    Autostart {
+        enabled: Option<bool>,
+    },
     /// `:pin`: lists the favorites (`change: None`), or puts `app` in a slot or out of it.
     Pin {
         change: Option<PinChange>,
@@ -251,6 +256,10 @@ pub const COMMANDS: &[CommandHelp] = &[
     },
     CommandHelp {
         name: "lang",
+        aliases: &[],
+    },
+    CommandHelp {
+        name: "autostart",
         aliases: &[],
     },
     CommandHelp {

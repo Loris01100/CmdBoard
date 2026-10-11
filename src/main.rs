@@ -2,6 +2,7 @@
 mod i18n;
 
 mod app;
+mod autostart;
 mod command;
 mod config;
 mod core;
@@ -50,6 +51,10 @@ fn main() -> anyhow::Result<()> {
     // Where to start the background tracker from on quit, even if `:update` replaces
     // this exe meanwhile.
     let exe = std::env::current_exe()?;
+    // Follows `config.toml` edited by hand, and this exe if it moved.
+    if let Err(error) = autostart::sync(config.starts_at_sign_in(), &exe) {
+        warnings.push(t!("autostart.not_synced", error));
+    }
 
     // Open the database before taking over the terminal, so errors print normally.
     let db = Database::open_default()?;
@@ -93,8 +98,9 @@ fn take_over_instance() -> anyhow::Result<Option<Instance>> {
     instance::acquire_within(|| false)
 }
 
-/// `cmdboard --background`, started by the UI as it quits: tracks sessions without a
-/// terminal until the UI starts again or `--stop`.
+/// `cmdboard --background`, started by the UI as it quits or by Windows at sign-in
+/// (`autostart`): tracks sessions without a terminal until the UI starts again or
+/// `--stop`.
 fn run_background(config: &Config) -> anyhow::Result<()> {
     let stop = instance::StopSignal::create()?;
     // The UI lets go of the instance as it quits.

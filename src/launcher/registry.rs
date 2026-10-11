@@ -12,10 +12,10 @@ use windows_sys::Win32::System::Registry::{
 use super::programs::wide;
 
 /// An open registry key, closed on drop.
-pub(super) struct Key(HKEY);
+pub struct Key(HKEY);
 
 impl Key {
-    pub(super) fn open(root: HKEY, path: &str, view: u32) -> Option<Self> {
+    pub fn open(root: HKEY, path: &str, view: u32) -> Option<Self> {
         let path = wide(path);
         let mut key = null_mut();
         // SAFETY: `path` is nul-terminated, `key` receives the handle.
@@ -52,7 +52,7 @@ impl Key {
     }
 
     /// A string value of subkey `sub` (environment variables expanded), if not blank.
-    pub(super) fn string(&self, sub: &[u16], name: &str) -> Option<String> {
+    pub fn string(&self, sub: &[u16], name: &str) -> Option<String> {
         let name = wide(name);
         let mut size = 0u32;
         // SAFETY: a null buffer asks for the size, in bytes.

@@ -111,6 +111,15 @@ not_set = "Nothing to remove: {kind} · {target}"
 list = "{kind}: {items}"
 empty = "{kind}: — (usage: {usage})"
 
+[autostart]
+on = "Background tracking now starts with Windows"
+off = "Background tracking no longer starts with Windows"
+status_on = "Background tracking starts with Windows (:autostart off to stop)"
+status_off = "Background tracking does not start with Windows (:autostart on to turn it on)"
+needs_background = "Background tracking is turned off (background = false in config.toml)"
+not_saved = "start with Windows not saved"
+not_synced = "Start with Windows: {error}"
+
 [background]
 started = "Sessions are still tracked in the background (cmdboard --stop to stop, background = false in config.toml to turn off)"
 stopped = "Background tracking stopped"
@@ -512,6 +521,10 @@ summary = "Play time not to exceed per day or week (warning and popup); same syn
 [cmd.sort]
 usage = "sort [name|xp|recent|time]"
 summary = "Orders the apps (saved). Without arguments: current order"
+
+[cmd.autostart]
+usage = "autostart [on|off]"
+summary = "Starts background tracking with Windows, so no session is missed after a restart (saved). Without arguments: tells whether it does"
 
 [cmd.lang]
 usage = "lang [en|fr|pt]"

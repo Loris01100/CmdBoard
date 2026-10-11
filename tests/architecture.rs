@@ -54,6 +54,7 @@ const LAYERS: &[Layer] = &[
         paths: &[
             "storage/",
             "launcher/",
+            "autostart.rs",
             "config.rs",
             "event.rs",
             "instance.rs",

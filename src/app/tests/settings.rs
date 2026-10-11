@@ -133,6 +133,35 @@ fn lang_command_lists_and_rejects_unknown() {
     );
 }
 
+/// Without `config.toml`, as in every test, the registry is left alone.
+#[test]
+fn autostart_command_reports_and_switches() {
+    let mut app = App::with_defaults();
+    let message = |app: &App| app.message.clone().unwrap();
+    run(&mut app, "autostart");
+    assert_eq!(
+        message(&app),
+        (
+            "Le suivi en arrière-plan ne démarre pas avec Windows (:autostart on pour l'activer)"
+                .into(),
+            MsgKind::Info
+        )
+    );
+    run(&mut app, "autostart on");
+    assert_eq!(
+        message(&app),
+        (
+            "Le suivi en arrière-plan démarre désormais avec Windows".into(),
+            MsgKind::Success
+        )
+    );
+    run(&mut app, "autostart off");
+    assert_eq!(
+        message(&app).0,
+        "Le suivi en arrière-plan ne démarre plus avec Windows"
+    );
+}
+
 #[test]
 fn configured_theme_is_loaded_and_saved() {
     let dir = std::env::temp_dir().join(format!("cmdboard-app-theme-{}", std::process::id()));

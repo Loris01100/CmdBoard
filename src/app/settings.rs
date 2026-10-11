@@ -1,13 +1,14 @@
-//! Preferences saved to `config.toml` (theme, sort, language), aliases saved to
-//! `commands.toml`, export/import, updates, and clearing the history.
+//! Preferences saved to `config.toml` (theme, sort, language, start with Windows),
+//! aliases saved to `commands.toml`, export/import, updates, and clearing the history.
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 
 use super::{App, AppSort, MsgKind, Outcome};
+use crate::autostart;
 use crate::command::{Command, alias::Aliases};
-use crate::config;
+use crate::config::{self, Config};
 use crate::i18n;
 use crate::launcher::launch::{self, Risk};
 use crate::storage::NewImport;
@@ -16,7 +17,12 @@ use crate::update::{self, Action};
 
 impl App {
     /// Saves one `config.toml` value; nothing is saved in tests.
-    fn save_setting(&self, key: &str, value: &str, error: &str) -> anyhow::Result<()> {
+    fn save_setting(
+        &self,
+        key: &str,
+        value: impl Into<toml::Value>,
+        error: &str,
+    ) -> anyhow::Result<()> {
         if let Some(path) = &self.config_path {
             config::save_value(path, key, value).with_context(|| error.to_string())?;
         }
@@ -34,7 +40,7 @@ impl App {
         };
         self.theme = theme::load(name, self.themes_dir.as_deref()).map_err(anyhow::Error::msg)?;
         self.theme_name = name.trim().to_lowercase();
-        self.save_setting("theme", &self.theme_name, &t!("theme.not_saved"))?;
+        self.save_setting("theme", self.theme_name.as_str(), &t!("theme.not_saved"))?;
         Ok(Some((
             t!("theme.set", name = self.theme.name),
             MsgKind::Success,
@@ -73,6 +79,38 @@ impl App {
         }
         self.save_setting("lang", i18n::current(), &t!("lang.not_saved"))?;
         let text = t!("lang.set", name = t!("language"));
+        Ok(Some((text, MsgKind::Success)))
+    }
+
+    /// `:autostart`: tells whether Windows starts the background tracker at sign-in, or
+    /// turns it on or off. Saved first, so a broken `config.toml` changes nothing. The
+    /// registry is left alone in tests.
+    pub(super) fn autostart_command(&mut self, enabled: Option<bool>) -> Outcome {
+        let Some(enabled) = enabled else {
+            let on = self.config_path.is_some() && autostart::is_enabled();
+            let text = if on {
+                t!("autostart.status_on")
+            } else {
+                t!("autostart.status_off")
+            };
+            return Ok(Some((text, MsgKind::Info)));
+        };
+        if let Some(path) = &self.config_path
+            && enabled
+            && !Config::load(path).0.background
+        {
+            bail!(t!("autostart.needs_background"));
+        }
+        self.save_setting("autostart", enabled, &t!("autostart.not_saved"))?;
+        if self.config_path.is_some() {
+            autostart::sync(enabled, &std::env::current_exe()?)
+                .map_err(|error| anyhow::anyhow!(t!("autostart.not_synced", error)))?;
+        }
+        let text = if enabled {
+            t!("autostart.on")
+        } else {
+            t!("autostart.off")
+        };
         Ok(Some((text, MsgKind::Success)))
     }
 

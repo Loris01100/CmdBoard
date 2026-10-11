@@ -89,6 +89,7 @@ impl App {
             Command::Theme { name } => return self.theme_command(name.as_deref()),
             Command::Sort { by } => return self.sort_command(by),
             Command::Lang { code } => return self.lang_command(code.as_deref()),
+            Command::Autostart { enabled } => return self.autostart_command(enabled),
             Command::Goal {
                 kind,
                 change,

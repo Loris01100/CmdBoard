@@ -22,6 +22,8 @@ pub struct Config {
     pub idle_minutes: u32,
     /// `background = false` stops tracking sessions once `CmdBoard` is closed.
     pub background: bool,
+    /// `autostart = true` starts the background tracker at Windows sign-in.
+    pub autostart: bool,
 }
 
 const DEFAULT_IDLE_MINUTES: u32 = 10;
@@ -36,11 +38,18 @@ impl Default for Config {
             last_update_check: None,
             idle_minutes: DEFAULT_IDLE_MINUTES,
             background: true,
+            autostart: false,
         }
     }
 }
 
 impl Config {
+    /// Whether Windows should start the background tracker at sign-in: it is pointless
+    /// with background tracking turned off.
+    pub fn starts_at_sign_in(&self) -> bool {
+        self.autostart && self.background
+    }
+
     /// After how long without input play time stops counting, `None` if it always counts.
     pub fn idle_limit(&self) -> Option<Duration> {
         (self.idle_minutes > 0).then(|| Duration::from_secs(u64::from(self.idle_minutes) * 60))
@@ -66,11 +75,11 @@ impl Config {
                         .and_then(toml::Value::as_str)
                         .map(String::from)
                 };
-                let flag = |key: &str| {
+                let flag = |key: &str, default: bool| {
                     table
                         .get(key)
                         .and_then(toml::Value::as_bool)
-                        .unwrap_or(true)
+                        .unwrap_or(default)
                 };
                 let last_update_check = table
                     .get("last_update_check")
@@ -85,10 +94,11 @@ impl Config {
                         theme: text("theme"),
                         sort: text("sort"),
                         lang: text("lang"),
-                        update_check: flag("update_check"),
+                        update_check: flag("update_check", true),
                         last_update_check,
                         idle_minutes,
-                        background: flag("background"),
+                        background: flag("background", true),
+                        autostart: flag("autostart", false),
                     },
                     None,
                 )
@@ -152,7 +162,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             &path,
-            "other = 3\ntheme = \"terminal\"\nupdate_check = false\nidle_minutes = 0\nbackground = false\n",
+            "other = 3\ntheme = \"terminal\"\nupdate_check = false\nidle_minutes = 0\nbackground = false\nautostart = true\n",
         )
         .unwrap();
         save_value(&path, "theme", "catppuccin-latte").unwrap();
@@ -168,6 +178,9 @@ mod tests {
         );
         assert_eq!(config.idle_limit(), None);
         assert!(!config.background && Config::default().background);
+        // Opt-in, and only with background tracking.
+        assert!(config.autostart && !config.starts_at_sign_in());
+        assert!(!Config::default().autostart);
         assert_eq!(
             Config::default().idle_limit(),
             Some(Duration::from_secs(600))

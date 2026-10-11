@@ -111,6 +111,15 @@ not_set = "Nada para remover: {kind} · {target}"
 list = "{kind}: {items}"
 empty = "{kind}: — (uso: {usage})"
 
+[autostart]
+on = "O acompanhamento em segundo plano agora inicia com o Windows"
+off = "O acompanhamento em segundo plano não inicia mais com o Windows"
+status_on = "O acompanhamento em segundo plano inicia com o Windows (:autostart off para parar)"
+status_off = "O acompanhamento em segundo plano não inicia com o Windows (:autostart on para ativar)"
+needs_background = "O acompanhamento em segundo plano está desativado (background = false no config.toml)"
+not_saved = "início com o Windows não salvo"
+not_synced = "Início com o Windows: {error}"
+
 [background]
 started = "As sessões continuam sendo acompanhadas em segundo plano (cmdboard --stop para parar, background = false no config.toml para desativar)"
 stopped = "Acompanhamento em segundo plano parado"
@@ -512,6 +521,10 @@ summary = "Tempo de jogo a não ultrapassar por dia ou por semana (alerta e popu
 [cmd.sort]
 usage = "sort [name|xp|recent|time]"
 summary = "Ordena os apps (salvo). Sem argumentos: ordem atual"
+
+[cmd.autostart]
+usage = "autostart [on|off]"
+summary = "Inicia o acompanhamento em segundo plano com o Windows, para não perder sessões após reiniciar (salvo). Sem argumentos: diz se faz isso"
 
 [cmd.lang]
 usage = "lang [en|fr|pt]"

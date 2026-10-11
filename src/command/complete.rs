@@ -41,6 +41,7 @@ enum Kind {
     Sort,
     Lang,
     Clear,
+    OnOff,
 }
 
 /// Completes the last word of `line`. `None` when nothing applies or nothing matches.
@@ -65,6 +66,7 @@ pub fn complete(line: &str, sources: &Sources) -> Option<Completion> {
         "sort" => whole(line, rest_start, Kind::Sort, sources),
         "lang" => whole(line, rest_start, Kind::Lang, sources),
         "clear" => whole(line, rest_start, Kind::Clear, sources),
+        "autostart" => whole(line, rest_start, Kind::OnOff, sources),
         "move" => argument(
             line,
             rest_start,
@@ -164,6 +166,7 @@ fn build(
         Kind::Sort => AppSort::ALL.iter().map(|s| s.name()).collect(),
         Kind::Lang => crate::i18n::LANGS.iter().map(|(code, _)| *code).collect(),
         Kind::Clear => vec!["sessions", "stats"],
+        Kind::OnOff => vec!["on", "off"],
     };
     items.sort_by_key(|item| item.to_lowercase());
     let candidates: Vec<String> = fuzzy::rank(partial, items.iter().copied())
@@ -212,6 +215,7 @@ mod tests {
             ("sort rec", Some("sort recent")),
             ("clear se", Some("clear sessions")),
             ("clear st", Some("clear stats")),
+            ("autostart of", Some("autostart off")),
             ("move wind", Some(r#"move "Windows Terminal""#)),
             (
                 r#"move "Windows Terminal" d"#,

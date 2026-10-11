@@ -76,6 +76,7 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("lang", [code]) => Ok(Command::Lang {
             code: Some(code.clone()),
         }),
+        ("autostart", _) => autostart(rest).ok_or_else(|| t!("parse.usage", usage = help.usage())),
         ("group", [name, apps @ ..]) => {
             group(name, apps).ok_or_else(|| t!("parse.usage", usage = help.usage()))
         }
@@ -129,6 +130,17 @@ fn pin(rest: &[String], usage: &str) -> Result<Command, String> {
         change: Some(change),
         app: Some(app.join(" ")),
     })
+}
+
+/// `:autostart [on|off]`; without arguments, tells whether it is on.
+fn autostart(rest: &[String]) -> Option<Command> {
+    let enabled = match rest {
+        [] => None,
+        [state] if state.eq_ignore_ascii_case("on") => Some(true),
+        [state] if state.eq_ignore_ascii_case("off") => Some(false),
+        _ => return None,
+    };
+    Some(Command::Autostart { enabled })
 }
 
 /// `:goal [<amount>|off] [target]`, `:limit` likewise: the amount comes first so the
@@ -310,6 +322,19 @@ mod tests {
                     code: Some(s("EN")),
                 },
             ),
+            ("autostart", Command::Autostart { enabled: None }),
+            (
+                "autostart ON",
+                Command::Autostart {
+                    enabled: Some(true),
+                },
+            ),
+            (
+                "autostart off",
+                Command::Autostart {
+                    enabled: Some(false),
+                },
+            ),
             (
                 "group streaming OBS, Windows Terminal ,Spotify,",
                 Command::Group {
@@ -443,6 +468,7 @@ mod tests {
             ("clear", "Usage : clear sessions|stats"),
             ("clear apps", "Usage : clear sessions|stats"),
             ("update now", "Usage : update"),
+            ("autostart yes", "Usage : autostart [on|off]"),
             ("import", "Usage : import <fichier>"),
             ("group streaming", "Usage : group <nom> <app>, <app>…"),
             ("group streaming ,", "Usage : group <nom> <app>, <app>…"),

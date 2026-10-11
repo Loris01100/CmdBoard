@@ -111,6 +111,15 @@ not_set = "Rien à supprimer : {kind} · {target}"
 list = "{kind} : {items}"
 empty = "{kind} : — (usage : {usage})"
 
+[autostart]
+on = "Le suivi en arrière-plan démarre désormais avec Windows"
+off = "Le suivi en arrière-plan ne démarre plus avec Windows"
+status_on = "Le suivi en arrière-plan démarre avec Windows (:autostart off pour arrêter)"
+status_off = "Le suivi en arrière-plan ne démarre pas avec Windows (:autostart on pour l'activer)"
+needs_background = "Le suivi en arrière-plan est désactivé (background = false dans config.toml)"
+not_saved = "démarrage avec Windows non enregistré"
+not_synced = "Démarrage avec Windows : {error}"
+
 [background]
 started = "Les sessions restent suivies en arrière-plan (cmdboard --stop pour arrêter, background = false dans config.toml pour désactiver)"
 stopped = "Suivi en arrière-plan arrêté"
@@ -512,6 +521,10 @@ summary = "Temps de jeu à ne pas dépasser par jour ou par semaine (alerte et p
 [cmd.sort]
 usage = "sort [name|xp|recent|time]"
 summary = "Trie les apps (mémorisé). Sans argument : tri actuel"
+
+[cmd.autostart]
+usage = "autostart [on|off]"
+summary = "Démarre le suivi en arrière-plan avec Windows, pour ne perdre aucune session après un redémarrage (mémorisé). Sans argument : dit s'il le fait"
 
 [cmd.lang]
 usage = "lang [en|fr|pt]"
