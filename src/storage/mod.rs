@@ -2,11 +2,13 @@ mod backup;
 pub mod db;
 mod goals;
 pub mod models;
+mod playtime;
 mod queries;
 mod sessions;
 
 pub use backup::NewImport;
 pub use db::Database;
+pub use playtime::PastPlaytime;
 pub use queries::unix_now;
 
 /// A stored count of seconds or bytes. SQLite integers are signed: a negative one reads as 0.

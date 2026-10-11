@@ -105,6 +105,9 @@ const MIGRATIONS: &[&str] = &[
     // v8: time played this day and week (`usage`, every minute) reads only recent
     // sessions.
     "CREATE INDEX sessions_ended_at ON sessions(ended_at);",
+    // v9: time played before CmdBoard, imported once from Steam and given as XP (plan
+    // section 11). NULL: not imported yet.
+    "ALTER TABLE apps ADD COLUMN past_secs INTEGER;",
 ];
 
 /// Statements kept prepared (`prepare_cached`); `App::reload` alone runs about 20.

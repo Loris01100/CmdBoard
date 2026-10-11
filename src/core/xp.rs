@@ -10,6 +10,12 @@ pub fn xp_for_session(duration_min: u32, streak_days: u32) -> u32 {
     duration_min + streak_days.min(7) * 5
 }
 
+/// XP for time played before `CmdBoard` (Steam play time): 1 XP per minute like a
+/// session, without a streak bonus, which belongs to days `CmdBoard` saw.
+pub fn xp_for_past_minutes(minutes: u64) -> u32 {
+    u32::try_from(minutes).unwrap_or(u32::MAX)
+}
+
 /// XP needed to go from `level` to `level + 1`.
 #[expect(
     clippy::cast_possible_truncation,

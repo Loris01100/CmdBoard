@@ -117,6 +117,10 @@ limit_body = "{target}: {used} / {total} {period}"
 break_title = "Time for a break?"
 break_body = "You have been playing {name} for {time}"
 
+[playtime]
+imported = "Steam: {time} played before CmdBoard · +{xp} XP"
+added = "Steam: {time} played before CmdBoard, +{xp} XP"
+
 [autostart]
 on = "Background tracking now starts with Windows"
 off = "Background tracking no longer starts with Windows"

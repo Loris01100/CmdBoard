@@ -117,6 +117,10 @@ limit_body = "{target}: {used} / {total} {period}"
 break_title = "Hora de uma pausa?"
 break_body = "Você está jogando {name} há {time}"
 
+[playtime]
+imported = "Steam: {time} jogados antes do CmdBoard · +{xp} XP"
+added = "Steam: {time} jogados antes do CmdBoard, +{xp} XP"
+
 [autostart]
 on = "O acompanhamento em segundo plano agora inicia com o Windows"
 off = "O acompanhamento em segundo plano não inicia mais com o Windows"

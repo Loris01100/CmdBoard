@@ -189,7 +189,10 @@ impl App {
         ))?;
         self.reload()?;
         self.select_app(id);
-        let text = t!("action.added", name, note = created_note(created));
+        let mut text = t!("action.added", name, note = created_note(created));
+        if let Some(playtime) = self.import_added_playtime(id) {
+            text = format!("{text} · {playtime}");
+        }
         Ok(Some((text, MsgKind::Success)))
     }
 

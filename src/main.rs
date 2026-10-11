@@ -62,6 +62,9 @@ fn main() -> anyhow::Result<()> {
     let mut app = App::new(db)?;
     // Handed over by the background tracker, or left open by a crash.
     let resumed = app.recover_sessions()?;
+    // After the recovery, so sessions it closes are not counted twice.
+    app.attach_steam_playtime();
+    app.message = app.import_steam_playtime();
 
     warnings.extend(app.init_theme(&dir, config.theme.clone()));
     warnings.extend(app.init_sort(config.sort.as_deref()));

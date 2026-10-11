@@ -9,6 +9,7 @@
 //! - `sessions`: tracked sessions, XP animations, level-up and reward popups
 //! - `goals`: goals and limits on play time, and their popups
 //! - `notices`: Windows notifications, limit reached and break reminder
+//! - `playtime`: Steam play time from before `CmdBoard`, given as XP once per app
 //! - `background`: sessions handed over to and from the background tracker
 //! - `settings`: theme, sort, language, aliases, export/import, updates, history
 //! - `storage`, `optimize`: the Storage and Optimization screens
@@ -24,6 +25,7 @@ mod library;
 mod notices;
 mod optimize;
 mod pins;
+mod playtime;
 mod sessions;
 mod settings;
 mod sort;
@@ -180,6 +182,8 @@ pub struct App {
     pending_popups: VecDeque<Popup>,
     /// Windows notifications, sent once the current event is handled.
     notices: notices::Notices,
+    /// Reads Steam's play time per game. Finds nothing until attached, so in tests too.
+    steam_playtime: playtime::SteamPlaytime,
 
     // command line
     pub command_line: CommandLine,
@@ -247,6 +251,7 @@ impl App {
             profile_anim: None,
             pending_popups: VecDeque::new(),
             notices: notices::Notices::default(),
+            steam_playtime: || None,
             command_line: CommandLine::default(),
             aliases: Aliases::default(),
             message: None,

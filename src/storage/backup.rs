@@ -32,8 +32,13 @@ struct BackupApp {
     /// Missing from exports made before arguments existed.
     #[serde(default)]
     launch_args: Option<String>,
-    /// Includes XP no session accounts for (given by hand in older versions).
+    /// Includes XP no session accounts for (given by hand in older versions, or for
+    /// `past_secs`).
     total_xp: u32,
+    /// Steam play time already imported as XP, so it is not imported again on the PC
+    /// this file moves to. Missing from older exports.
+    #[serde(default)]
+    past_secs: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -116,7 +121,8 @@ impl Database {
 
     fn backup(&self) -> anyhow::Result<Backup> {
         let mut stmt = self.conn.prepare(
-            "SELECT a.name, c.name, a.launch_target, a.watch_exe, a.total_xp, a.launch_args
+            "SELECT a.name, c.name, a.launch_target, a.watch_exe, a.total_xp, a.launch_args,
+                a.past_secs
              FROM apps a JOIN categories c ON c.id = a.category_id ORDER BY a.id",
         )?;
         let apps = stmt
@@ -128,6 +134,7 @@ impl Database {
                     watch_exe: r.get(3)?,
                     total_xp: r.get(4)?,
                     launch_args: r.get(5)?,
+                    past_secs: r.get::<_, Option<i64>>(6)?.map(super::to_u64),
                 })
             })?
             .collect::<Result<_, _>>()?;
@@ -178,15 +185,17 @@ impl Database {
                 )?;
                 tx.execute(
                     "INSERT INTO apps
-                        (name, launch_target, watch_exe, category_id, total_xp, launch_args)
-                     SELECT ?1, ?2, ?3, id, ?5, ?6 FROM categories WHERE name = ?4",
+                        (name, launch_target, watch_exe, category_id, total_xp, launch_args,
+                         past_secs)
+                     SELECT ?1, ?2, ?3, id, ?5, ?6, ?7 FROM categories WHERE name = ?4",
                     params![
                         app.name,
                         app.launch_target,
                         app.watch_exe,
                         app.category,
                         app.total_xp,
-                        app.launch_args
+                        app.launch_args,
+                        app.past_secs.map(super::to_i64)
                     ],
                 )?;
                 imported.apps += 1;
@@ -305,6 +314,9 @@ mod tests {
 
         let old_pc = db_with_session("Hades", "Jeux", 1_000, 50);
         old_pc.set_app_xp(old_pc.apps().unwrap()[0].id, 80).unwrap(); // + XP no session accounts for
+        // Steam time imported there (all of it tracked already): not imported again here.
+        let hades = old_pc.apps().unwrap()[0].id;
+        assert!(old_pc.import_past_playtime(hades, 600).unwrap().is_some());
         assert_eq!(old_pc.export_to(&file).unwrap(), (1, 1));
 
         // The new PC already has Hades (other session) and lacks the "Jeux" category.
@@ -334,6 +346,8 @@ mod tests {
         assert_eq!(apps[0].launch_target, r"C:\Games\Hades.exe");
         assert_eq!(apps[0].launch_args.as_deref(), Some("-dx12"));
         assert_eq!(apps[0].total_xp, 80);
+        assert!(fresh.apps_without_past().unwrap().is_empty());
+        assert_eq!(new_pc.apps_without_past().unwrap().len(), 1); // keeps its own
         assert_eq!(apps[0].total_secs, 600);
         assert!(fresh.categories().unwrap().iter().any(|c| c.name == "Jeux"));
 

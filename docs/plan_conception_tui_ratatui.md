@@ -29,6 +29,7 @@ src/
 │   ├── goals.rs         // objectifs et limites : temps fait, annonces
 │   ├── notices.rs       // notifications Windows : limite atteinte, rappel de pause
 │   ├── pins.rs          // favoris : :pin, p, Alt+1 à Alt+9
+│   ├── playtime.rs      // temps Steam d'avant CmdBoard donné en XP
 │   ├── background.rs    // passage des sessions au suivi en arrière-plan et retour
 │   ├── settings.rs      // thème, tri, langue, alias, export/import, mises à jour
 │   ├── storage.rs       // écran Stockage (StorageScreen) : disques, programmes
@@ -54,10 +55,12 @@ src/
 │   ├── goals.rs         // objectifs et limites, temps du jour et de la semaine
 │   ├── sessions.rs      // sessions : début, points de sauvegarde, fermeture + XP + récompenses
 │   ├── backup.rs        // :export / :import en JSON
+│   ├── playtime.rs      // import du temps d'avant CmdBoard (une transaction par app)
 │   └── models.rs        // App, Category, Session, Reward
 ├── launcher/
 │   ├── folders.rs       // explorateur de l'écran Stockage : liste, mesure, corbeille
 │   ├── launch.rs        // lancement (exe, URI)
+│   ├── playtime.rs      // temps de jeu compté par Steam (localconfig.vdf)
 │   ├── programs.rs      // disques et programmes installés (registre), désinstallation
 │   ├── registry.rs      // lecture du registre (API Unicode, sans reg.exe)
 │   ├── scan.rs          // import des .lnk et des bibliothèques Steam/Epic
@@ -120,7 +123,7 @@ clippy.toml                     // taille maximale d'une fonction
 
 ```
 categories(id, name, color, icon)
-apps(id, name, launch_target, watch_exe, icon, category_id, total_xp, launch_args, pin)
+apps(id, name, launch_target, watch_exe, icon, category_id, total_xp, launch_args, pin, past_secs)
 sessions(id, app_id, started_at, ended_at, duration_s, xp_gained, hidden, checkpoint_at)
 rewards(id, app_id NULL, code, name, description, rule, scope)
 unlocked_rewards(id, reward_id, app_id NULL, unlocked_at, session_id)
@@ -131,6 +134,7 @@ goals(id, kind, app_id NULL, category_id NULL, minutes, period)
 - `watch_exe` : nom de l'exécutable réel à surveiller (utile pour les launchers).
 - `launch_args` (migration v7) : arguments passés à la cible au lancement (`-dx12`, un dossier à ouvrir), `NULL` sans argument. Sans argument, la cible part par `opener` comme avant ; avec, par `ShellExecuteW` et ses paramètres (`programs::shell_execute`, partagé avec la désinstallation). La plupart des liens `steam://…` les ignorent. Deux apps peuvent viser la même cible avec des arguments différents (variantes).
 - `pin` (migration v7) : emplacement de favori, de 1 à 9 (`CHECK`), lancé par `Alt+<n>`. Index unique partiel (`WHERE pin IS NOT NULL`) : un seul favori par emplacement ; `Database::set_pin` le prend à l'app qui l'avait, dans une transaction.
+- `past_secs` (migration v9) : temps joué avant CmdBoard, importé une fois de Steam et donné en XP (section 11). `NULL` : pas encore importé ; `0` : importé, rien à donner.
 - `app_id NULL` dans `rewards` : récompense commune à toutes les apps. Sinon : récompense propre à cette app.
 - `scope` (migration v2) : `global` se débloque une seule fois en tout ; `app` se débloque une fois par app. Une récompense propre à une app (`app_id` renseigné) est traitée comme `app`.
 - `unlocked_rewards.app_id` : l'app pour laquelle une récompense `app` a été débloquée (`NULL` pour une `global`). Index unique sur `(reward_id, IFNULL(app_id, 0))` : pas de double déblocage.
@@ -294,7 +298,7 @@ La table `COMMANDS` (`command/mod.rs`) décrit chaque commande (nom, alias, usag
 
 Noms d'apps et de catégories insensibles à la casse. `:add` déduit `watch_exe` du nom de fichier quand la cible est un `.exe`, et refuse un chemin absolu inexistant. Après `:add`, `:move` ou `:edit`, la sélection suit l'app. `:edit` change nom, cible, catégorie et process d'une app sans toucher à son id (`Database::update_app`), donc sessions, XP et récompenses restent ; mêmes vérifications que `:add` (nom déjà pris par une autre app, mais changer la casse du sien est permis ; chemin absolu inexistant ; catégorie créée si absente ; process vide déduit de la cible). Un alias de `commands.toml` qui citait l'ancien nom n'est pas réécrit. Si le process change pendant une session, le tracker voit l'ancien disparaître : la session se ferme normalement.
 
-`:export` / `:import` (`storage/backup.rs`) servent à la sauvegarde, à l'analyse externe et au changement de PC. Le fichier : `{ version: 1, exported_at, apps: [{ name, category, launch_target, watch_exe, launch_args, total_xp }], sessions: [{ app, started_at, ended_at, duration_s, xp_gained }] }` (sessions en cours exclues, horodatages Unix). L'import ne supprime rien, mais un fichier reçu de quelqu'un d'autre peut ajouter une app dont la cible lance n'importe quoi : s'il ajoute des apps, une confirmation les liste d'abord (`Database::import_preview`, « • nom → cible arguments », 5 au plus puis « … et N de plus »). Pour que rien ne se cache, caractères de contrôle, invisibles et d'inversion de sens deviennent des espaces, et les suites d'espaces sont réduites à une seule. `launcher::launch::risk` signale les cibles dangereuses : chemin réseau (`\\serveur\…`, en cible ou en argument), shell ou hôte de script (`cmd`, `powershell`, `mshta`, `rundll32`…) ou fichier de script (`.bat`, `.ps1`, `.vbs`…), et schéma d'URI hors des launchers (`steam`, `com.epicgames.launcher`, `uplay`, `http(s)`…, `shell:` seulement pour `shell:AppsFolder\…`). Ces apps passent en tête de liste avec « ⚠ motif », sous une ligne qui les compte toutes, affichées ou non. Un import qui n'ajoute aucune app s'applique directement. Il fusionne en une transaction : une app absente est créée avec sa catégorie et son `total_xp` ; une app déjà présente (même nom) garde sa cible et sa catégorie, et gagne l'XP de ses sessions nouvellement importées ; une session déjà présente (même app, même début) est ignorée, donc réimporter le même fichier ne change rien. Les récompenses ne sont pas exportées.
+`:export` / `:import` (`storage/backup.rs`) servent à la sauvegarde, à l'analyse externe et au changement de PC. Le fichier : `{ version: 1, exported_at, apps: [{ name, category, launch_target, watch_exe, launch_args, total_xp, past_secs }], sessions: [{ app, started_at, ended_at, duration_s, xp_gained }] }` (sessions en cours exclues, horodatages Unix). L'import ne supprime rien, mais un fichier reçu de quelqu'un d'autre peut ajouter une app dont la cible lance n'importe quoi : s'il ajoute des apps, une confirmation les liste d'abord (`Database::import_preview`, « • nom → cible arguments », 5 au plus puis « … et N de plus »). Pour que rien ne se cache, caractères de contrôle, invisibles et d'inversion de sens deviennent des espaces, et les suites d'espaces sont réduites à une seule. `launcher::launch::risk` signale les cibles dangereuses : chemin réseau (`\\serveur\…`, en cible ou en argument), shell ou hôte de script (`cmd`, `powershell`, `mshta`, `rundll32`…) ou fichier de script (`.bat`, `.ps1`, `.vbs`…), et schéma d'URI hors des launchers (`steam`, `com.epicgames.launcher`, `uplay`, `http(s)`…, `shell:` seulement pour `shell:AppsFolder\…`). Ces apps passent en tête de liste avec « ⚠ motif », sous une ligne qui les compte toutes, affichées ou non. Un import qui n'ajoute aucune app s'applique directement. Il fusionne en une transaction : une app absente est créée avec sa catégorie, son `total_xp` et son `past_secs` (absent des anciens exports), pour que le temps Steam déjà compté ne soit pas réimporté sur le nouveau PC ; une app déjà présente (même nom) garde sa cible et sa catégorie, et gagne l'XP de ses sessions nouvellement importées ; une session déjà présente (même app, même début) est ignorée, donc réimporter le même fichier ne change rien. Les récompenses ne sont pas exportées.
 
 ### Confort
 
@@ -578,6 +582,16 @@ code = "marathon", scope = "app", rule = "session_minutes >= 180"
 **Évaluation** : après chaque session gardée (fin normale, sortie de CmdBoard, orpheline au démarrage), une fois l'XP attribuée pour que les niveaux comptent. `storage/sessions.rs` calcule les faits (`session_facts_at`) et la liste des récompenses encore à débloquer pour l'app (`pending_rewards`), `core::rewards::evaluate` tranche, `storage` enregistre, dans la transaction de fermeture. `app/sessions.rs` n'affiche que le résultat (`SessionOutcome`) : animations, popups, message. Une règle cassée n'empêche pas les autres : l'erreur s'affiche dans la ligne de message.
 
 ---
+
+### Temps de jeu d'avant CmdBoard (Steam)
+
+Un nouvel utilisateur ne repart pas du niveau 1 avec 800 h sur Elden Ring : le temps compté par Steam devient de l'XP, une fois par app.
+
+- **Source** (`launcher/playtime.rs`) : `"Playtime"` (minutes) de chaque bloc `Software\Valve\Steam\apps\<appid>` de `userdata\<compte>\config\localconfig.vdf`, clés sans tenir compte de la casse ; plusieurs comptes : le plus grand temps par jeu. L'app id vient de la cible (`steam://rungameid/<id>`, ce qu'ajoute le picker, ou `steam://run/<id>`).
+- **XP seulement, pas de session** : une session de 800 h fausserait les stats (plus longue session, heatmap, XP du jour, série) et débloquerait aussitôt les récompenses de session (Marathon). 1 XP par minute comme une session, sans bonus de série (`core::xp::xp_for_past_minutes`). Les récompenses de niveau suivent à la prochaine session terminée.
+- **Une fois, sans double compte** (`Database::import_past_playtime`, une transaction) : le temps des sessions terminées de l'app, que Steam a compté aussi, est retiré ; le reste est noté dans `apps.past_secs` et ajouté à `total_xp`. Une app déjà notée n'est plus importée. Un jeu Steam absent du fichier n'a jamais été joué : noté `0`. Un fichier illisible ou vide n'importe rien et ne note rien : le prochain démarrage réessaie.
+- **Quand** : au démarrage de l'UI (`App::import_steam_playtime`, après la reprise des sessions pour compter celles qu'elle ferme), pour toute app Steam pas encore notée (premier lancement, apps ajoutées avant cette version, cible changée en Steam, import JSON) : un message « Steam : 800h de jeu avant CmdBoard · +48000 XP » et les barres d'XP qui se remplissent, sans popup par app. À l'ajout d'une app Steam (`:add`, formulaire, picker) : son temps aussitôt, ajouté au message « Ajouté : … », avec la popup de level-up habituelle. Le suivi en arrière-plan n'importe rien. Le fichier (une centaine de Ko) est lu sur le thread de l'UI. Dans les tests, `App::steam_playtime` ne trouve rien sauf s'il est remplacé.
+- Le temps importé ne compte pas dans le temps total ni les stats, qui restent ce que CmdBoard a vu.
 
 ### Objectifs et limites (`:goal`, `:limit`)
 

@@ -177,7 +177,7 @@ fn steam_games() -> Vec<Shortcut> {
         .collect()
 }
 
-fn steam_dir() -> Option<PathBuf> {
+pub(super) fn steam_dir() -> Option<PathBuf> {
     let key = Key::open(HKEY_CURRENT_USER, r"Software\Valve\Steam", 0)?;
     key.string(&wide(""), "SteamPath").map(PathBuf::from)
 }
@@ -207,7 +207,7 @@ fn vdf_values<'a>(text: &'a str, key: &'a str) -> impl Iterator<Item = String> +
 }
 
 /// Quoted strings of a line, with backslash escapes resolved.
-fn quoted(line: &str) -> Vec<String> {
+pub(super) fn quoted(line: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut chars = line.chars();
     while chars.by_ref().any(|c| c == '"') {

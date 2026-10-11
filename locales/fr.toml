@@ -117,6 +117,10 @@ limit_body = "{target} : {used} / {total} {period}"
 break_title = "Une pause ?"
 break_body = "Vous jouez à {name} depuis {time}"
 
+[playtime]
+imported = "Steam : {time} de jeu avant CmdBoard · +{xp} XP"
+added = "Steam : {time} de jeu avant CmdBoard, +{xp} XP"
+
 [autostart]
 on = "Le suivi en arrière-plan démarre désormais avec Windows"
 off = "Le suivi en arrière-plan ne démarre plus avec Windows"

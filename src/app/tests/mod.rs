@@ -9,6 +9,7 @@ mod library;
 mod notices;
 mod optimize;
 mod pins;
+mod playtime;
 mod sessions;
 mod settings;
 mod storage;
