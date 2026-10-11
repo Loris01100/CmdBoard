@@ -637,8 +637,6 @@ Pilotées par `Tick` et un compteur `frame_count` dans `App`. Un tick ne redessi
 - **Architecture** : `tests/architecture.rs` (couches, taille des fichiers) et `clippy::too_many_lines` (taille des fonctions), section 2.
 - **Clippy** : le groupe `pedantic` est activé dans `Cargo.toml` (`[lints.clippy]`), donc bloquant en CI. On corrige l'avertissement ; sinon, `#[expect(clippy::…, reason = "…")]` au plus près du code. Seuls `cast_precision_loss` et `assert_is_empty` sont désactivés pour tout le projet. Les conversions qui réduisent passent par `try_from` : `storage::to_u64` et `to_i64` pour les entiers SQLite, `ui::layout::cells` pour les longueurs à l'écran.
 - **Dépendances** : `cargo machete` en CI échoue sur une dépendance déclarée mais inutilisée. On la retire ; un faux positif (crate utilisée seulement par une macro) va dans `[package.metadata.cargo-machete] ignored`. `cargo deny check` (`deny.toml`, cible `x86_64-pc-windows-msvc` seulement) échoue sur une faille connue (base RustSec), une licence hors de la liste autorisée (licences permissives compatibles avec un binaire MIT) ou une source autre que crates.io. Une licence nouvelle s'ajoute comme exception pour une crate précise, après vérification. Les crates en double sont seulement signalées.
-- **Clippy** : groupe `pedantic` activé dans `Cargo.toml` (`[lints.clippy]`), donc bloquant en CI. On corrige l’avertissement ; sinon `#[expect(clippy::…, reason = "…")]` au plus près du code. Seuls `cast_precision_loss` et `assert_is_empty` sont désactivés pour tout le projet. Les conversions passent par `try_from` (`storage::to_u64` et `to_i64` pour les entiers SQLite, `ui::layout::cells` pour les longueurs à l’écran).
-
 ---
 
 ## 16. Étapes de réalisation
@@ -667,22 +665,32 @@ L'étape 1 doit inclure un **hook de panic** qui restaure le terminal. `ratatui:
 ## 17. Dépendances
 
 ```toml
-ratatui = "0.30"
-crossterm = "0.29"
-rusqlite = { version = "0.40", features = ["bundled"] }
-sysinfo = "0.39"
-opener = "0.9"
-serde = { version = "1", features = ["derive"] }
-toml = "0.8"
-chrono = "0.4"
+[dependencies]
 anyhow = "1"
+crossterm = "0.29"
 directories = "6"
 fuzzy-matcher = "0.3"
-self_update = { version = "1.3", default-features = false, features = ["github", "ureq", "rustls", "archive-zip", "compression-zip-deflate", "signatures"] }
-windows-sys = { version = "0.61", features = ["Win32_Globalization", "Win32_System_Registry", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }  # langue de Windows ; registre et ShellExecute (écran Stockage)
+lnk = "0.6"                # lecture des raccourcis .lnk
+opener = "0.9"
+ratatui = "0.30"
+rayon = "1.12"             # scan des bibliothèques et mesure des dossiers en parallèle
+rusqlite = { version = "0.40", features = ["bundled"] }
+self_update = { version = "1.3", default-features = false, features = ["github", "ureq", "rustls", "archive-zip", "compression-zip-deflate", "signatures"] }  # signatures : .zip signé zipsign (section 18)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sysinfo = "0.39"
+toml = "1.1"
+windows-sys = { version = "0.61", features = ["Win32_Globalization", "Win32_Security", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_XboxController", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }  # langue de Windows, registre, ShellExecute, instance unique, inactivité et veille
+
+[dev-dependencies]
+insta = "1.49"             # snapshots des écrans (section 15)
+proptest = "1.11"          # tests de propriétés (section 15)
+
+[build-dependencies]
+embed-resource = "3.0"     # icône intégrée à l'exe par build.rs (section 18)
 ```
 
-À vérifier avec `cargo add` au moment de créer le projet, pour obtenir les dernières versions. Pour lire les `.lnk`, ajouter `lnk` ou `parselnk`.
+Versions indicatives : ajouter une dépendance avec `cargo add`, qui prend la dernière version. Toute dépendance doit passer `cargo machete` et `cargo deny check` (section 15).
 
 ---
 
