@@ -33,6 +33,8 @@ pub struct Config {
     /// Minutes of play without an idle pause after which a notification suggests a
     /// break, again each time as long. `break_minutes = 0`, the default, never does.
     pub break_minutes: u32,
+    /// Library games never suggested on the dashboard (`x`, `:ignore`), by name.
+    pub ignored_games: Vec<String>,
 }
 
 const DEFAULT_IDLE_MINUTES: u32 = 10;
@@ -50,6 +52,7 @@ impl Default for Config {
             autostart: false,
             notifications: true,
             break_minutes: 0,
+            ignored_games: Vec::new(),
         }
     }
 }
@@ -119,6 +122,17 @@ impl Config {
                         autostart: flag("autostart", false),
                         notifications: flag("notifications", true),
                         break_minutes: minutes("break_minutes", 0),
+                        ignored_games: table
+                            .get("ignored_games")
+                            .and_then(toml::Value::as_array)
+                            .map(|games| {
+                                games
+                                    .iter()
+                                    .filter_map(toml::Value::as_str)
+                                    .map(String::from)
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
                     },
                     None,
                 )
@@ -182,7 +196,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             &path,
-            "other = 3\ntheme = \"terminal\"\nupdate_check = false\nidle_minutes = 0\nbackground = false\nautostart = true\nnotifications = false\nbreak_minutes = 90\n",
+            "other = 3\ntheme = \"terminal\"\nupdate_check = false\nidle_minutes = 0\nbackground = false\nautostart = true\nnotifications = false\nbreak_minutes = 90\nignored_games = [\"Hades\", 3]\n",
         )
         .unwrap();
         save_value(&path, "theme", "catppuccin-latte").unwrap();
@@ -204,6 +218,7 @@ mod tests {
         assert!(!config.notifications && Config::default().notifications);
         assert_eq!(config.break_after(), Some(Duration::from_mins(90)));
         assert_eq!(Config::default().break_after(), None);
+        assert_eq!(config.ignored_games, ["Hades"]); // not a name: skipped
         assert_eq!(
             Config::default().idle_limit(),
             Some(Duration::from_secs(600))

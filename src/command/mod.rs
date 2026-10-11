@@ -103,6 +103,12 @@ pub enum Command {
     OpenForm(FormKind),
     /// Dashboard, `n`: opens the add form for the running library game not added yet.
     AddRunning,
+    /// Dashboard, `x`: never suggests the running library game again.
+    IgnoreRunning,
+    /// `:ignore`: lists the ignored games, or suggests `show_again` again.
+    IgnoredGames {
+        show_again: Option<String>,
+    },
     /// Selects an app in its category (Enter in the `/` search).
     Select {
         app: String,
@@ -262,6 +268,10 @@ pub const COMMANDS: &[CommandHelp] = &[
     },
     CommandHelp {
         name: "autostart",
+        aliases: &[],
+    },
+    CommandHelp {
+        name: "ignore",
         aliases: &[],
     },
     CommandHelp {

@@ -70,3 +70,52 @@ fn the_suggestion_goes_once_the_game_closes() {
     app.handle(AppEvent::UnaddedRunning(Vec::new()));
     assert_eq!(app.suggestion(), None);
 }
+
+#[test]
+fn x_ignores_the_running_game_until_shown_again() {
+    let mut app = with_library();
+    app.handle(AppEvent::UnaddedRunning(vec!["eldenring.exe".into()]));
+    press(&mut app, KeyCode::Char('x'));
+    assert_eq!(
+        app.message.as_ref().unwrap().0,
+        "ELDEN RING ne sera plus proposé (:ignore off ELDEN RING pour annuler)"
+    );
+    assert_eq!(app.suggestion(), None);
+    assert!(app.full_watch_list().unadded.is_empty()); // the tracker stops looking
+    press(&mut app, KeyCode::Char('x'));
+    assert_eq!(app.mode, Mode::Normal); // nothing left to ignore: the key does nothing
+
+    run(&mut app, "ignore");
+    assert_eq!(
+        app.message.as_ref().unwrap().0,
+        "Jeux ignorés : ELDEN RING (:ignore off <jeu> pour annuler)"
+    );
+    run(&mut app, "ignore off Hades");
+    assert_eq!(
+        app.message.as_ref().unwrap().0,
+        "jeu non ignoré : Hades (:ignore pour la liste)"
+    );
+    run(&mut app, "ignore off elden ring");
+    assert_eq!(message_kind(&app), Some(MsgKind::Success));
+    assert_eq!(
+        app.suggestion().map(|g| g.name.as_str()),
+        Some("ELDEN RING")
+    );
+    run(&mut app, "ignore");
+    assert_eq!(
+        app.message.as_ref().unwrap().0,
+        "Aucun jeu ignoré (x au dashboard ignore le jeu lancé)"
+    );
+}
+
+#[test]
+fn ignored_games_from_config_are_never_watched() {
+    let mut app = App::with_defaults();
+    app.init_ignored_games(vec!["elden ring".into()]);
+    app.handle(AppEvent::LibraryScanned(vec![game(
+        "ELDEN RING",
+        "steam://rungameid/1245620",
+        Some("eldenring.exe"),
+    )]));
+    assert!(app.full_watch_list().unadded.is_empty());
+}

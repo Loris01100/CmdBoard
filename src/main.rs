@@ -68,6 +68,7 @@ fn main() -> anyhow::Result<()> {
 
     warnings.extend(app.init_theme(&dir, config.theme.clone()));
     warnings.extend(app.init_sort(config.sort.as_deref()));
+    app.init_ignored_games(config.ignored_games.clone());
     let (aliases, warning) = Aliases::load(&dir.join("commands.toml"));
     app.aliases = aliases;
     warnings.extend(warning);

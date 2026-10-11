@@ -42,6 +42,10 @@ impl App {
             // apps and categories
             Command::OpenForm(kind) => self.open_form(kind)?,
             Command::AddRunning => return Ok(self.add_running()),
+            Command::IgnoreRunning => return self.ignore_running(),
+            Command::IgnoredGames { show_again } => {
+                return self.ignore_command(show_again.as_deref());
+            }
             Command::Launch { app } => return self.launch(&app),
             Command::Add {
                 name,
@@ -153,6 +157,12 @@ impl App {
                 .programs
                 .iter()
                 .map(|p| p.name.as_str())
+                .collect(),
+            ignored: self
+                .suggestions
+                .ignored
+                .iter()
+                .map(String::as_str)
                 .collect(),
         };
         self.command_line

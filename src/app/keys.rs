@@ -70,6 +70,7 @@ impl App {
             },
             KeyCode::Char('a') => Command::OpenForm(FormKind::Add),
             KeyCode::Char('n') if self.suggestion().is_some() => Command::AddRunning,
+            KeyCode::Char('x') if self.suggestion().is_some() => Command::IgnoreRunning,
             KeyCode::Char('s') => Command::Sort {
                 by: Some(self.sort.next()),
             },

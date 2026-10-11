@@ -17,7 +17,7 @@ use crate::update::{self, Action};
 
 impl App {
     /// Saves one `config.toml` value; nothing is saved in tests.
-    fn save_setting(
+    pub(super) fn save_setting(
         &self,
         key: &str,
         value: impl Into<toml::Value>,

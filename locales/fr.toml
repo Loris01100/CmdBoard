@@ -122,8 +122,16 @@ imported = "Steam : {time} de jeu avant CmdBoard · +{xp} XP"
 added = "Steam : {time} de jeu avant CmdBoard, +{xp} XP"
 
 [suggestion]
-running = "{icon} {name} est lancé · n pour l'ajouter"
+running = "{icon} {name} est lancé · n pour l'ajouter, x pour l'ignorer"
 none = "Aucun jeu lancé à ajouter"
+
+[ignore]
+added = "{name} ne sera plus proposé (:ignore off {name} pour annuler)"
+removed = "{name} peut de nouveau être proposé"
+list = "Jeux ignorés : {list} (:ignore off <jeu> pour annuler)"
+empty = "Aucun jeu ignoré (x au dashboard ignore le jeu lancé)"
+unknown = "jeu non ignoré : {name} (:ignore pour la liste)"
+not_saved = "jeux ignorés non enregistrés"
 
 [autostart]
 on = "Le suivi en arrière-plan démarre désormais avec Windows"
@@ -541,6 +549,10 @@ summary = "Trie les apps (mémorisé). Sans argument : tri actuel"
 [cmd.autostart]
 usage = "autostart [on|off]"
 summary = "Démarre le suivi en arrière-plan avec Windows, pour ne perdre aucune session après un redémarrage (mémorisé). Sans argument : dit s'il le fait"
+
+[cmd.ignore]
+usage = "ignore [off <jeu>]"
+summary = "Liste les jeux lancés à ne plus proposer (x au dashboard), ou en propose de nouveau un (mémorisé)"
 
 [cmd.lang]
 usage = "lang [en|fr|pt]"

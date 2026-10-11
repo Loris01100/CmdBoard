@@ -122,8 +122,16 @@ imported = "Steam: {time} jogados antes do CmdBoard · +{xp} XP"
 added = "Steam: {time} jogados antes do CmdBoard, +{xp} XP"
 
 [suggestion]
-running = "{icon} {name} está aberto · n para adicionar"
+running = "{icon} {name} está aberto · n para adicionar, x para ignorar"
 none = "Nenhum jogo aberto para adicionar"
+
+[ignore]
+added = "{name} não será mais sugerido (:ignore off {name} para desfazer)"
+removed = "{name} pode ser sugerido de novo"
+list = "Jogos ignorados: {list} (:ignore off <jogo> para desfazer)"
+empty = "Nenhum jogo ignorado (x no dashboard ignora o jogo aberto)"
+unknown = "jogo não ignorado: {name} (:ignore para a lista)"
+not_saved = "jogos ignorados não salvos"
 
 [autostart]
 on = "O acompanhamento em segundo plano agora inicia com o Windows"
@@ -541,6 +549,10 @@ summary = "Ordena os apps (salvo). Sem argumentos: ordem atual"
 [cmd.autostart]
 usage = "autostart [on|off]"
 summary = "Inicia o acompanhamento em segundo plano com o Windows, para não perder sessões após reiniciar (salvo). Sem argumentos: diz se faz isso"
+
+[cmd.ignore]
+usage = "ignore [off <jogo>]"
+summary = "Lista os jogos abertos que não são mais sugeridos (x no dashboard), ou sugere um de novo (salvo)"
 
 [cmd.lang]
 usage = "lang [en|fr|pt]"

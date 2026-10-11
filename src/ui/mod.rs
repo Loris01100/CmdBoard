@@ -106,7 +106,10 @@ mod tests {
         app.handle(crate::event::AppEvent::UnaddedRunning(vec![
             "hades.exe".into(),
         ]));
-        assert!(render(&app).contains("▶ Steam 0:00  + Hades est lancé · n pour l'ajouter"));
+        assert!(
+            render(&app)
+                .contains("▶ Steam 0:00  + Hades est lancé · n pour l'ajouter, x pour l'ignorer")
+        );
     }
 
     #[test]

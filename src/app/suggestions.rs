@@ -1,9 +1,12 @@
 //! Suggesting a running game that is not added yet (plan section 8): the library games
 //! (Steam, Epic, GOG, Ubisoft Connect) are scanned once at startup, the tracker watches
 //! the exes of those not added, and the dashboard header names the one running, `n`
-//! opening the add form pre-filled.
+//! opening the add form pre-filled. `x` ignores it for good (`ignored_games` in
+//! `config.toml`), `:ignore off <game>` suggests it again.
 
-use super::{App, Message, MsgKind};
+use anyhow::bail;
+
+use super::{App, Message, MsgKind, Outcome};
 use crate::event::AppEvent;
 use crate::launcher::scan::{self, Shortcut};
 use crate::popup::{Form, Popup};
@@ -16,9 +19,16 @@ pub struct Suggestions {
     pub(super) library: Vec<Shortcut>,
     /// `exe_key`s of the games not added that run, as last reported by the tracker.
     pub(super) running: Vec<String>,
+    /// Names of the games never to suggest, as saved in `config.toml`.
+    pub(super) ignored: Vec<String>,
 }
 
 impl App {
+    /// At startup: the games ignored in `config.toml`.
+    pub fn init_ignored_games(&mut self, games: Vec<String>) {
+        self.suggestions.ignored = games;
+    }
+
     /// At startup, in the UI only: scans the game libraries in a short-lived thread.
     pub fn start_library_scan(&mut self) {
         self.spawn(|| AppEvent::LibraryScanned(scan::library_games()));
@@ -71,15 +81,58 @@ impl App {
         None
     }
 
-    /// Library games no app launches or watches, and no app is named after.
+    /// `x` on the dashboard: never suggests the running game again.
+    pub(super) fn ignore_running(&mut self) -> Outcome {
+        let Some(name) = self.suggestion().map(|g| g.name.clone()) else {
+            return Ok(Some((t!("suggestion.none"), MsgKind::Info)));
+        };
+        let mut ignored = self.suggestions.ignored.clone();
+        ignored.push(name.clone());
+        self.save_ignored(ignored)?;
+        Ok(Some((t!("ignore.added", name), MsgKind::Success)))
+    }
+
+    /// `:ignore`: lists the ignored games, or (`show_again`) suggests one again.
+    pub(super) fn ignore_command(&mut self, show_again: Option<&str>) -> Outcome {
+        let Some(name) = show_again else {
+            let text = if self.suggestions.ignored.is_empty() {
+                t!("ignore.empty")
+            } else {
+                t!("ignore.list", list = self.suggestions.ignored.join(", "))
+            };
+            return Ok(Some((text, MsgKind::Info)));
+        };
+        let name = name.trim();
+        let mut ignored = self.suggestions.ignored.clone();
+        let before = ignored.len();
+        ignored.retain(|g| !g.eq_ignore_ascii_case(name));
+        if ignored.len() == before {
+            bail!(t!("ignore.unknown", name));
+        }
+        self.save_ignored(ignored)?;
+        Ok(Some((t!("ignore.removed", name), MsgKind::Success)))
+    }
+
+    /// Saves the list first, so a broken `config.toml` changes nothing, then tells the
+    /// tracker what to look for now.
+    fn save_ignored(&mut self, ignored: Vec<String>) -> anyhow::Result<()> {
+        self.save_setting("ignored_games", ignored.clone(), &t!("ignore.not_saved"))?;
+        self.suggestions.ignored = ignored;
+        self.send_watch_list();
+        Ok(())
+    }
+
+    /// Library games no app launches or watches, no app is named after, not ignored.
     fn unadded_games(&self) -> impl Iterator<Item = &Shortcut> {
         self.suggestions.library.iter().filter(|game| {
             let exe = game.watch_exe.as_deref().map(tracker::exe_key);
-            !self.apps.iter().any(|app| {
-                app.name.eq_ignore_ascii_case(&game.name)
-                    || app.launch_target.eq_ignore_ascii_case(&game.target)
-                    || app.watch_exe.as_deref().map(tracker::exe_key) == exe
-            })
+            let ignored = |name: &String| name.eq_ignore_ascii_case(&game.name);
+            !self.suggestions.ignored.iter().any(ignored)
+                && !self.apps.iter().any(|app| {
+                    app.name.eq_ignore_ascii_case(&game.name)
+                        || app.launch_target.eq_ignore_ascii_case(&game.target)
+                        || app.watch_exe.as_deref().map(tracker::exe_key) == exe
+                })
         })
     }
 }

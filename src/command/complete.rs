@@ -13,6 +13,8 @@ pub struct Sources<'a> {
     pub categories: Vec<&'a str>,
     /// Installed programs, for `:uninstall`.
     pub programs: Vec<&'a str>,
+    /// Games `:ignore off` can suggest again.
+    pub ignored: Vec<&'a str>,
     pub themes: Vec<&'a str>,
 }
 
@@ -42,6 +44,7 @@ enum Kind {
     Lang,
     Clear,
     OnOff,
+    Ignored,
 }
 
 /// Completes the last word of `line`. `None` when nothing applies or nothing matches.
@@ -82,6 +85,7 @@ pub fn complete(line: &str, sources: &Sources) -> Option<Completion> {
         // The amount or the slot, then the rest of the line names an app or a category.
         "goal" | "limit" => after_first(line, rest_start, Kind::Target, sources),
         "pin" => after_first(line, rest_start, Kind::App, sources),
+        "ignore" => after_first(line, rest_start, Kind::Ignored, sources),
         _ => None,
     }
 }
@@ -167,6 +171,7 @@ fn build(
         Kind::Lang => crate::i18n::LANGS.iter().map(|(code, _)| *code).collect(),
         Kind::Clear => vec!["sessions", "stats"],
         Kind::OnOff => vec!["on", "off"],
+        Kind::Ignored => sources.ignored.clone(),
     };
     items.sort_by_key(|item| item.to_lowercase());
     let candidates: Vec<String> = fuzzy::rank(partial, items.iter().copied())
@@ -189,6 +194,7 @@ mod tests {
             apps: vec!["Steam", "Windows Terminal", "Bloc-notes"],
             categories: vec!["Jeux", "Dev", "Outils"],
             programs: vec!["Visual Studio Code", "7-Zip"],
+            ignored: vec!["ELDEN RING"],
             themes: vec!["catppuccin-latte", "catppuccin-mocha", "terminal"],
         }
     }
@@ -216,6 +222,7 @@ mod tests {
             ("clear se", Some("clear sessions")),
             ("clear st", Some("clear stats")),
             ("autostart of", Some("autostart off")),
+            ("ignore off eld", Some("ignore off ELDEN RING")),
             ("move wind", Some(r#"move "Windows Terminal""#)),
             (
                 r#"move "Windows Terminal" d"#,

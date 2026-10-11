@@ -76,6 +76,7 @@ pub fn parse(input: &str) -> Result<Command, String> {
         ("lang", [code]) => Ok(Command::Lang {
             code: Some(code.clone()),
         }),
+        ("ignore", _) => ignore(rest).ok_or_else(|| t!("parse.usage", usage = help.usage())),
         ("autostart", _) => autostart(rest).ok_or_else(|| t!("parse.usage", usage = help.usage())),
         ("group", [name, apps @ ..]) => {
             group(name, apps).ok_or_else(|| t!("parse.usage", usage = help.usage()))
@@ -130,6 +131,18 @@ fn pin(rest: &[String], usage: &str) -> Result<Command, String> {
         change: Some(change),
         app: Some(app.join(" ")),
     })
+}
+
+/// `:ignore [off <game>]`: the game is the rest of the line, so it needs no quotes.
+fn ignore(rest: &[String]) -> Option<Command> {
+    let show_again = match rest {
+        [] => None,
+        [off, game @ ..] if off.eq_ignore_ascii_case("off") && !game.is_empty() => {
+            Some(game.join(" "))
+        }
+        _ => return None,
+    };
+    Some(Command::IgnoredGames { show_again })
 }
 
 /// `:autostart [on|off]`; without arguments, tells whether it is on.
@@ -323,6 +336,13 @@ mod tests {
                 },
             ),
             ("autostart", Command::Autostart { enabled: None }),
+            ("ignore", Command::IgnoredGames { show_again: None }),
+            (
+                "ignore OFF Elden Ring",
+                Command::IgnoredGames {
+                    show_again: Some(s("Elden Ring")),
+                },
+            ),
             (
                 "autostart ON",
                 Command::Autostart {
@@ -469,6 +489,8 @@ mod tests {
             ("clear apps", "Usage : clear sessions|stats"),
             ("update now", "Usage : update"),
             ("autostart yes", "Usage : autostart [on|off]"),
+            ("ignore off", "Usage : ignore [off <jeu>]"),
+            ("ignore Hades", "Usage : ignore [off <jeu>]"),
             ("import", "Usage : import <fichier>"),
             ("group streaming", "Usage : group <nom> <app>, <app>…"),
             ("group streaming ,", "Usage : group <nom> <app>, <app>…"),

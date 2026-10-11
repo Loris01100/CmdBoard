@@ -122,8 +122,16 @@ imported = "Steam: {time} played before CmdBoard · +{xp} XP"
 added = "Steam: {time} played before CmdBoard, +{xp} XP"
 
 [suggestion]
-running = "{icon} {name} is running · n to add it"
+running = "{icon} {name} is running · n to add it, x to ignore it"
 none = "No running game to add"
+
+[ignore]
+added = "{name} will no longer be suggested (:ignore off {name} to undo)"
+removed = "{name} can be suggested again"
+list = "Ignored games: {list} (:ignore off <game> to undo)"
+empty = "No ignored game (x on the dashboard ignores the running one)"
+unknown = "not an ignored game: {name} (:ignore for the list)"
+not_saved = "ignored games not saved"
 
 [autostart]
 on = "Background tracking now starts with Windows"
@@ -541,6 +549,10 @@ summary = "Orders the apps (saved). Without arguments: current order"
 [cmd.autostart]
 usage = "autostart [on|off]"
 summary = "Starts background tracking with Windows, so no session is missed after a restart (saved). Without arguments: tells whether it does"
+
+[cmd.ignore]
+usage = "ignore [off <game>]"
+summary = "Lists the running games never suggested (x on the dashboard), or suggests one again (saved)"
 
 [cmd.lang]
 usage = "lang [en|fr|pt]"
