@@ -135,7 +135,7 @@
             <!--
               Shortcuts. The install is per-machine, so these resolve to the
               all-users Start Menu and Desktop. A shortcut cannot be a KeyPath,
-              hence the HKMU registry values (HKLM for a per-machine install).
+              hence the HKCU registry values (ICE38/ICE43/ICE57 require HKCU).
             -->
             <Directory Id='ProgramMenuFolder'>
                 <Component Id='StartMenuShortcut' Guid='D6CBA803-82CA-48B7-B125-6D0B4FE1A6FB'>
@@ -143,11 +143,11 @@
                         Id='StartMenuShortcut'
                         Name='CmdBoard'
                         Description='Terminal dashboard to launch apps and track play time'
-                        Target='[#exe0]'
+                        Target='[Bin]cmdboard.exe'
                         WorkingDirectory='Bin'
                         Icon='ProductICO'/>
                     <RegistryValue
-                        Root='HKMU'
+                        Root='HKCU'
                         Key='Software\Loris01100\cmdboard'
                         Name='StartMenuShortcut'
                         Type='integer'
@@ -161,11 +161,11 @@
                         Id='DesktopShortcut'
                         Name='CmdBoard'
                         Description='Terminal dashboard to launch apps and track play time'
-                        Target='[#exe0]'
+                        Target='[Bin]cmdboard.exe'
                         WorkingDirectory='Bin'
                         Icon='ProductICO'/>
                     <RegistryValue
-                        Root='HKMU'
+                        Root='HKCU'
                         Key='Software\Loris01100\cmdboard'
                         Name='DesktopShortcut'
                         Type='integer'
