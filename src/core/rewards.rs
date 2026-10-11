@@ -114,6 +114,88 @@ fn check(condition: &[Token], facts: &Facts) -> Result<bool, String> {
     })
 }
 
+/// How far the facts are from passing a rule, for a locked reward: `2h10 / 3h`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Progress {
+    pub current: u64,
+    /// Above zero.
+    pub target: u64,
+    pub unit: Unit,
+}
+
+/// What `Progress` counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unit {
+    /// Play time, in seconds.
+    Seconds,
+    /// Sessions, levels, days or apps.
+    Count,
+}
+
+impl Progress {
+    /// 0 to 100, reached targets included.
+    pub fn percent(&self) -> u64 {
+        self.current.min(self.target) * 100 / self.target
+    }
+}
+
+/// Progress toward `rule`, for the conditions that count up to a target (`>=`, `>`):
+/// the furthest of its `||` alternatives, each as far as its least advanced `&&`
+/// condition. An alternative with any other condition (`session_hour < 5`, `==`) has
+/// none, nor has a broken rule.
+pub fn progress(rule: &str, facts: &Facts) -> Option<Progress> {
+    evaluate(rule, facts).ok()?; // broken: no progress either
+    let tokens = tokenize(rule).ok()?;
+    tokens
+        .split(|t| *t == Token::Or)
+        .filter_map(|group| {
+            group
+                .split(|t| *t == Token::And)
+                .map(|condition| condition_progress(condition, facts))
+                .collect::<Option<Vec<_>>>()?
+                .into_iter()
+                .min_by_key(Progress::percent)
+        })
+        .max_by_key(Progress::percent)
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "facts and targets are small and positive; a negative one saturates at 0"
+)]
+fn condition_progress(condition: &[Token], facts: &Facts) -> Option<Progress> {
+    let [
+        Token::Var(name),
+        Token::Cmp(op @ (Op::Ge | Op::Gt)),
+        Token::Num(value),
+    ] = condition
+    else {
+        return None;
+    };
+    // An hour of the day is not something to build up.
+    if name == "session_hour" {
+        return None;
+    }
+    let actual = facts.get(name)?;
+    let (unit, scale) = match name.as_str() {
+        "session_minutes" => (Unit::Seconds, 60.0),
+        "app_hours" | "total_hours" => (Unit::Seconds, 3600.0),
+        _ => (Unit::Count, 1.0),
+    };
+    let target = match (unit, op) {
+        // `total_sessions > 2` takes a third one.
+        (Unit::Count, Op::Gt) => value.floor() + 1.0,
+        (Unit::Count, _) => value.ceil(),
+        _ => value * scale,
+    } as u64;
+    (target > 0).then_some(Progress {
+        current: (actual * scale) as u64,
+        target,
+        unit,
+    })
+}
+
 fn tokenize(rule: &str) -> Result<Vec<Token>, String> {
     let chars: Vec<char> = rule.chars().collect();
     let mut tokens = Vec::new();
@@ -163,6 +245,47 @@ fn tokenize(rule: &str) -> Result<Vec<Token>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn progress_counts_up_to_the_target() {
+        let time = |current, target| {
+            Some(Progress {
+                current,
+                target,
+                unit: Unit::Seconds,
+            })
+        };
+        let count = |current, target| {
+            Some(Progress {
+                current,
+                target,
+                unit: Unit::Count,
+            })
+        };
+        let cases = [
+            ("session_minutes >= 180", time(200 * 60, 180 * 60)),
+            ("app_hours >= 50", time(45_000, 180_000)),
+            ("level >= 10", count(3, 10)),
+            ("total_sessions > 2", count(0, 3)),
+            ("level >= 2.5", count(3, 3)),
+            // Least advanced condition of an `&&`, furthest alternative of an `||`.
+            ("level >= 10 && app_hours >= 25", count(3, 10)),
+            ("level >= 30 || app_hours >= 25", time(45_000, 90_000)),
+            // Unmeasurable: a time of day, another operator, an always-true target.
+            ("session_hour < 5", None),
+            ("session_hour >= 22", None),
+            ("level == 10", None),
+            ("level >= 6 && session_hour < 5", None),
+            ("total_sessions >= 0", None),
+            ("level >= 10 ||", None),
+            ("nope >= 1", None),
+        ];
+        for (rule, expected) in cases {
+            assert_eq!(progress(rule, &facts()), expected, "rule: {rule}");
+        }
+        assert_eq!(count(3, 10).unwrap().percent(), 30);
+        assert_eq!(count(12, 10).unwrap().percent(), 100);
+    }
 
     fn facts() -> Facts {
         Facts {

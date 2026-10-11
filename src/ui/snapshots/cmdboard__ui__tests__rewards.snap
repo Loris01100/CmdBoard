@@ -3,20 +3,20 @@ source: src/ui/mod.rs
 expression: "screen_text(&app, 100, 30)"
 ---
 ╭ Récompenses (0/13) ──────────────────────────────────────────────────────────────────────────────╮
-│     Nom              Description                                                     Débloquée   │
-│> 🔒  Premiers pas     Terminer une première session                                   —           │
-│  🔒  Marathon         Jouer 3 h d'affilée                                             —           │
+│     Nom              Description                                                     État        │
+│> 🔒  Premiers pas     Terminer une première session                                   0 / 1       │
+│  🔒  Marathon         Jouer 3 h d'affilée                                             0m / 3h     │
 │  🔒  Noctambule       Commencer une session entre minuit et 5 h                       —           │
-│  🔒  Habitué          Cumuler 10 h sur une app                                        —           │
-│  🔒  Passionné        Cumuler 50 h sur une app                                        —           │
-│  🔒  Vétéran          Atteindre le niveau 5 sur une app                               —           │
-│  🔒  Régulier         Jouer 3 jours de suite                                          —           │
-│  🔒  Assidu           Jouer 7 jours de suite                                          —           │
-│  🔒  Touche-à-tout    Lancer 5 apps différentes en 7 jours                            —           │
-│  🔒  Centurion        Cumuler 100 h au total                                          —           │
-│  🔒  Expert           Atteindre le niveau global 10                                   —           │
-│  🔒  Inarrêtable      Jouer 30 jours de suite                                         —           │
-│  🔒  Légende          Jouer 365 jours de suite                                        —           │
+│  🔒  Habitué          Cumuler 10 h sur une app                                        0m / 10h    │
+│  🔒  Passionné        Cumuler 50 h sur une app                                        0m / 50h    │
+│  🔒  Vétéran          Atteindre le niveau 5 sur une app                               1 / 5       │
+│  🔒  Régulier         Jouer 3 jours de suite                                          0 / 3       │
+│  🔒  Assidu           Jouer 7 jours de suite                                          0 / 7       │
+│  🔒  Touche-à-tout    Lancer 5 apps différentes en 7 jours                            0 / 5       │
+│  🔒  Centurion        Cumuler 100 h au total                                          0m / 100h   │
+│  🔒  Expert           Atteindre le niveau global 10                                   1 / 10      │
+│  🔒  Inarrêtable      Jouer 30 jours de suite                                         0 / 30      │
+│  🔒  Légende          Jouer 365 jours de suite                                        0 / 365     │
 │                                                                                                  │
 │                                                                                                  │
 │                                                                                                  │
@@ -28,7 +28,7 @@ expression: "screen_text(&app, 100, 30)"
 ╭ Détail ──────────────────────────────────────────────────────────────────────────────────────────╮
 │Premiers pas  ·  globale                                                                          │
 │Condition : total_sessions >= 1                                                                   │
-│Débloquée : verrouillée                                                                           │
+│Progression : 0 / 1 · 0 %                                                                         │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
                                                                                                     
  j/k naviguer   : commande   0-5 écrans   q quitter

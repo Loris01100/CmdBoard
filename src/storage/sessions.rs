@@ -245,6 +245,45 @@ impl Database {
             [app_id],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
+        let facts = Facts {
+            session_minutes: (secs / 60) as f64,
+            session_hour: hour as f64,
+            app_hours: app_secs as f64 / 3600.0,
+            app_sessions: app_sessions as f64,
+            app_level: f64::from(xp::level_from_total(app_xp).0),
+            ..self.global_facts(now)?
+        };
+        Ok((app_id, facts))
+    }
+
+    /// The best facts so far, for the progress of a locked reward: the longest finished
+    /// session and the app furthest along, or those of `app_id` only. Each fact is
+    /// its own best, possibly from different apps. No session hour.
+    pub(super) fn best_facts(&self, app_id: Option<i64>, now: i64) -> anyhow::Result<Facts> {
+        let (longest, app_secs, app_sessions): (i64, i64, i64) = self.conn.query_row(
+            "SELECT COALESCE(MAX(longest), 0), COALESCE(MAX(secs), 0), COALESCE(MAX(n), 0)
+             FROM (SELECT MAX(duration_s) AS longest, SUM(duration_s) AS secs, COUNT(*) AS n
+                   FROM sessions WHERE ended_at IS NOT NULL AND (?1 IS NULL OR app_id = ?1)
+                   GROUP BY app_id)",
+            [app_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?;
+        let app_xp: u32 = self.conn.query_row(
+            "SELECT COALESCE(MAX(total_xp), 0) FROM apps WHERE ?1 IS NULL OR id = ?1",
+            [app_id],
+            |r| r.get(0),
+        )?;
+        Ok(Facts {
+            session_minutes: (longest / 60) as f64,
+            app_hours: app_secs as f64 / 3600.0,
+            app_sessions: app_sessions as f64,
+            app_level: f64::from(xp::level_from_total(app_xp).0),
+            ..self.global_facts(now)?
+        })
+    }
+
+    /// Facts over every app: totals, the last 7 days, level and streak.
+    fn global_facts(&self, now: i64) -> anyhow::Result<Facts> {
         let (total_secs, total_sessions, apps_this_week): (i64, i64, i64) = self.conn.query_row(
             "SELECT COALESCE(SUM(duration_s), 0), COUNT(*),
                 COUNT(DISTINCT CASE WHEN ended_at > ?1 - 7 * 86400 THEN app_id END)
@@ -253,19 +292,14 @@ impl Database {
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
         let profile = self.profile_at(now)?;
-        let facts = Facts {
-            session_minutes: (secs / 60) as f64,
-            session_hour: hour as f64,
-            app_hours: app_secs as f64 / 3600.0,
-            app_sessions: app_sessions as f64,
-            app_level: f64::from(xp::level_from_total(app_xp).0),
+        Ok(Facts {
             level: f64::from(profile.level),
             streak_days: f64::from(profile.streak_days),
             total_hours: total_secs as f64 / 3600.0,
             total_sessions: total_sessions as f64,
             apps_this_week: apps_this_week as f64,
-        };
-        Ok((app_id, facts))
+            ..Facts::default()
+        })
     }
 
     /// Rewards `app_id` can still unlock: global ones nobody unlocked yet, and per-app

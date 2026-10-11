@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::core::goals::{GoalKind, Period};
+use crate::core::rewards::Progress;
 
 #[derive(Debug, Clone)]
 pub struct Category {
@@ -66,6 +67,8 @@ pub struct RewardView {
     pub app: Option<String>,
     /// Oldest first. Empty while locked.
     pub unlocks: Vec<Unlock>,
+    /// How close a locked reward is, when its rule counts up to a target.
+    pub progress: Option<Progress>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -7,14 +7,17 @@ use ratatui::{
 };
 
 use crate::app::App;
+use crate::core::goals::format_hm;
+use crate::core::rewards::{Progress, Unit};
 use crate::storage::models::RewardView;
 use crate::ui::{
     icons, layout,
     widgets::{command_line, status_bar},
 };
 
-/// Every reward: unlocked ones in color, locked ones greyed out. The selected one is
-/// detailed below (scope, rule, who unlocked it and when).
+/// Every reward: unlocked ones in color, locked ones greyed out with how close they are
+/// when their rule counts up to a target. The selected one is detailed below (scope,
+/// rule, who unlocked it and when, or its progress).
 pub fn draw(frame: &mut Frame, app: &App) {
     let theme = &app.theme;
     let (body, command, status) = layout::screen(frame.area(), command_line::height(app));
@@ -80,10 +83,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
     status_bar::render(frame, status, app);
 }
 
-/// Last column: the date, how many apps unlocked a per-app reward, or "—".
+/// Last column: the date, how many apps unlocked a per-app reward, the progress of a
+/// locked one (`2h10 / 3h`), or "—".
 fn unlocked_summary(reward: &RewardView) -> String {
     match reward.unlocks.as_slice() {
-        [] => "—".into(),
+        [] => reward.progress.map_or_else(|| "—".into(), progress_text),
         [only] if !reward.per_app || reward.app.is_some() => only.date.clone(),
         unlocks => t!("app_count", count = unlocks.len()),
     }
@@ -96,8 +100,17 @@ fn detail_lines(reward: &RewardView, app: &App) -> Vec<Line<'static>> {
         (None, true) => t!("rewards.per_app"),
         (None, false) => t!("rewards.global"),
     };
-    let unlocks = if reward.unlocks.is_empty() {
-        Span::styled(t!("rewards.locked"), theme.muted())
+    let (label, unlocks) = if let Some(progress) = reward.progress {
+        let text = t!(
+            "rewards.progress_value",
+            value = progress_text(progress),
+            percent = progress.percent()
+        );
+        let label = t!("rewards.progress");
+        (label, Span::styled(text, Style::new().fg(theme.info)))
+    } else if reward.unlocks.is_empty() {
+        let label = t!("rewards.unlocked_on");
+        (label, Span::styled(t!("rewards.locked"), theme.muted()))
     } else {
         let list = reward
             .unlocks
@@ -108,7 +121,8 @@ fn detail_lines(reward: &RewardView, app: &App) -> Vec<Line<'static>> {
             })
             .collect::<Vec<_>>()
             .join(", ");
-        Span::styled(list, Style::new().fg(theme.success))
+        let label = t!("rewards.unlocked_on");
+        (label, Span::styled(list, Style::new().fg(theme.success)))
     };
     vec![
         Line::from(vec![
@@ -119,11 +133,17 @@ fn detail_lines(reward: &RewardView, app: &App) -> Vec<Line<'static>> {
             Span::styled(t!("rewards.condition"), theme.muted()),
             Span::raw(reward.rule.clone()),
         ]),
-        Line::from(vec![
-            Span::styled(t!("rewards.unlocked_on"), theme.muted()),
-            unlocks,
-        ]),
+        Line::from(vec![Span::styled(label, theme.muted()), unlocks]),
     ]
+}
+
+/// `2h10 / 3h`, `3 / 10`.
+fn progress_text(progress: Progress) -> String {
+    let (current, target) = match progress.unit {
+        Unit::Seconds => (format_hm(progress.current), format_hm(progress.target)),
+        Unit::Count => (progress.current.to_string(), progress.target.to_string()),
+    };
+    format!("{current} / {target}")
 }
 
 #[cfg(test)]
@@ -151,7 +171,7 @@ mod tests {
         assert!(text.contains(&format!("Récompenses (0/{total})")), "{text}");
         assert!(text.contains("Premiers pas"));
         assert!(text.contains("Condition : total_sessions >= 1"));
-        assert!(text.contains("verrouillée"));
+        assert!(text.contains("Progression : 0 / 1 · 0 %"));
 
         let steam = app.find_app("Steam").unwrap().id;
         app.on_session_start(steam);
@@ -163,6 +183,13 @@ mod tests {
             !text.contains(&format!("Récompenses (0/{total})")),
             "{text}"
         );
-        assert!(!text.contains("verrouillée")); // "Premiers pas" is selected and unlocked
+        assert!(!text.contains("Progression")); // "Premiers pas" is selected and unlocked
+        assert!(text.contains("10m / 3h")); // Marathon: the longest session so far
+
+        // Without a target to count up to, the detail says it is locked.
+        app.reward_state.select(Some(2)); // Noctambule, `session_hour < 5`
+        if app.rewards[2].unlocks.is_empty() {
+            assert!(screen(&app).contains("Débloquée : verrouillée"));
+        }
     }
 }

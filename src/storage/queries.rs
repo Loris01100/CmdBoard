@@ -11,6 +11,7 @@ use super::models::{
     Unlock,
 };
 use super::{to_i64, to_u64};
+use crate::core::rewards::{self, Facts};
 use crate::core::xp;
 use crate::i18n;
 
@@ -327,18 +328,18 @@ impl Database {
         })
     }
 
-    /// Every reward with its unlocks, in definition order.
+    /// Every reward with its unlocks, in definition order, and its progress while locked.
     pub fn reward_views(&self) -> anyhow::Result<Vec<RewardView>> {
         let mut stmt = self.conn.prepare_cached(
             "SELECT r.id, r.name, r.description, r.rule,
-                r.scope = 'app' OR r.app_id IS NOT NULL, a.name, r.code
+                r.scope = 'app' OR r.app_id IS NOT NULL, a.name, r.code, r.app_id
              FROM rewards r LEFT JOIN apps a ON a.id = r.app_id
              ORDER BY r.id",
         )?;
-        let mut views = stmt
+        let (mut views, app_ids): (Vec<_>, Vec<Option<i64>>) = stmt
             .query_map([], |r| {
                 let code: String = r.get(6)?;
-                Ok(RewardView {
+                let view = RewardView {
                     id: r.get(0)?,
                     name: i18n::reward_text(&code, "name", r.get(1)?),
                     description: i18n::reward_text(&code, "description", r.get(2)?),
@@ -346,9 +347,13 @@ impl Database {
                     per_app: r.get(4)?,
                     app: r.get(5)?,
                     unlocks: Vec::new(),
-                })
+                    progress: None,
+                };
+                Ok((view, r.get::<_, Option<i64>>(7)?))
             })?
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .unzip();
 
         let mut stmt = self.conn.prepare_cached(
             "SELECT u.reward_id, a.name,
@@ -370,6 +375,20 @@ impl Database {
             if let Some(view) = views.iter_mut().find(|v| v.id == reward_id) {
                 view.unlocks.push(unlock);
             }
+        }
+        // Rewards tied to one app measure that app; the others the best of every app.
+        let now = unix_now();
+        let locked = |(view, _): &(&mut RewardView, Option<i64>)| view.unlocks.is_empty();
+        let mut best = None;
+        for (view, app_id) in views.iter_mut().zip(app_ids).filter(locked) {
+            let facts = match app_id {
+                Some(id) => self.best_facts(Some(id), now)?,
+                None => match &best {
+                    Some(facts) => Facts::clone(facts),
+                    None => best.insert(self.best_facts(None, now)?).clone(),
+                },
+            };
+            view.progress = rewards::progress(&view.rule, &facts);
         }
         Ok(views)
     }
@@ -607,6 +626,51 @@ mod tests {
             .unwrap();
         assert!(pending_codes(&db, hades).contains(&"fan".to_string()));
         assert!(!pending_codes(&db, other).contains(&"fan".to_string()));
+    }
+
+    #[test]
+    fn locked_rewards_show_the_best_progress_so_far() {
+        use crate::core::rewards::{Progress, Unit};
+        let (db, cat, hades) = db_with_app();
+        let celeste = db
+            .add_app(&NewApp {
+                name: "Celeste".into(),
+                launch_target: "celeste.exe".into(),
+                watch_exe: None,
+                category_id: cat,
+                launch_args: None,
+            })
+            .unwrap();
+        session(&db, hades, 10_000, 7_800, 0); // 2h10
+        session(&db, hades, 20_000, 3_600, 0); // Hades: 3h10 in all
+        session(&db, celeste, 30_000, 5_400, 0); // 1h30
+        db.conn
+            .execute(
+                "INSERT INTO rewards (app_id, code, name, rule) VALUES (?1, 'fan', 'Fan', 'app_hours >= 5')",
+                [celeste],
+            )
+            .unwrap();
+        let time = |current, target| {
+            Some(Progress {
+                current,
+                target,
+                unit: Unit::Seconds,
+            })
+        };
+        let progress = |db: &Database, name: &str| {
+            let views = db.reward_views().unwrap();
+            views.iter().find(|v| v.name == name).unwrap().progress
+        };
+        assert_eq!(progress(&db, "Marathon"), time(7_800, 10_800)); // longest session
+        assert_eq!(progress(&db, "Habitué"), time(11_400, 36_000)); // furthest app
+        assert_eq!(progress(&db, "Fan"), time(5_400, 18_000)); // its own app only
+        assert_eq!(progress(&db, "Noctambule"), None); // a time of day
+
+        // Unlocked for one app: nothing more to show.
+        let s = db.start_session(hades, 1_000).unwrap();
+        db.unlock_reward(reward_id(&db, "marathon"), Some(hades), s, 1_000)
+            .unwrap();
+        assert_eq!(progress(&db, "Marathon"), None);
     }
 
     #[test]
