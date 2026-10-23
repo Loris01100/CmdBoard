@@ -127,6 +127,9 @@ fn keys_map_to_commands_per_screen() {
         (KeyCode::Char('1'), Some(Command::Show(Screen::Dashboard))),
         (KeyCode::Char('2'), Some(Command::Show(Screen::Stats))),
         (KeyCode::Char('z'), None),
+        // Caps Lock or Shift: letters ignore case.
+        (KeyCode::Char('Q'), Some(Command::Quit)),
+        (KeyCode::Char('J'), Some(Command::SelectNext)),
     ];
     for (code, expected) in cases {
         assert_eq!(app.key_to_command(key(code)), expected, "{code:?}");

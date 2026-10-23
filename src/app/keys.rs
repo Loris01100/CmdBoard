@@ -35,8 +35,12 @@ impl App {
         }
     }
 
-    /// Normal-mode key bindings: global ones first, then the screen's.
-    pub(super) fn key_to_command(&self, key: KeyEvent) -> Option<Command> {
+    /// Normal-mode key bindings: global ones first, then the screen's. Letters ignore
+    /// case, so the bindings still work with Caps Lock or Shift held.
+    pub(super) fn key_to_command(&self, mut key: KeyEvent) -> Option<Command> {
+        if let KeyCode::Char(c) = &mut key.code {
+            *c = c.to_ascii_lowercase();
+        }
         if let Some(slot) = pin_slot(key) {
             return Some(Command::LaunchPin { slot });
         }

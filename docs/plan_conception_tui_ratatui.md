@@ -333,6 +333,7 @@ Découpage sur `;` puis exécution séquentielle, chaque ligne passant par le pa
 |---|---|---|
 | Normal | `↑↓` / `j k` | Navigation dans la liste |
 | Normal | `←→` / `Tab` | Changer de panneau (catégories ↔ apps) |
+| Normal | lettres | Insensibles à la casse : `key_to_command` met la lettre en minuscule, les raccourcis marchent donc avec `Verr. Maj` ou `Maj` enfoncée (`Q` quitte comme `q`). Les champs de saisie gardent la casse. |
 | Normal | `Enter` | `Command::Launch` (sur les catégories : passe au panneau apps) |
 | Normal | `:` | Ouvre la ligne de commande |
 | Normal | `/` | Recherche floue parmi toutes les apps (`Mode::Search`) |
